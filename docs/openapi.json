@@ -1790,6 +1790,16 @@
             "maxLength": 80,
             "minLength": 1,
             "title": "Stage"
+          },
+          "transcription": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TranscriptionProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -1817,6 +1827,27 @@
           "stage": {
             "type": "string",
             "title": "Stage"
+          },
+          "transcription": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TranscriptionProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "additionalProperties": false,
@@ -2153,6 +2184,51 @@
           "id"
         ],
         "title": "TranscriptSegment"
+      },
+      "TranscriptionProgress": {
+        "properties": {
+          "audio_processed_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Audio Processed Seconds"
+          },
+          "audio_total_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Audio Total Seconds"
+          },
+          "passages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Passages"
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Elapsed Seconds"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "audio_processed_seconds",
+          "audio_total_seconds",
+          "passages",
+          "elapsed_seconds"
+        ],
+        "title": "TranscriptionProgress"
       },
       "ValidationError": {
         "properties": {

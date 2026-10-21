@@ -24,11 +24,27 @@ class RecordingCreate(Strict):
     priority: Literal['normal', 'urgent'] = 'normal'
 
 
+class TranscriptionProgress(Strict):
+    audio_processed_seconds: float = Field(ge=0)
+    audio_total_seconds: float = Field(gt=0)
+    passages: int = Field(ge=0)
+    elapsed_seconds: float = Field(ge=0)
+    eta_seconds: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode='after')
+    def within_duration(self):
+        if self.audio_processed_seconds > self.audio_total_seconds:
+            raise ValueError('Processed audio exceeds total duration')
+        return self
+
+
 class Job(Strict):
     id: str
     state: str
     progress: float
     stage: str
+    transcription: TranscriptionProgress | None = None
+    updated_at: float | None = None
 
 
 class Artifact(Strict):
@@ -90,6 +106,7 @@ class ClaimRequest(Strict):
 class Heartbeat(Strict):
     progress: float = Field(ge=0, le=1)
     stage: str = Field(min_length=1, max_length=80)
+    transcription: TranscriptionProgress | None = None
 
 
 class ArtifactInput(Strict):

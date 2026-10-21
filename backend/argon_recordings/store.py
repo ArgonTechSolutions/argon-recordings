@@ -38,6 +38,7 @@ class Store:
             elif version != 1:
                 raise RuntimeError('Unsupported database version; automatic migration is disabled')
             db.executescript("""
+CREATE TABLE IF NOT EXISTS job_progress(job_id TEXT PRIMARY KEY REFERENCES jobs(id),payload TEXT NOT NULL,updated REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS embeddings(recording_id TEXT NOT NULL REFERENCES recordings(id),start REAL NOT NULL,
  end REAL NOT NULL,text TEXT NOT NULL,vector BLOB NOT NULL,model TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS embeddings_recording ON embeddings(recording_id);
@@ -87,6 +88,7 @@ CREATE TABLE IF NOT EXISTS corrections(id TEXT PRIMARY KEY,recording_id TEXT NOT
             job = db.execute("SELECT * FROM jobs WHERE state='queued' OR (state='running' AND lease_until<=? AND attempts<3) ORDER BY priority*300-created DESC LIMIT 1", (now,)).fetchone()
             if not job:
                 return None
+            db.execute('DELETE FROM job_progress WHERE job_id=?', (job['id'],))
             lease = identity()
             db.execute("UPDATE jobs SET state='running',lease_id=?,lease_until=?,worker=?,attempts=attempts+1,progress=0,stage='Starting' WHERE id=?", (lease, now + 120, worker, job['id']))
             db.execute("UPDATE recordings SET status='running',error=NULL WHERE id=?", (job['recording_id'],))

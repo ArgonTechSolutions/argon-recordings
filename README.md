@@ -116,3 +116,5 @@ It resolved to shadcn 4.22.1 during initialization. Installed dependencies are r
 ## Updates
 
 Run `python3 recordings.py update` from a Git installation to fetch `main`, rebuild, and restart an already running app. See [the one-time archive conversion and update instructions](docs/INSTALL.md#git-updates). Public HTTPS pulls need no GitHub credentials.
+
+Transcription progress reports source audio covered, passages produced, and elapsed time. An approximate transcription ETA appears after at least three passages, 30 seconds of covered audio, and 30 seconds elapsed. Silence, model loading, and changing host load can affect the estimate; publishing is a separate stage. Workers report every five seconds; the UI polls every five seconds only while a recording is busy. No chunk total is invented because Whisper produces variable-length passages.

@@ -81,9 +81,13 @@ def create_app(settings=None):
     def view(row):
         row = dict(row)
         with store().db() as db:
-            job = db.execute('SELECT id,state,progress,stage FROM jobs WHERE recording_id=?', (row['id'],)).fetchone()
+            job = db.execute('SELECT j.id,j.state,j.progress,j.stage,p.payload,p.updated FROM jobs j LEFT JOIN job_progress p ON p.job_id=j.id WHERE j.recording_id=?', (row['id'],)).fetchone()
             artifacts = db.execute('SELECT name,time,kind FROM artifacts WHERE recording_id=? ORDER BY time', (row['id'],)).fetchall()
         row['job'] = dict(job) if job else None
+        if row['job']:
+            payload = row['job'].pop('payload')
+            row['job']['updated_at'] = row['job'].pop('updated')
+            row['job']['transcription'] = json.loads(payload) if payload and job['state'] == 'running' else None
         row['artifacts'] = [dict(a, url=f'/api/recordings/{row["id"]}/media/{a["name"]}') for a in artifacts]
         return row
 
@@ -255,6 +259,11 @@ def create_app(settings=None):
             db.execute('BEGIN IMMEDIATE')
             require_lease(db, jid, x_lease_id)
             db.execute('UPDATE jobs SET lease_until=?,progress=?,stage=? WHERE id=?', (time.time() + 120, body.progress, body.stage, jid))
+            if body.transcription is not None:
+                db.execute('INSERT INTO job_progress VALUES(?,?,?) ON CONFLICT(job_id) DO UPDATE SET payload=excluded.payload,updated=excluded.updated',
+                           (jid, body.transcription.model_dump_json(), time.time()))
+            else:
+                db.execute('DELETE FROM job_progress WHERE job_id=?', (jid,))
         return {'lease_seconds': 120}
 
     @app.get('/api/worker/jobs/{jid}/source', dependencies=[Depends(worker_auth)])

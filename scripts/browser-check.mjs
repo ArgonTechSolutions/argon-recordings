@@ -122,6 +122,28 @@ try {
   result.checks.push('live project creation, raw upload progress and durable queue UI')
   const failedJob = await (await page.request.post(base + '/api/worker/claim', { headers: auth, data: { worker: 'synthetic-retry' } })).json()
   assert.equal(failedJob.recording.title, 'Browser upload')
+  const progressHeaders = { ...auth, 'X-Lease-Id': failedJob.lease_id }
+  const progressUrl = base + `/api/worker/jobs/${failedJob.job_id}/heartbeat`
+  assert.equal((await page.request.post(progressUrl, {
+    headers: progressHeaders,
+    data: { progress: .34, stage: 'Transcribing with Turbo', transcription: {
+      audio_processed_seconds: 180, audio_total_seconds: 600, passages: 25, elapsed_seconds: 420, eta_seconds: 980
+    } }
+  })).status(), 200)
+  await page.getByRole('heading', { name: 'Processing recording', exact: true }).waitFor()
+  await page.getByText('Audio covered: 3:00 / 10:00', { exact: true }).waitFor()
+  await page.getByText('25 passages · 7:00 elapsed', { exact: true }).waitFor()
+  await page.getByText('About 17 min remaining for transcription', { exact: true }).waitFor()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await fits()
+  await page.screenshot({ path: path.join(evidence, 'transcription-progress-mobile.png'), fullPage: true })
+  assert.equal((await page.request.post(progressUrl, {
+    headers: progressHeaders, data: { progress: .95, stage: 'Publishing transcript and references' }
+  })).status(), 200)
+  await page.getByText('Publishing transcript and references', { exact: true }).waitFor()
+  assert.equal(await page.locator('.transcription-progress').count(), 0)
+  result.checks.push('live transcription coverage, passage count, elapsed time and ETA; publication clears details; mobile fits')
+
   assert.equal((await page.request.post(base + `/api/worker/jobs/${failedJob.job_id}/fail`, {
     headers: { ...auth, 'X-Lease-Id': failedJob.lease_id }, data: { message: 'Previous duration restriction' }
   })).status(), 200)

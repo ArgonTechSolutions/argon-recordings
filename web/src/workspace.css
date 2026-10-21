@@ -1605,3 +1605,10 @@ h1 {
 .section-label { font-size: 12px; letter-spacing: normal; }
 
 .processing-state .retry-recording { margin-top: 20px; }
+
+.transcription-progress {
+  margin-top: 16px;
+  display: grid;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}

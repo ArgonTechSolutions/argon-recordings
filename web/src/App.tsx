@@ -24,6 +24,7 @@ import {
   Upload,
   X,
 } from "lucide-react"
+import { TranscriptionProgress } from "@/components/transcription-progress"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -105,7 +106,7 @@ function App() {
     enabled: !!activeProject,
     queryFn: () =>
       request<Recording[]>(`/api/projects/${activeProject!.id}/recordings`),
-    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 2000 : false),
+    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 5000 : false),
   })
   const current =
     recordings.data?.find((r) => r.id === recordingId) ?? recordings.data?.[0]
@@ -608,7 +609,9 @@ function App() {
                           ? "Processing failed"
                           : current.status === "awaiting_upload"
                             ? "Waiting for the source file."
-                            : "Recording queued"}
+                            : current.status === "running"
+                              ? "Processing recording"
+                              : "Recording queued"}
                       </h2>
                       <p>
                         {current.error ??
@@ -616,7 +619,14 @@ function App() {
                           "Waiting for upload"}
                       </p>
                       {isBusy(current) && (
-                        <progress max={1} value={current.job?.progress ?? 0} />
+                        <>
+                          <progress
+                            aria-label="Recording processing progress"
+                            max={1}
+                            value={current.job?.progress ?? 0}
+                          />
+                          <TranscriptionProgress job={current.job} />
+                        </>
                       )}
                       {current.status === "failed" && (
                         <Button

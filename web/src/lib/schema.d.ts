@@ -538,6 +538,7 @@ export interface components {
             progress: number;
             /** Stage */
             stage: string;
+            transcription?: components["schemas"]["TranscriptionProgress"] | null;
         };
         /** Job */
         Job: {
@@ -549,6 +550,9 @@ export interface components {
             progress: number;
             /** Stage */
             stage: string;
+            transcription?: components["schemas"]["TranscriptionProgress"] | null;
+            /** Updated At */
+            updated_at?: number | null;
         };
         /** Project */
         Project: {
@@ -662,6 +666,19 @@ export interface components {
             words?: components["schemas"]["Word"][];
             /** Id */
             id: string;
+        };
+        /** TranscriptionProgress */
+        TranscriptionProgress: {
+            /** Audio Processed Seconds */
+            audio_processed_seconds: number;
+            /** Audio Total Seconds */
+            audio_total_seconds: number;
+            /** Passages */
+            passages: number;
+            /** Elapsed Seconds */
+            elapsed_seconds: number;
+            /** Eta Seconds */
+            eta_seconds?: number | null;
         };
         /** ValidationError */
         ValidationError: {

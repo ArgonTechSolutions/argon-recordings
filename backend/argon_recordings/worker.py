@@ -92,6 +92,26 @@ def extract(source, output):
     return duration, audio, artifacts
 
 
+class TranscriptionTracker:
+    """Coverage on the source timeline, not a guessed total of Whisper passages."""
+    def __init__(self, duration, clock=time.monotonic):
+        self.duration, self.clock = duration, clock
+        self.started = clock()
+        self.position = (0.0, 0)
+
+    def advance(self, seconds):
+        previous, passages = self.position
+        self.position = (min(self.duration, max(previous, seconds)), passages + 1)
+
+    def snapshot(self):
+        seconds, passages = self.position
+        elapsed = max(0, self.clock() - self.started)
+        # Wait for several passages and meaningful work before estimating.
+        eta = elapsed * (self.duration - seconds) / seconds if elapsed >= 30 and seconds >= 30 and passages >= 3 else None
+        return dict(audio_processed_seconds=seconds, audio_total_seconds=self.duration,
+                    passages=passages, elapsed_seconds=elapsed, eta_seconds=eta)
+
+
 def run_once(client, transcriber, work_root=None):
     claim = client.post('/api/worker/claim', json={'worker': 'cpu-turbo'})
     claim.raise_for_status()
@@ -102,16 +122,20 @@ def run_once(client, transcriber, work_root=None):
     headers = {'X-Lease-Id': lease}
     cancelled, done = threading.Event(), threading.Event()
     progress = {'progress': 0.0, 'stage': 'Downloading source'}
+    tracker = None
 
     def heartbeat():
         while not done.is_set():
             try:
-                response = client.post(f'/api/worker/jobs/{jid}/heartbeat', headers=headers, json=progress.copy())
+                snapshot = progress.copy()
+                if snapshot['stage'] in {'Preparing transcription', 'Transcribing with Turbo'} and tracker is not None:
+                    snapshot['transcription'] = tracker.snapshot()
+                response = client.post(f'/api/worker/jobs/{jid}/heartbeat', headers=headers, json=snapshot)
                 response.raise_for_status()
             except Exception:
                 cancelled.set()
                 return
-            done.wait(20)
+            done.wait(5)
 
     thread = threading.Thread(target=heartbeat, daemon=True)
     thread.start()
@@ -132,15 +156,18 @@ def run_once(client, transcriber, work_root=None):
                 raise RuntimeError('Source integrity mismatch')
             progress.update(progress=.05, stage='Preparing audio and visual references')
             duration, audio, artifacts = extract(source, output)
-            progress.update(progress=.1, stage='Transcribing with Turbo')
+            tracker = TranscriptionTracker(duration)
+            progress = dict(progress=.1, stage='Preparing transcription')
             def advance(seconds):
                 if cancelled.is_set():
                     raise RuntimeError('Worker lease lost')
-                progress['progress'] = min(.9, .1 + .8 * seconds / duration)
+                nonlocal progress
+                tracker.advance(seconds)
+                progress = dict(progress=min(.9, .1 + .8 * tracker.position[0] / duration), stage='Transcribing with Turbo')
             segments = transcriber.transcribe(audio, job['recording']['language'], advance)
             if cancelled.is_set():
                 raise RuntimeError('Worker lease lost')
-            progress.update(progress=.95, stage='Publishing transcript and references')
+            progress = dict(progress=.95, stage='Publishing transcript and references')
             for artifact in artifacts:
                 with (output / artifact['name']).open('rb') as stream:
                     response = client.put(f'/api/worker/jobs/{jid}/artifacts/{artifact["name"]}', headers=headers, content=stream)
