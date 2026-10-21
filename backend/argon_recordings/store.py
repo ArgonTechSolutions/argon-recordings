@@ -37,6 +37,15 @@ class Store:
                 db.executescript(SCHEMA)
             elif version != 1:
                 raise RuntimeError('Unsupported database version; automatic migration is disabled')
+            db.executescript("""
+CREATE TABLE IF NOT EXISTS embeddings(recording_id TEXT NOT NULL REFERENCES recordings(id),start REAL NOT NULL,
+ end REAL NOT NULL,text TEXT NOT NULL,vector BLOB NOT NULL,model TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS embeddings_recording ON embeddings(recording_id);
+CREATE TABLE IF NOT EXISTS embedding_versions(recording_id TEXT PRIMARY KEY REFERENCES recordings(id),model TEXT NOT NULL,sha TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS corrections(id TEXT PRIMARY KEY,recording_id TEXT NOT NULL REFERENCES recordings(id),
+ segment_id TEXT NOT NULL REFERENCES segments(id),original TEXT NOT NULL,hint TEXT NOT NULL,state TEXT NOT NULL,
+ lease_id TEXT,lease_until REAL,attempts INTEGER DEFAULT 0,proposal TEXT,error TEXT,created REAL NOT NULL);
+""")
             # An interrupted upload can be retried. Completed source files are never pruned here.
             db.execute("UPDATE recordings SET status='awaiting_upload' WHERE status='uploading'")
 
@@ -68,6 +77,8 @@ class Store:
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             if db.execute("SELECT 1 FROM jobs WHERE state='running' AND lease_until>? LIMIT 1", (now,)).fetchone():
+                return None
+            if db.execute("SELECT 1 FROM corrections WHERE state='running' AND lease_until>?", (now,)).fetchone():
                 return None
             exhausted = db.execute("SELECT recording_id FROM jobs WHERE state='running' AND lease_until<=? AND attempts>=3", (now,)).fetchall()
             for row in exhausted:

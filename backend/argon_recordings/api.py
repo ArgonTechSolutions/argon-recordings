@@ -9,17 +9,20 @@ import re
 import shutil
 import time
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .contracts import (ClaimRequest, Completion, Failure, Heartbeat, Project, ProjectCreate,
                         Recording, RecordingCreate, SearchHit, Transcript)
+from .embeddings import Embeddings
+from .corrections import install as install_corrections
 from .store import Store, identity, lease_row
 
 
 class Settings:
-    def __init__(self, data=None, worker_token=None, max_upload=256 * 1024**2, reserve=1024**3):
+    def __init__(self, data=None, worker_token=None, max_upload=256 * 1024**2, reserve=1024**3, embeddings=None):
+        self.embeddings = embeddings or Embeddings(os.environ.get('RECORDINGS_EMBEDDING_DIR'), os.environ.get('RECORDINGS_EMBEDDING_PROFILE', 'large'))
         self.data = Path(data or os.environ.get('RECORDINGS_DATA', 'data'))
         self.worker_token = worker_token if worker_token is not None else os.environ.get('RECORDINGS_WORKER_TOKEN', '')
         self.max_upload, self.reserve = max_upload, reserve
@@ -109,7 +112,7 @@ def create_app(settings=None):
 
     @app.get('/api/health')
     def health():
-        return {'status': 'ok', 'profile': 'local', 'model': 'large-v3-turbo', 'search': 'keyword',
+        return {'status': 'ok', 'profile': 'local', 'model': 'large-v3-turbo', 'search': 'hybrid' if settings.embeddings.configured else 'keyword',
                 'worker_configured': bool(settings.worker_token), 'max_upload_bytes': settings.max_upload,
                 'max_duration_seconds': 300}
 
@@ -175,7 +178,7 @@ def create_app(settings=None):
     def transcript(rid: str):
         recording_or_404(rid)
         with store().db() as db:
-            rows = db.execute('SELECT start,end,text,words FROM segments WHERE recording_id=? ORDER BY start', (rid,)).fetchall()
+            rows = db.execute('SELECT id,start,end,text,words FROM segments WHERE recording_id=? ORDER BY start', (rid,)).fetchall()
         return {'recording_id': rid, 'segments': [dict(r, words=json.loads(r['words'])) for r in rows]}
 
     @app.get('/api/recordings/{rid}/media/{name}')
@@ -188,14 +191,37 @@ def create_app(settings=None):
         return FileResponse(row['path'], media_type='audio/wav' if row['kind'] == 'audio' else 'image/jpeg', headers={'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff'})
 
     @app.get('/api/search', response_model=list[SearchHit])
-    def search(project_id: str, q: str):
+    def search(project_id: str, q: str, mode: str = 'hybrid'):
         project_or_404(project_id)
+        if mode not in {'hybrid', 'keyword', 'semantic'}:
+            raise HTTPException(422, 'Unknown search mode')
+        if mode == 'semantic' and not settings.embeddings.configured:
+            raise HTTPException(503, 'Embedding model is not configured')
         terms = re.findall(r'\w+', q[:300], re.UNICODE)[:20]
         if not terms:
             return []
         match = ' AND '.join('"' + t + '"' for t in terms)
         with store().db() as db:
-            return [dict(r) for r in db.execute('SELECT r.id AS recording_id,r.title,s.start,s.end,s.text FROM segment_search f JOIN segments s ON s.id=f.segment_id JOIN recordings r ON r.id=s.recording_id WHERE segment_search MATCH ? AND r.project_id=? ORDER BY bm25(segment_search) LIMIT 30', (match, project_id))]
+            lexical = [dict(r) for r in db.execute('SELECT r.id AS recording_id,r.title,s.start,s.end,s.text FROM segment_search f JOIN segments s ON s.id=f.segment_id JOIN recordings r ON r.id=s.recording_id WHERE segment_search MATCH ? AND r.project_id=? ORDER BY bm25(segment_search) LIMIT 30', (match, project_id))]
+        if mode == 'keyword' or not settings.embeddings.configured:
+            return lexical
+        try:
+            semantic = settings.embeddings.search(store(), project_id, q[:300])
+        except Exception as exc:
+            # Explicit failure keeps a broken model visible; users can select keyword search.
+            raise HTTPException(503, 'Semantic index unavailable; use keyword search or check model configuration') from exc
+        if mode == 'semantic':
+            return semantic
+        # Reciprocal-rank fusion; timestamps provide the stable jump target.
+        ranks, values = {}, {}
+        for ranking in [lexical, semantic]:
+            for i, hit in enumerate(ranking):
+                key = (hit['recording_id'], hit['start'])
+                ranks[key] = ranks.get(key, 0) + 1 / (60 + i + 1)
+                values.setdefault(key, hit)
+        return [values[k] for k in sorted(ranks, key=ranks.get, reverse=True)[:30]]
+
+    install_corrections(app, store, recording_or_404, worker_auth, settings.embeddings)
 
     @app.post('/api/worker/claim', dependencies=[Depends(worker_auth)])
     def claim(body: ClaimRequest):
@@ -235,7 +261,7 @@ def create_app(settings=None):
         return {'name': name}
 
     @app.post('/api/worker/jobs/{jid}/complete', response_model=Recording, dependencies=[Depends(worker_auth)])
-    def complete(jid: str, body: Completion, x_lease_id: str = Header()):
+    def complete(jid: str, body: Completion, background_tasks: BackgroundTasks, x_lease_id: str = Header()):
         payload_sha = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
         with store().db() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -264,6 +290,8 @@ def create_app(settings=None):
                     db.execute('INSERT INTO artifacts VALUES(?,?,?,?,?)', (rid, a.name, a.time, a.kind, str(directory / a.name)))
                 db.execute("UPDATE recordings SET status='ready',duration=? WHERE id=?", (body.duration, rid))
                 db.execute("UPDATE jobs SET state='completed',progress=1,stage='Ready',result_sha=? WHERE id=?", (payload_sha, jid))
+        if settings.embeddings.configured:
+            background_tasks.add_task(settings.embeddings.refresh, store(), rid)
         return view(recording_or_404(rid))
 
     @app.post('/api/worker/jobs/{jid}/fail', dependencies=[Depends(worker_auth)])

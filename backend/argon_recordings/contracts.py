@@ -74,9 +74,13 @@ class Segment(Strict):
         return self
 
 
+class TranscriptSegment(Segment):
+    id: str
+
+
 class Transcript(Strict):
     recording_id: str
-    segments: list[Segment]
+    segments: list[TranscriptSegment]
 
 
 class ClaimRequest(Strict):
@@ -126,3 +130,37 @@ class SearchHit(Strict):
     start: float
     end: float
     text: str
+
+
+class CorrectionCandidates(Strict):
+    segment_id: str
+    phrase: str = Field(min_length=1, max_length=150, pattern=r'\S')
+    hint: str = Field(min_length=1, max_length=300, pattern=r'\S')
+
+
+class CorrectionCreate(CorrectionCandidates):
+    segment_ids: list[str] = Field(min_length=1, max_length=10)
+
+
+class CorrectionCompletion(Strict):
+    segments: list[Segment] = Field(min_length=1, max_length=100)
+
+
+class CorrectionCandidateHit(Strict):
+    id: str
+    start: float
+    end: float
+    text: str
+    score: float
+
+
+class CorrectionView(Strict):
+    id: str
+    segment_id: str
+    original: str
+    hint: str
+    state: str
+    proposal: list[Segment] | None
+    error: str | None
+    start: float
+    end: float

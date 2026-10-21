@@ -11,27 +11,46 @@ A self-hosted workspace for finding the useful moments in recordings. Built by A
 - SQLite-backed worker leases, fencing, idempotent publication, one active lease, and bounded retry after worker loss. Urgent work gets a five-minute priority advantage; older normal work can overtake it.
 - One-job CPU INT8 Turbo worker using explicit, checksum-verified local model files. No automatic model downloads.
 - Up to five-minute recordings in this foundation profile. Audio extraction, source-relative transcript/word timestamps, and JPEG visual references at explicit 15-second seeks.
-- Audio/transcript navigation, nearest retained frame with time offset, keyword search, and transcript text download.
+- Audio/transcript navigation, nearest retained frame with time offset, multilingual semantic/keyword search, and transcript text download.
+- Mark misheard text, find similar spelling variants in the recording, retry selected audio passages with a hint, and review proposals before acceptance. Prior text is retained in correction history.
 - Light/dark appearance and responsive layouts using the supplied shadcn preset.
 
-Semantic/hybrid search, glossary/correction workflows, range retention/pruning, original expiry, re-upload restoration, reports/ZIP exports, MCP, and team authorization are later milestones. Originals are retained in this version; nothing automatically deletes them. There is no idle-aware scheduler or job-cancel endpoint yet. See [the plan](docs/PLAN.md) and [validation status](docs/STATUS.md).
+Project-wide glossary management, range retention/pruning, original expiry, re-upload restoration, reports/ZIP exports, MCP, and team authorization are later milestones. Originals are retained in this version; nothing automatically deletes them. There is no idle-aware scheduler or job-cancel endpoint yet. See [the plan](docs/PLAN.md) and [validation status](docs/STATUS.md).
 
 ## Local build and preview
 
 Prerequisites: Docker on Linux x86-64. No host Node/Python inference packages are necessary. Commands below are for an explicitly started **local, single-user preview**, not a production installation.
 
 ```bash
+# Explicit, checksum-verified embedding model download (~579 MB).
+docker build -f backend/Dockerfile -t argon-recordings-api:local .
+docker run --rm --cpus=2 --memory=1g --memory-swap=1g \
+  -v "$PWD":/workspace -w /workspace -e PYTHONPATH=/workspace/backend \
+  argon-recordings-api:local python scripts/prepare_embeddings.py models/e5-large large
+
 docker build -t argon-recordings:local .
 docker run --rm --name argon-recordings-local \
-  --cpus=1 --memory=1g --memory-swap=1g \
+  --cpus=2 --memory=2g --memory-swap=2g \
   -p 127.0.0.1:8000:8000 \
   -v argon-recordings-data:/data \
+  -v "$PWD/models/e5-large":/models/embeddings:ro \
+  -e RECORDINGS_EMBEDDING_DIR=/models/embeddings \
   argon-recordings:local
 ```
 
 Open http://localhost:8000. `/?preview=1` shows synthetic example content, with uploads disabled. Stop the container to end the preview; the named volume retains your data. No service is installed automatically. Build-time resources are separate from run-time limits.
 
 The current coordinator has loopback-host and same-origin checks but **no user authentication**. Bind/publish only to loopback and do not expose it on a LAN, Tailscale, or the public internet. Worker authentication is separate; its endpoints are disabled unless `RECORDINGS_WORKER_TOKEN` is supplied privately to the coordinator. There is no generated or committed credential. Team access needs the later authorization milestone.
+
+## Search and corrections
+
+The default embedding profile is quantized **multilingual E5-large**. English, Spanish, and cross-language queries use token-aware overlapping chunks and hybrid ranking. Vectors live in SQLite; retrieval is exact cosine similarity, with no separate vector service. See [model/backend evaluation](docs/EMBEDDING-EVALUATION.md) for measured tradeoffs and limits. Initial indexing and model loading can make the first search slower; new publications and accepted corrections refresh their index automatically. Text queries remain local.
+
+To use a smaller profile, prepare `models/e5-base base` or `models/e5-small small`, mount that directory, and set `RECORDINGS_EMBEDDING_PROFILE=base` or `small`. With no `RECORDINGS_EMBEDDING_DIR`, keyword search remains usable. Model changes rebuild incompatible stored vectors. Retained audio, transcript text, and embeddings stay on the coordinator's disk-backed data volume.
+
+Select a word in the transcript and choose **Correct text**, or enter the misheard text manually. Provide the correct term/hint, select matching passages, and queue the retries. Discovery searches spelling variants throughout the same recording; it cannot identify every acoustic error or recover wholly omitted words. Each selected passage must be at most 60 seconds; a request may select up to ten. The existing one-job worker processes queued corrections when no original transcription is claimable. It crops the retained audio and supplies the hint as Turbo `initial_prompt` and `hotwords`. Hints guide recognition; they do not guarantee a replacement. Review the proposed text and **Accept** or **Dismiss** it. Accepted changes preserve previous text, update keyword search, and rebuild the recording's embedding index. Queued/running retries can be dismissed; stale workers cannot publish afterward.
+
+This milestone adds only new SQLite tables/indexes, leaving the foundation tables and sources intact. Unknown schema versions still fail closed. Back up the data volume before upgrading an installation. No remote installation or real-data upgrade has been performed as part of development.
 
 ## Worker integration
 
@@ -58,7 +77,7 @@ npm run build
 npm run lint
 ```
 
-Backend tests use temporary data and synthetic inference:
+Backend tests use temporary data and synthetic speech inference. The real embedding integration test is opt-in:
 
 ```bash
 docker build -f backend/Dockerfile -t argon-recordings-api:local .
@@ -67,6 +86,8 @@ docker run --rm --cpus=2 --memory=1g --memory-swap=1g \
   argon-recordings-api:local \
   sh -lc 'python -m pytest -q backend/tests && python scripts/export_contract.py --check'
 ```
+
+For the real embedding check, add a 3 GiB container memory limit and `-e TEST_EMBEDDING_DIR=/workspace/models/e5-large` to the test command after preparing the weights. `scripts/evaluate_embeddings.py models/e5-large --profile large` reproduces the bounded bilingual retrieval fixture; its timings must be measured on Philemon before claiming Philemon performance.
 
 `docs/openapi.json` is generated from the real FastAPI routes. To update it, run `PYTHONPATH=backend python scripts/export_contract.py`. Generate `web/src/lib/schema.d.ts` with isolated `openapi-typescript@7.13.0` and `typescript@5.9.3`; the frontend retains the preset's TypeScript 6. This avoids an incompatible code-generator peer override.
 

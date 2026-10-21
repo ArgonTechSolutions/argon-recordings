@@ -35,13 +35,14 @@ class Turbo:
                 raise RuntimeError('Model checksum mismatch')
         self.model = None
 
-    def transcribe(self, audio, language, progress):
+    def transcribe(self, audio, language, progress, hint=None):
         if self.model is None:
             from faster_whisper import WhisperModel
             self.model = WhisperModel(str(self.directory), device='cpu', compute_type='int8',
                                       cpu_threads=2, num_workers=1, local_files_only=True)
         segments, _ = self.model.transcribe(str(audio), language=None if language == 'auto' else language,
-                                            beam_size=5, temperature=0, word_timestamps=True, vad_filter=True)
+                                            beam_size=5, temperature=0, word_timestamps=True, vad_filter=True,
+                                            initial_prompt=hint, hotwords=hint)
         result = []
         for s in segments:
             result.append(Segment(start=s.start, end=s.end, text=s.text,
@@ -88,7 +89,7 @@ def run_once(client, transcriber, work_root=None):
     claim.raise_for_status()
     job = claim.json()
     if not job:
-        return False
+        return run_correction(client, transcriber, work_root)
     jid, lease = job['job_id'], job['lease_id']
     headers = {'X-Lease-Id': lease}
     cancelled, done = threading.Event(), threading.Event()
@@ -148,6 +149,77 @@ def run_once(client, transcriber, work_root=None):
                 client.post(f'/api/worker/jobs/{jid}/fail', headers=headers, json={'message': str(exc)[:500]}).raise_for_status()
             except Exception:
                 pass
+        raise
+    finally:
+        done.set()
+        thread.join(timeout=5)
+
+
+def crop_audio(source, target, start, end):
+    with wave.open(str(source), 'rb') as incoming:
+        if incoming.getnchannels() != 1 or incoming.getsampwidth() != 2 or incoming.getframerate() != 16000:
+            raise RuntimeError('Expected retained 16 kHz mono PCM audio')
+        first, last = round(start * 16000), round(end * 16000)
+        if first < 0 or last > incoming.getnframes() + 160 or last <= first:
+            raise RuntimeError('Passage is outside retained audio')
+        incoming.setpos(first)
+        with wave.open(str(target), 'wb') as out:
+            out.setparams(incoming.getparams())
+            out.writeframes(incoming.readframes(last - first))
+
+
+def run_correction(client, transcriber, work_root=None):
+    response = client.post('/api/worker/corrections/claim')
+    response.raise_for_status()
+    job = response.json()
+    if not job:
+        return False
+    base = f"/api/worker/corrections/{job['id']}"
+    headers = {'X-Lease-Id': job['lease_id']}
+    done, lost = threading.Event(), threading.Event()
+    def heartbeat():
+        while not done.is_set():
+            try:
+                client.post(base + '/heartbeat', headers=headers, json={'progress': .5, 'stage': 'Retrying selected passage'}).raise_for_status()
+            except Exception:
+                lost.set()
+                return
+            done.wait(20)
+    thread = threading.Thread(target=heartbeat, daemon=True)
+    thread.start()
+    try:
+        with tempfile.TemporaryDirectory(prefix='recordings-correction-', dir=work_root) as directory:
+            audio, crop = Path(directory) / 'retained.wav', Path(directory) / 'passage.wav'
+            size = 0
+            with client.stream('GET', base + '/audio', headers=headers) as response:
+                response.raise_for_status()
+                with audio.open('wb') as out:
+                    for block in response.iter_bytes(1024**2):
+                        size += len(block)
+                        if size > 12 * 1024**2 or lost.is_set():
+                            raise RuntimeError('Audio exceeds budget or lease lost')
+                        out.write(block)
+            crop_audio(audio, crop, job['start'], job['end'])
+            def advance(_):
+                if lost.is_set():
+                    raise RuntimeError('Correction lease lost')
+            segments = transcriber.transcribe(crop, job['language'], advance, hint=job['hint'])
+            proposal = []
+            for segment in segments:
+                value = segment.model_dump()
+                value['start'] = max(job['start'], min(job['end'], value['start'] + job['start']))
+                value['end'] = max(value['start'], min(job['end'], value['end'] + job['start']))
+                for word in value['words']:
+                    word['start'] = max(value['start'], min(value['end'], word['start'] + job['start']))
+                    word['end'] = max(word['start'], min(value['end'], word['end'] + job['start']))
+                proposal.append(Segment(**value).model_dump())
+            if lost.is_set():
+                raise RuntimeError('Correction lease lost')
+            client.post(base + '/complete', headers=headers, json={'segments': proposal}).raise_for_status()
+        return True
+    except Exception as exc:
+        if not lost.is_set():
+            client.post(base + '/fail', headers=headers, json={'message': str(exc)[:500]}).raise_for_status()
         raise
     finally:
         done.set()

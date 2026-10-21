@@ -6,10 +6,10 @@ COPY web/ ./
 RUN npm run build
 
 FROM python@sha256:86adf8dbadc3d6e82ee5dd2c74bec2e1c2467cdad47886280501df722372d2e1
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 RECORDINGS_DATA=/data RECORDINGS_STATIC=/app/static
+ENV TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 RECORDINGS_DATA=/data RECORDINGS_STATIC=/app/static
 WORKDIR /app
-COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt && pip check
+COPY backend/requirements.txt backend/requirements-embeddings.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-embeddings.txt && pip check
 COPY backend/argon_recordings ./argon_recordings
 COPY --from=web /web/dist ./static
 RUN mkdir -p /data && chown 10001:10001 /data

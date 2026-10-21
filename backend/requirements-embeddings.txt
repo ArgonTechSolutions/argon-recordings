@@ -1,0 +1,4 @@
+# CPU-only; no PyTorch or vector service. Versions match the existing inference lock.
+numpy==2.3.4
+onnxruntime==1.23.1
+tokenizers==0.22.1

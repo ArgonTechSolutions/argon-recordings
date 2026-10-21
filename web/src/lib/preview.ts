@@ -49,7 +49,8 @@ const passages = [
     184,
     "To recap: a clear invitation, visible permissions, and a quick way to find the right moment. We can review the updated version together next week.",
   ],
-].map(([start, end, text]) => ({
+].map(([start, end, text], index) => ({
+  id: `preview-segment-${index}`,
   start: Number(start),
   end: Number(end),
   text: String(text),

@@ -10,7 +10,6 @@ import {
   CircleHelp,
   FileVideo,
   Folder,
-  Headphones,
   Layers3,
   LoaderCircle,
   Menu,
@@ -47,6 +46,7 @@ import {
   type SearchHit,
   type Transcript,
 } from "@/lib/api"
+import { Corrections } from "@/components/corrections"
 import "./workspace.css"
 
 const stamp = (seconds: number) =>
@@ -82,6 +82,7 @@ function App() {
   }, [mobileMenu])
   const [projectOpen, setProjectOpen] = useState(false)
   const [projectName, setProjectName] = useState("")
+  const [searchMode, setSearchMode] = useState("hybrid")
   const [query, setQuery] = useState("")
   const [debounced, setDebounced] = useState("")
   const [time, setTime] = useState(preview ? 43 : 0)
@@ -120,11 +121,11 @@ function App() {
     return () => clearTimeout(timer)
   }, [query])
   const hits = useQuery({
-    queryKey: ["search", activeProject?.id, debounced],
+    queryKey: ["search", activeProject?.id, debounced, searchMode],
     enabled: !!activeProject && !!debounced.trim(),
     queryFn: () =>
       request<SearchHit[]>(
-        `/api/search?project_id=${activeProject!.id}&q=${encodeURIComponent(debounced)}`
+        `/api/search?project_id=${activeProject!.id}&q=${encodeURIComponent(debounced)}&mode=${searchMode}`
       ),
   })
   const createProject = useMutation({
@@ -268,13 +269,6 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="privacy-note">
-            <ShieldCheck size={17} />
-            <div>
-              Your recordings, your space.
-              <small>Built for private, self-hosted work.</small>
-            </div>
-          </div>
           <button
             className="theme-toggle"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -423,11 +417,25 @@ function App() {
                   <Search size={16} />
                   <input
                     aria-label="Search project transcripts"
-                    placeholder="Find words in this project…"
+                    placeholder="Search this project…"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
-                  <kbd>KEYWORD</kbd>
+                  <select
+                    aria-label="Search mode"
+                    value={searchMode}
+                    onChange={(e) => setSearchMode(e.target.value)}
+                  >
+                    <option value="hybrid">
+                      {health.data?.search === "keyword"
+                        ? "Keywords"
+                        : "All matches"}
+                    </option>
+                    {health.data?.search !== "keyword" && (
+                      <option value="semantic">Meaning</option>
+                    )}
+                    <option value="keyword">Exact words</option>
+                  </select>
                   {query && (
                     <button
                       aria-label="Clear search"
@@ -450,7 +458,7 @@ function App() {
                     </div>
                   ) : hits.isError ? (
                     <p role="alert">
-                      Search is unavailable. Try again shortly.
+                      {hits.error?.message ?? "Search is unavailable."}
                     </p>
                   ) : hits.data?.length ? (
                     hits.data.map((hit, index) => (
@@ -473,10 +481,6 @@ function App() {
                     <div className="empty-search">
                       <Search size={25} />
                       <h3>No matching passages yet</h3>
-                      <p>
-                        Try a word used in the recording. Recordings appear here
-                        after processing.
-                      </p>
                     </div>
                   )}
                 </section>
@@ -653,6 +657,11 @@ function App() {
                                 : "English"}
                           </Badge>
                         </div>
+                        <Corrections
+                          key={current.id}
+                          recordingId={current.id}
+                          segments={segments}
+                        />
                         <div className="transcript-scroll">
                           {transcript.isLoading ? (
                             <div className="loading-state">
@@ -683,10 +692,6 @@ function App() {
                               <p>No speech was detected in this recording.</p>
                             </div>
                           )}
-                        </div>
-                        <div className="panel-footnote">
-                          <Headphones size={13} /> Select a passage to move to
-                          that moment.
                         </div>
                       </section>
                       <section
@@ -750,18 +755,8 @@ function App() {
                           ) : preview ? (
                             <PreviewFrames time={time} onSeek={seek} />
                           ) : (
-                            <p>
-                              Visual references are retained at sparse
-                              intervals.
-                            </p>
+                            <p>No frames</p>
                           )}
-                        </div>
-                        <div className="reference-note">
-                          <ShieldCheck size={15} />
-                          <p>
-                            Frames help you find the moment. Keep your original
-                            video for full-quality detail and motion.
-                          </p>
                         </div>
                       </section>
                     </div>
@@ -1110,9 +1105,6 @@ function UploadDialog({
             </p>
           )}
           <div className="upload-dialog-footer">
-            <span>
-              <ShieldCheck size={14} /> Your source stays in your workspace.
-            </span>
             {mutation.isPending ? (
               <Button
                 type="button"
