@@ -2,7 +2,7 @@
 
 A self-hosted workspace for finding the useful moments in recordings. Built by Argon with React, shadcn/ui, and a small Python coordinator. No agent or generative-model account is required for the application workflow.
 
-**Current stage: local foundation, not a public alpha.** Code license selection and public repository publication are pending. Do not treat this checkout as a licensed public release yet.
+**Current stage: public source preview, not a public alpha.** Code license selection is pending. This is not yet a licensed open-source release.
 
 ## Implemented
 
@@ -112,3 +112,7 @@ npx shadcn@latest init --preset b5xcvlbv6 --template vite --pointer
 ```
 
 It resolved to shadcn 4.22.1 during initialization. Installed dependencies are recorded in the npm lockfile. Component style: base-sera; base color: mauve; Inter font; Lucide icons; pointer cursors. Preserve these design choices when expanding the interface.
+
+## Updates
+
+Run `python3 recordings.py update` from a Git installation to fetch `main`, rebuild, and restart an already running app. See [the one-time archive conversion and update instructions](docs/INSTALL.md#git-updates). Public HTTPS pulls need no GitHub credentials.

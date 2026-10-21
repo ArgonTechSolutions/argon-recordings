@@ -2,11 +2,11 @@
 
 This local installation bundles the web app, API, FFmpeg, Turbo worker, and multilingual search runtime in one Docker container. You need **Linux x86-64, Python 3.11 or later, working Docker 28+, and at least 8 GiB free disk**. Ubuntu's existing Docker installation is sufficient; no host Python packages, Node, FFmpeg, Compose, systemd units, or Docker socket mounts are needed. Docker itself is not installed or reconfigured by the launcher.
 
-The app remains single-user and loopback-only. Use an SSH tunnel for a remote laptop/server. This is an evaluation package; public release/license and team authentication remain pending.
+The app remains single-user and loopback-only. Use an SSH tunnel for a remote laptop/server. This is a public source preview; license selection, release qualification, and team authentication remain pending.
 
 ## First run
 
-Extract the source package into a stable `argon-recordings` directory, then:
+Clone the source into a stable directory (`git clone https://github.com/ArgonTechSolutions/argon-recordings.git ~/argon-recordings`), then run the following commands there. Existing archive installations should use [Git updates](#git-updates) instead:
 
 ```bash
 cd argon-recordings
@@ -103,3 +103,30 @@ Keep the installation directory, `recordings.toml`, `models/`, and `.recordings/
 ## Updating an existing Philemon installation
 
 Stop before extracting the update into the same parent directory, then rebuild/start. Do not run `init` again and do not move the installation directory. Source archives exclude `recordings.toml`, `.recordings/`, `models/` and data; the existing settings, weights and named volumes are preserved. After updating, open the failed recording and choose **Retry recording** to reuse its retained upload. Refresh the browser to load the new UI. The old five-minute failure does not require another upload.
+
+## Git updates
+
+Prerequisites: host Git and Python 3.11+, plus the existing Docker installation. Public HTTPS pulls require no GitHub account or key.
+
+For an existing archive installation on Philemon, keep its current directory. Convert it once using a fresh clone:
+
+```bash
+git clone https://github.com/ArgonTechSolutions/argon-recordings.git ~/argon-recordings-source
+sudo -v
+python3 ~/argon-recordings-source/scripts/bootstrap_git.py ~/argon-recordings
+```
+
+The bootstrap checks the archive against repository history before adding Git metadata. It refuses modified or unknown source. Configuration, local model directories, and named recording volumes stay in place. Keeping the installation path preserves the volume identity.
+
+For subsequent updates:
+
+```bash
+cd ~/argon-recordings
+sudo -v
+python3 recordings.py update
+python3 recordings.py status
+```
+
+The updater requires a clean `main` checkout with the official origin, fetches before stopping anything, and only fast-forwards. It stops the app for the build and restarts it if previously running; a stopped installation stays stopped. Back up the recording data volume before upgrades. Downloaded model caches are reused. Build-time resources remain separate from runtime caps.
+
+If installation fails after advancing the source, the app remains stopped and data volumes are retained. Resolve the reported error, then run `python3 recordings.py install` and `python3 recordings.py start`. The updater does not reset source history or automatically roll back database changes. These commands have local disposable test coverage; the Philemon conversion must still be run by its operator.

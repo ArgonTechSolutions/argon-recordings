@@ -54,7 +54,7 @@ def load_config(path):
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
@@ -199,7 +199,7 @@ def start(config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT / 'recordings.toml')
-    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate'])
+    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update'])
     args = parser.parse_args()
     try:
         if args.command == 'init':
@@ -208,7 +208,10 @@ def main():
             print('Created', args.config, '— edit it, then run install.')
             return
         config = load_config(args.config)
-        if args.command == 'doctor':
+        if args.command == 'update':
+            from scripts.git_updates import update
+            update(sys.modules[__name__], config)
+        elif args.command == 'doctor':
             doctor(config)
         elif args.command == 'install':
             install(config)
