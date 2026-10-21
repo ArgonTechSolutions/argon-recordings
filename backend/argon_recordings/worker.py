@@ -63,8 +63,9 @@ def extract(source, output):
         raise RuntimeError('Foundation profile accepts recordings up to five minutes')
     audio = output / 'audio.wav'
     # Decode at most 300 seconds even if the source's duration metadata is dishonest.
+    # Preserve leading track offsets so transcript times still match video time.
     ffmpeg(['-i', str(source), '-t', '300', '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '16000',
-            '-threads', '2', '-c:a', 'pcm_s16le', str(audio)])
+            '-af', 'aresample=async=1:first_pts=0', '-threads', '2', '-c:a', 'pcm_s16le', str(audio)])
     with wave.open(str(audio)) as stream:
         duration = stream.getnframes() / stream.getframerate()
     if duration < 1:
