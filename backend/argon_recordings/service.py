@@ -59,7 +59,7 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stopping.set())
     api = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'argon_recordings.api:create_app', '--factory',
-                            '--host', '0.0.0.0', '--port', '8000', '--no-proxy-headers', '--no-access-log'], env=environment)
+                            '--host', '0.0.0.0', '--port', '8000', '--no-proxy-headers', '--no-access-log', '--timeout-graceful-shutdown', '5'], env=environment)
     worker = None
     code = 0
     try:

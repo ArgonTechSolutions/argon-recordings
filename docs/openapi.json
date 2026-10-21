@@ -169,6 +169,45 @@
         }
       }
     },
+    "/api/projects/{pid}/events": {
+      "get": {
+        "summary": "Project Events",
+        "operationId": "project_events_api_projects__pid__events_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE recordings snapshots; initial state and committed changes. Reconnect for current state.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/recordings/{rid}": {
       "get": {
         "summary": "Recording",

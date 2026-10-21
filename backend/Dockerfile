@@ -6,4 +6,4 @@ COPY backend/requirements-test.txt backend/requirements.txt backend/requirements
 RUN pip install --no-cache-dir -r requirements-test.txt -r requirements-embeddings.txt && pip check
 COPY backend/argon_recordings ./argon_recordings
 COPY backend/tests ./tests
-CMD ["uvicorn", "argon_recordings.api:create_app", "--factory", "--host", "127.0.0.1", "--port", "8000"]
+CMD ["uvicorn", "argon_recordings.api:create_app", "--factory", "--host", "127.0.0.1", "--port", "8000", "--timeout-graceful-shutdown", "5"]

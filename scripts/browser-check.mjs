@@ -10,7 +10,7 @@ const data = fs.mkdtempSync(path.join(evidence, 'synthetic-data-'))
 const env = { ...process.env, PYTHONPATH: '/workspace/backend', RECORDINGS_DATA: data,
   RECORDINGS_STATIC: '/workspace/web/dist', RECORDINGS_WORKER_TOKEN: 'synthetic-browser-only', RECORDINGS_MAX_UPLOAD_MB: '1' }
 execFileSync('python', ['scripts/seed_browser.py', data], { env, stdio: 'inherit', timeout: 30000 })
-const server = spawn('python', ['-m', 'uvicorn', 'argon_recordings.api:create_app', '--factory', '--host', '127.0.0.1', '--port', '8765'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+const server = spawn('python', ['-m', 'uvicorn', 'argon_recordings.api:create_app', '--factory', '--host', '127.0.0.1', '--port', '8765', '--timeout-graceful-shutdown', '5'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
 const log = fs.createWriteStream(path.join(evidence, 'server.log'))
 server.stdout.pipe(log); server.stderr.pipe(log)
 const base = 'http://127.0.0.1:8765'
@@ -26,6 +26,10 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'light', acceptDownloads: true })
   const page = await context.newPage()
   page.on('pageerror', error => result.console_errors.push(error.message))
+  let recordingListReads = 0
+  page.on('request', request => {
+    if (request.method() === 'GET' && /\/api\/projects\/[^/]+\/recordings$/.test(request.url())) recordingListReads++
+  })
   const fits = async () => {
     const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
     assert.ok(dimensions.scroll <= dimensions.width, JSON.stringify(dimensions))
@@ -123,6 +127,7 @@ try {
   const failedJob = await (await page.request.post(base + '/api/worker/claim', { headers: auth, data: { worker: 'synthetic-retry' } })).json()
   assert.equal(failedJob.recording.title, 'Browser upload')
   const progressHeaders = { ...auth, 'X-Lease-Id': failedJob.lease_id }
+  const readsBeforeProgress = recordingListReads
   const progressUrl = base + `/api/worker/jobs/${failedJob.job_id}/heartbeat`
   assert.equal((await page.request.post(progressUrl, {
     headers: progressHeaders,
@@ -134,6 +139,27 @@ try {
   await page.getByText('Audio covered: 3:00 / 10:00', { exact: true }).waitFor()
   await page.getByText('25 passages · 7:00 elapsed', { exact: true }).waitFor()
   await page.getByText('About 17 min remaining for transcription', { exact: true }).waitFor()
+  await page.waitForTimeout(5500)
+  assert.equal(recordingListReads, readsBeforeProgress, 'Progress must arrive via SSE without recording-list polling')
+  // Simulate tab visibility transitions: hidden tabs release streams; visible tabs resnapshot.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  assert.equal((await page.request.post(progressUrl, {
+    headers: progressHeaders, data: { progress: .5, stage: 'Transcribing with Turbo', transcription: {
+      audio_processed_seconds: 300, audio_total_seconds: 600, passages: 40, elapsed_seconds: 600, eta_seconds: 600
+    } }
+  })).status(), 200)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.getByText('Audio covered: 5:00 / 10:00', { exact: true }).waitFor()
+  await page.getByText('About 10 min remaining for transcription', { exact: true }).waitFor()
+  assert.equal(recordingListReads, readsBeforeProgress, 'Reconnect uses an SSE snapshot')
+  result.checks.push('SSE progress without recording-list polling; hidden tab disconnect and reconnect resynchronization')
+
   await page.setViewportSize({ width: 390, height: 844 })
   await fits()
   await page.screenshot({ path: path.join(evidence, 'transcription-progress-mobile.png'), fullPage: true })

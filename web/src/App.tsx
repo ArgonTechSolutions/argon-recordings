@@ -24,6 +24,7 @@ import {
   Upload,
   X,
 } from "lucide-react"
+import { useProjectEvents } from "@/lib/use-project-events"
 import { TranscriptionProgress } from "@/components/transcription-progress"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -106,8 +107,9 @@ function App() {
     enabled: !!activeProject,
     queryFn: () =>
       request<Recording[]>(`/api/projects/${activeProject!.id}/recordings`),
-    refetchInterval: (query) => (query.state.data?.some(isBusy) ? 5000 : false),
+    refetchOnWindowFocus: false,
   })
+  const eventsDisconnected = useProjectEvents(activeProject?.id)
   const current =
     recordings.data?.find((r) => r.id === recordingId) ?? recordings.data?.[0]
   const transcript = useQuery({
@@ -346,6 +348,11 @@ function App() {
               {totalReady} ready
             </span>
           </section>
+          {eventsDisconnected && (
+            <p role="status" className="events-status">
+              Live updates disconnected. Reconnecting…
+            </p>
+          )}
           {projects.isError ? (
             <div className="error-state" role="alert">
               <h2>The workspace API is unavailable.</h2>

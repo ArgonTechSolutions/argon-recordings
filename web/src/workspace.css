@@ -1612,3 +1612,9 @@ h1 {
   gap: 6px;
   font-variant-numeric: tabular-nums;
 }
+
+.events-status {
+  margin-bottom: 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}

@@ -10,8 +10,11 @@ import shutil
 import time
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+
 from fastapi.staticfiles import StaticFiles
+
+from .events import ProjectEvents
 
 from .contracts import (ClaimRequest, Completion, Failure, Heartbeat, Project, ProjectCreate,
                         Recording, RecordingCreate, SearchHit, Transcript)
@@ -42,7 +45,13 @@ def create_app(settings=None):
     async def lifespan(app):
         app.state.store = Store(settings.data)
         app.state.upload_lock = asyncio.Lock()
-        yield
+        app.state.events = ProjectEvents(lambda pid: [Recording.model_validate(row).model_dump(mode='json') for row in recordings(pid)])
+        app.state.store.on_commit = app.state.events.notify
+        try:
+            yield
+        finally:
+            app.state.store.on_commit = None
+            await app.state.events.close()
 
     app = FastAPI(title='Argon Recordings', version='0.1.0', lifespan=lifespan)
 
@@ -146,6 +155,14 @@ def create_app(settings=None):
         with store().db() as db:
             rows = db.execute('SELECT * FROM recordings WHERE project_id=? ORDER BY created DESC', (pid,)).fetchall()
         return [view(row) for row in rows]
+
+    @app.get('/api/projects/{pid}/events', response_class=StreamingResponse,
+             responses={200: {'content': {'text/event-stream': {'schema': {'type': 'string'}}},
+                              'description': 'SSE recordings snapshots; initial state and committed changes. Reconnect for current state.'}})
+    def project_events(pid: str):
+        project_or_404(pid)
+        return StreamingResponse(app.state.events.stream(pid), media_type='text/event-stream',
+                                 headers={'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no'})
 
     @app.post('/api/projects/{pid}/recordings', response_model=Recording, status_code=201)
     def create_recording(pid: str, body: RecordingCreate):

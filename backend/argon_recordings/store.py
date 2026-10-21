@@ -27,6 +27,7 @@ def identity():
 
 class Store:
     def __init__(self, root: Path):
+        self.on_commit = None
         self.root = root
         for folder in ['sources', 'staging', 'results']:
             (root / folder).mkdir(parents=True, exist_ok=True)
@@ -59,6 +60,8 @@ CREATE TABLE IF NOT EXISTS corrections(id TEXT PRIMARY KEY,recording_id TEXT NOT
         try:
             yield db
             db.commit()
+            if db.total_changes and self.on_commit is not None:
+                self.on_commit()
         except BaseException:
             db.rollback()
             raise
