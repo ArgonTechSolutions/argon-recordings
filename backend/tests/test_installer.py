@@ -88,3 +88,19 @@ def test_first_up_installs_before_starting(tmp_path, monkeypatch):
 def test_optional_timeout_can_be_enabled_explicitly(tmp_path):
     settings = config(tmp_path, '[resources]\njob_timeout_seconds=14400\n')
     assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=14400' in installer.start_args(settings, {'image': 'test'})
+
+
+def test_upload_limit_is_passed_to_container(tmp_path):
+    path = tmp_path / 'recordings.toml'
+    path.write_text('[app]\nmax_upload_mb=2048\n')
+    settings = installer.load_config(path)
+    assert settings['max_upload_mb'] == 2048
+    assert 'RECORDINGS_MAX_UPLOAD_MB=2048' in installer.start_args(settings, {'image': 'test'})
+
+
+@pytest.mark.parametrize('value', ['0', '-1', 'true', '1.5', '"2048"'])
+def test_invalid_upload_limits_are_rejected(tmp_path, value):
+    path = tmp_path / 'recordings.toml'
+    path.write_text('[app]\nmax_upload_mb=' + value + '\n')
+    with pytest.raises(ValueError, match='max_upload_mb'):
+        installer.load_config(path)

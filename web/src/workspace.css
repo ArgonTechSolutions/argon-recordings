@@ -1603,3 +1603,5 @@ h1 {
 .argon-credit a { font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 
 .section-label { font-size: 12px; letter-spacing: normal; }
+
+.processing-state .retry-recording { margin-top: 20px; }

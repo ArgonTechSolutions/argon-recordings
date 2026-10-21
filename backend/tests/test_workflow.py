@@ -180,3 +180,18 @@ def test_long_completion_and_audio_larger_than_old_twelve_mb_limit(client):
     body = {'duration': 7200, 'segments': [{'start': 7100, 'end': 7190, 'text': 'The end of a long recording.'}], 'artifacts': [{'name': 'audio.wav', 'kind': 'audio'}]}
     assert client.post(f'/api/worker/jobs/{job["job_id"]}/complete', headers=headers, json=body).json()['status'] == 'ready'
     assert client.get(f'/api/recordings/{rid}/transcript').json()['segments'][0]['start'] == 7100
+
+
+def test_upload_limit_environment_health_and_stream_enforcement(tmp_path, monkeypatch):
+    monkeypatch.setenv('RECORDINGS_MAX_UPLOAD_MB', '2048')
+    assert Settings(tmp_path).max_upload == 2048 * 1024**2
+    monkeypatch.setenv('RECORDINGS_MAX_UPLOAD_MB', '1')
+    with TestClient(create_app(Settings(tmp_path, reserve=0))) as c:
+        assert c.get('/api/health').json()['max_upload_bytes'] == 1024**2
+        pid = project(c)
+        rid = c.post(f'/api/projects/{pid}/recordings', json={'title': 'Bounded source', 'filename': 'x.mp4'}).json()['id']
+        response = c.put(f'/api/recordings/{rid}/source', content=(block for block in [b'x' * 1024**2, b'y']))
+        assert response.status_code == 413
+        assert c.get(f'/api/recordings/{rid}').json()['status'] == 'awaiting_upload'
+        assert not list((tmp_path / 'staging').glob('*.part'))
+        assert c.put(f'/api/recordings/{rid}/source', content=b'small source').status_code == 200

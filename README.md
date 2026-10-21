@@ -7,10 +7,10 @@ A self-hosted workspace for finding the useful moments in recordings. Built by A
 ## Implemented
 
 - Projects and recording library, with a clearly labelled synthetic design preview.
-- Streaming uploads up to 256 MiB, with upload progress/cancellation and a durable queue.
+- Streaming uploads with a configurable per-file limit (256 MiB by default), with upload progress/cancellation and a durable queue.
 - SQLite-backed worker leases, fencing, idempotent publication, one active lease, and bounded retry after worker loss. Urgent work gets a five-minute priority advantage; older normal work can overtake it.
 - One-job CPU INT8 Turbo worker using explicit, checksum-verified local model files. No automatic model downloads.
-- No fixed recording-duration limit. Audio extraction and source-relative timestamps are preserved; visual references use explicit seeks with adaptive spacing and at most 256 frames per recording. Uploads remain bounded to 256 MiB; retained audio must fit available work space and the WAV format budget.
+- No fixed recording-duration limit. Audio extraction and source-relative timestamps are preserved; visual references use explicit seeks with adaptive spacing and at most 256 frames per recording. Uploads use the configured per-file limit; retained audio must fit available work space and the WAV format budget.
 - Audio/transcript navigation, nearest retained frame with time offset, multilingual semantic/keyword search, and transcript text download.
 - Mark misheard text, find similar spelling variants in the recording, retry selected audio passages with a hint, and review proposals before acceptance. Prior text is retained in correction history.
 - Light/dark appearance and responsive layouts using the supplied shadcn preset.
@@ -27,7 +27,7 @@ python3 recordings.py init
 python3 recordings.py up
 ```
 
-The launcher builds and installs dependencies inside Docker, prepares verified local models, and starts the web/API/background worker on your configured localhost port. Search choices are `large` (default), `base`, `small`, or `off`; transcription stays Turbo CPU INT8. `stop` preserves data, `start` reuses the installation, and `evaluate` measures the selected embedding model on the host. Temporary internal worker credentials live only in process memory. See [installation and Philemon testing](docs/INSTALL.md) for Docker permissions, benchmark model reuse, SSH access, resource caps and upgrades.
+The launcher builds and installs dependencies inside Docker, prepares verified local models, and starts the web/API/background worker on your configured localhost port. Set `app.max_upload_mb = 2048` for 2 GiB uploads (default 256 MiB); restart after changing the limit. Search choices are `large` (default), `base`, `small`, or `off`; transcription stays Turbo CPU INT8. `stop` preserves data, `start` reuses the installation, and `evaluate` measures the selected embedding model on the host. Temporary internal worker credentials live only in process memory. See [installation and Philemon testing](docs/INSTALL.md) for Docker permissions, benchmark model reuse, SSH access, resource caps and upgrades.
 
 ## Local build and preview
 

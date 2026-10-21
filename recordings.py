@@ -21,7 +21,7 @@ LABEL = 'com.argon.recordings.installation'
 def load_config(path):
     path = path.resolve()
     data = tomllib.loads(path.read_text())
-    allowed = {'app': {'port', 'name'}, 'models': {'transcription', 'embedding', 'turbo_path'},
+    allowed = {'app': {'port', 'name', 'max_upload_mb'}, 'models': {'transcription', 'embedding', 'turbo_path'},
                'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}}
     for section, fields in data.items():
         if section not in allowed or not isinstance(fields, dict) or set(fields) - allowed[section]:
@@ -32,6 +32,9 @@ def load_config(path):
         raise ValueError('app.port must be an integer from 1024 to 65535')
     if not isinstance(name, str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,39}', name):
         raise ValueError('app.name must use lowercase letters, digits and hyphens')
+    max_upload_mb = app.get('max_upload_mb', 256)
+    if type(max_upload_mb) is not int or not 1 <= max_upload_mb <= (2**53 - 1) // 1024**2:
+        raise ValueError('app.max_upload_mb must be a positive whole MiB value within the supported byte range')
     embedding = models.get('embedding', 'large')
     if not isinstance(embedding, str) or embedding not in {'large', 'base', 'small', 'off'} or models.get('transcription', 'turbo') != 'turbo':
         raise ValueError('Choose transcription=turbo and embedding=large, base, small, or off')
@@ -51,7 +54,7 @@ def load_config(path):
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
@@ -154,7 +157,7 @@ def start_args(config, installed):
             '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,size=64m',
             '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
             '-p', f"127.0.0.1:{config['port']}:8000", '-v', volume + '-data:/data', '-v', volume + '-work:/work',
-            '-v', str(config['turbo']) + ':/models/turbo:ro', '-e', 'RECORDINGS_JOB_TIMEOUT_SECONDS=' + str(config['timeout'])]
+            '-v', str(config['turbo']) + ':/models/turbo:ro', '-e', 'RECORDINGS_JOB_TIMEOUT_SECONDS=' + str(config['timeout']), '-e', 'RECORDINGS_MAX_UPLOAD_MB=' + str(config['max_upload_mb'])]
     if config['embedding'] != 'off':
         args += ['-v', str(config['home'] / 'models' / ('e5-' + config['embedding'])) + ':/models/embeddings:ro',
                  '-e', 'RECORDINGS_EMBEDDING_DIR=/models/embeddings', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]

@@ -21,10 +21,17 @@ from .store import Store, identity, lease_row
 
 
 class Settings:
-    def __init__(self, data=None, worker_token=None, max_upload=256 * 1024**2, reserve=1024**3, embeddings=None):
+    def __init__(self, data=None, worker_token=None, max_upload=None, reserve=1024**3, embeddings=None):
         self.embeddings = embeddings or Embeddings(os.environ.get('RECORDINGS_EMBEDDING_DIR'), os.environ.get('RECORDINGS_EMBEDDING_PROFILE', 'large'))
         self.data = Path(data or os.environ.get('RECORDINGS_DATA', 'data'))
         self.worker_token = worker_token if worker_token is not None else os.environ.get('RECORDINGS_WORKER_TOKEN', '')
+        if max_upload is None:
+            upload_mb = int(os.environ.get('RECORDINGS_MAX_UPLOAD_MB', '256'))
+            if not 1 <= upload_mb <= (2**53 - 1) // 1024**2:
+                raise ValueError('RECORDINGS_MAX_UPLOAD_MB must be a positive whole MiB value within the supported byte range')
+            max_upload = upload_mb * 1024**2
+        if type(max_upload) is not int or not 0 < max_upload <= 2**53 - 1:
+            raise ValueError('max_upload must be a positive supported byte count')
         self.max_upload, self.reserve = max_upload, reserve
 
 

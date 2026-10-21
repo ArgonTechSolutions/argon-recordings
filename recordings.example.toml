@@ -1,6 +1,7 @@
 # Copy to recordings.toml. Paths are relative to the configuration file.
 [app]
 port = 8787
+max_upload_mb = 256 # MiB per file; use e.g. 2048 for 2 GiB uploads.
 name = "argon-recordings"
 
 [models]

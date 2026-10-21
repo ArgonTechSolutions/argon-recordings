@@ -22,6 +22,7 @@ The config is TOML:
 ```toml
 [app]
 port = 8787
+max_upload_mb = 256
 name = "argon-recordings"
 
 [models]
@@ -37,7 +38,7 @@ job_timeout_seconds = 0
 sudo = false
 ```
 
-`port` accepts 1024–65535. Port and CPU/RAM changes require `stop` then `start`. Model or source changes require `stop`, `install`, then `start`; prepared weights and data are reused. Keep the installation directory and `app.name` stable across upgrades. Each installation directory owns its data/work Docker volumes; moving it changes that identity. No automatic import of another app's recordings database occurs.
+`port` accepts 1024–65535. Set `app.max_upload_mb` to a positive whole MiB value, for example `2048` for 2 GiB. It defaults to 256; the upload dialog displays/enforces the actual server value. Upload-limit, port and CPU/RAM changes require `stop` then `start`. Model or source changes require `stop`, `install`, then `start`; prepared weights and data are reused. Keep the installation directory and `app.name` stable across upgrades. Each installation directory owns its data/work Docker volumes; moving it changes that identity. No automatic import of another app's recordings database occurs.
 
 If Docker requires sudo, set `sudo = true` and run `sudo -v` in the same terminal before each administrative batch. The launcher uses `sudo -n docker` and never reads or stores the sudo password. Do not run the whole Python launcher under sudo.
 
@@ -81,7 +82,7 @@ python3 recordings.py evaluate
 
 `evaluate` runs the existing 16-query bilingual fixture in a separate disposable two-CPU container with the selected prepared search model. It prints recall, warm encoding time and peak process RSS on this host; these synthetic relevance results are not a representative accuracy benchmark. Stop the app before evaluation if you want to avoid competing with it for CPU/RAM.
 
-In the app, upload a Spanish or English clip (up to 256 MiB; no fixed duration limit). The worker polls automatically, processes one transcription or correction at a time, and updates progress. Check actual text/audio/frame alignment, search for the topic in both languages, and try **Correct text** with a technical term. Select matching passages, wait for proposals, then accept or dismiss them. A hint guides Turbo; it does not force exact text. Capture the job result, elapsed time, and any error before judging the installation accepted.
+In the app, upload a Spanish or English clip (up to your configured per-file limit; no fixed duration limit). The worker polls automatically, processes one transcription or correction at a time, and updates progress. Check actual text/audio/frame alignment, search for the topic in both languages, and try **Correct text** with a technical term. Select matching passages, wait for proposals, then accept or dismiss them. A hint guides Turbo; it does not force exact text. Capture the job result, elapsed time, and any error before judging the installation accepted.
 
 For diagnostics and shutdown:
 

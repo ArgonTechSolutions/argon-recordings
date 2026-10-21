@@ -620,6 +620,7 @@ function App() {
                       )}
                       {current.status === "failed" && (
                         <Button
+                          className="retry-recording"
                           disabled={retryRecording.isPending}
                           onClick={() => retryRecording.mutate(current.id)}
                         >
@@ -907,6 +908,7 @@ function App() {
           open={uploadOpen}
           onOpenChange={setUploadOpen}
           project={activeProject}
+          maxUploadBytes={health.data?.max_upload_bytes}
           onComplete={(r) => {
             chooseRecording(r.id)
             setUploadOpen(false)
@@ -929,11 +931,13 @@ function UploadDialog({
   open,
   onOpenChange,
   project,
+  maxUploadBytes,
   onComplete,
 }: {
   open: boolean
   onOpenChange: (value: boolean) => void
   project: Project
+  maxUploadBytes?: number
   onComplete: (recording: Recording) => void
 }) {
   const cache = useQueryClient()
@@ -947,8 +951,10 @@ function UploadDialog({
   const mutation = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("Choose a file first")
-      if (file.size > 256 * 1024 ** 2)
-        throw new Error("Choose a file smaller than 256 MB")
+      if (!maxUploadBytes)
+        throw new Error("Upload settings unavailable. Try again.")
+      if (file.size > maxUploadBytes)
+        throw new Error(`Choose a file up to ${size(maxUploadBytes)}`)
       abort.current = new AbortController()
       setPercent(0)
       if (!draft.current || draft.current.projectId !== project.id) {
@@ -1028,7 +1034,11 @@ function UploadDialog({
             </div>
             <strong>{file?.name ?? "Choose a file or drop it here"}</strong>
             <span>
-              {file ? size(file.size) : "Video or audio · up to 256 MB"}
+              {file
+                ? size(file.size)
+                : maxUploadBytes
+                  ? `Video or audio · up to ${size(maxUploadBytes)}`
+                  : "Loading upload limit…"}
             </span>
           </label>
           <label htmlFor="recording-title">Recording title</label>
@@ -1095,7 +1105,7 @@ function UploadDialog({
             ) : (
               <Button
                 type="submit"
-                disabled={!file || !title.trim() || preview}
+                disabled={!file || !title.trim() || !maxUploadBytes || preview}
               >
                 Upload recording <ArrowRight size={14} />
               </Button>

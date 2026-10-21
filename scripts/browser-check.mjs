@@ -8,7 +8,7 @@ const evidence = process.env.EVIDENCE_DIR ?? '/evidence'
 fs.mkdirSync(evidence, { recursive: true })
 const data = fs.mkdtempSync(path.join(evidence, 'synthetic-data-'))
 const env = { ...process.env, PYTHONPATH: '/workspace/backend', RECORDINGS_DATA: data,
-  RECORDINGS_STATIC: '/workspace/web/dist', RECORDINGS_WORKER_TOKEN: 'synthetic-browser-only' }
+  RECORDINGS_STATIC: '/workspace/web/dist', RECORDINGS_WORKER_TOKEN: 'synthetic-browser-only', RECORDINGS_MAX_UPLOAD_MB: '1' }
 execFileSync('python', ['scripts/seed_browser.py', data], { env, stdio: 'inherit', timeout: 30000 })
 const server = spawn('python', ['-m', 'uvicorn', 'argon_recordings.api:create_app', '--factory', '--host', '127.0.0.1', '--port', '8765'], { env, stdio: ['ignore', 'pipe', 'pipe'] })
 const log = fs.createWriteStream(path.join(evidence, 'server.log'))
@@ -108,6 +108,10 @@ try {
   await page.getByRole('button', { name: 'Create project', exact: true }).click()
   await page.getByRole('heading', { name: 'Browser-created project', exact: true }).waitFor()
   await page.getByRole('button', { name: 'Upload recording', exact: true }).click()
+  assert.ok(await page.getByText('Video or audio · up to 1.0 MB', { exact: true }).isVisible())
+  await page.locator('input[type=file]').setInputFiles({ name: 'oversized.wav', mimeType: 'audio/wav', buffer: Buffer.alloc(1024 * 1024 + 1) })
+  await page.getByRole('dialog').getByRole('button', { name: 'Upload recording', exact: true }).click()
+  await page.getByRole('alert').filter({ hasText: 'Choose a file up to 1.0 MB' }).waitFor()
   await page.getByRole('combobox', { name: 'Spoken language', exact: true }).click()
   await page.getByRole('option', { name: 'Spanish', exact: true }).click()
   await page.locator('input[type=file]').setInputFiles({ name: 'synthetic-upload.wav', mimeType: 'audio/wav', buffer: Buffer.from('synthetic upload protocol payload') })
@@ -122,9 +126,15 @@ try {
     headers: { ...auth, 'X-Lease-Id': failedJob.lease_id }, data: { message: 'Previous duration restriction' }
   })).status(), 200)
   await page.getByRole('heading', { name: 'Processing failed', exact: true }).waitFor()
+  const retrySpacing = await page.getByRole('button', { name: 'Retry recording', exact: true }).evaluate(button => {
+    const previous = button.previousElementSibling
+    return { margin: parseFloat(getComputedStyle(button).marginTop), gap: button.getBoundingClientRect().top - previous.getBoundingClientRect().bottom }
+  })
+  assert.ok(retrySpacing.margin >= 20 && retrySpacing.gap >= 20, JSON.stringify(retrySpacing))
+  await page.screenshot({ path: path.join(evidence, 'retry-spacing.png'), fullPage: true })
   await page.getByRole('button', { name: 'Retry recording', exact: true }).click()
   await page.getByRole('heading', { name: 'Recording queued', exact: true }).waitFor()
-  result.checks.push('failed recording retry reuses the retained upload')
+  result.checks.push('configured upload limit displayed/enforced; Retry button has 20px top margin; retained source retry works')
 
   assert.deepEqual(result.console_errors, [])
   fs.writeFileSync(path.join(evidence, 'result.json'), JSON.stringify(result, null, 2))
