@@ -9,3 +9,5 @@ Next: project-wide glossary management; per-range retention and source re-upload
 Working product/repository name: Argon Recordings. Owner-provided command: `npx shadcn@latest init --preset b5xcvlbv6 --template vite --pointer`.
 
 License and public repository publication remain owner decisions. Deployment qualification is a separate milestone from this local foundation.
+
+The bundled local installer now provides TOML port/model/resource selection, verified model preparation, automatic worker polling and lifecycle commands. Philemon acceptance uses the owner-run steps in INSTALL.md.

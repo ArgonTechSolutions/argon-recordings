@@ -17,6 +17,18 @@ A self-hosted workspace for finding the useful moments in recordings. Built by A
 
 Project-wide glossary management, range retention/pruning, original expiry, re-upload restoration, reports/ZIP exports, MCP, and team authorization are later milestones. Originals are retained in this version; nothing automatically deletes them. There is no idle-aware scheduler or job-cancel endpoint yet. See [the plan](docs/PLAN.md) and [validation status](docs/STATUS.md).
 
+## Easy installation
+
+On Linux x86-64 with Python 3.11+ and Docker 28+/cgroup v2:
+
+```bash
+python3 recordings.py init
+# Edit recordings.toml: app port, curated search model, Docker sudo if needed.
+python3 recordings.py up
+```
+
+The launcher builds and installs dependencies inside Docker, prepares verified local models, and starts the web/API/background worker on your configured localhost port. Search choices are `large` (default), `base`, `small`, or `off`; transcription stays Turbo CPU INT8. `stop` preserves data, `start` reuses the installation, and `evaluate` measures the selected embedding model on the host. Temporary internal worker credentials live only in process memory. See [installation and Philemon testing](docs/INSTALL.md) for Docker permissions, benchmark model reuse, SSH access, resource caps and upgrades.
+
 ## Local build and preview
 
 Prerequisites: Docker on Linux x86-64. No host Node/Python inference packages are necessary. Commands below are for an explicitly started **local, single-user preview**, not a production installation.

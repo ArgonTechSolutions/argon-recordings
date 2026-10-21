@@ -113,6 +113,7 @@ def create_app(settings=None):
     @app.get('/api/health')
     def health():
         return {'status': 'ok', 'profile': 'local', 'model': 'large-v3-turbo', 'search': 'hybrid' if settings.embeddings.configured else 'keyword',
+                'embedding_profile': getattr(settings.embeddings, 'profile', None) if settings.embeddings.configured else 'off',
                 'worker_configured': bool(settings.worker_token), 'max_upload_bytes': settings.max_upload,
                 'max_duration_seconds': 300}
 

@@ -1,0 +1,17 @@
+# Copy to recordings.toml. Paths are relative to the configuration file.
+[app]
+port = 8787
+name = "argon-recordings"
+
+[models]
+transcription = "turbo"
+embedding = "large" # large (recommended), base, small, or off
+# Optional: reuse the prepared Philemon benchmark model instead of downloading it.
+# turbo_path = "/path/to/benchmark/data/models/large-v3-turbo"
+
+[resources]
+cpus = 2
+memory_gib = 6
+
+[docker]
+sudo = false # Set true for sudo -n docker; first authenticate with sudo -v.

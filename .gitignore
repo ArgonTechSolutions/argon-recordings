@@ -12,3 +12,5 @@ models/
 *.log
 *.sqlite*
 *.egg-info/
+recordings.toml
+.recordings/

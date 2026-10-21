@@ -30,6 +30,7 @@ def fingerprint(rows):
 
 class Embeddings:
     def __init__(self, directory=None, profile="large"):
+        self.profile = profile
         self.repo, self.revision, self.files = PROFILES[profile]
         self.model = f"{self.repo}@{self.revision}:{profile}:256:mean:v1"
         self.directory = Path(directory) if directory else None
@@ -121,8 +122,8 @@ class Embeddings:
                     return  # Accepted edits atomically invalidate this recording's index.
                 rows = db.execute('SELECT * FROM segments WHERE recording_id=? ORDER BY start,id', (rid,)).fetchall()
                 sha = fingerprint(rows)
-            windows = self.chunks(rows)
-            vectors = self.encode([w['text'] for w in windows])
+            windows = self.chunks(rows) if rows else []
+            vectors = self.encode([w['text'] for w in windows]) if windows else []
             with store.db() as db:
                 db.execute('BEGIN IMMEDIATE')
                 current = db.execute('SELECT * FROM segments WHERE recording_id=? ORDER BY start,id', (rid,)).fetchall()

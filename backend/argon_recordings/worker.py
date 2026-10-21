@@ -14,18 +14,19 @@ import httpx
 
 from .contracts import Completion, Segment
 
-MODEL_REVISION = '0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf'
+from .models import TURBO_FILES, TURBO_REPO, TURBO_REVISION
+
+MODEL_REVISION = TURBO_REVISION
 
 
 class Turbo:
     def __init__(self, directory):
         self.directory = Path(directory)
         manifest = json.loads((self.directory / 'benchmark-manifest.json').read_text())
-        if manifest.get('revision') != MODEL_REVISION or manifest.get('repo') != 'mobiuslabsgmbh/faster-whisper-large-v3-turbo':
+        if manifest.get('revision') != MODEL_REVISION or manifest.get('repo') != TURBO_REPO:
             raise RuntimeError('Supply the pinned Turbo model prepared by the benchmark package')
-        required = {'config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json'}
-        if set(manifest.get('files', {})) != required:
-            raise RuntimeError('Incomplete model manifest')
+        if manifest.get('files') != TURBO_FILES:
+            raise RuntimeError('Manifest does not match curated Turbo artifacts')
         for filename, expected in manifest['files'].items():
             digest = hashlib.sha256()
             with (self.directory / filename).open('rb') as stream:
