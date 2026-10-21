@@ -31,6 +31,7 @@ embedding = "large"
 [resources]
 cpus = 2
 memory_gib = 6
+job_timeout_seconds = 0
 
 [docker]
 sudo = false
@@ -80,7 +81,7 @@ python3 recordings.py evaluate
 
 `evaluate` runs the existing 16-query bilingual fixture in a separate disposable two-CPU container with the selected prepared search model. It prints recall, warm encoding time and peak process RSS on this host; these synthetic relevance results are not a representative accuracy benchmark. Stop the app before evaluation if you want to avoid competing with it for CPU/RAM.
 
-In the app, upload a Spanish or English clip (up to five minutes / 256 MiB). The worker polls automatically, processes one transcription or correction at a time, and updates progress. Check actual text/audio/frame alignment, search for the topic in both languages, and try **Correct text** with a technical term. Select matching passages, wait for proposals, then accept or dismiss them. A hint guides Turbo; it does not force exact text. Capture the job result, elapsed time, and any error before judging the installation accepted.
+In the app, upload a Spanish or English clip (up to 256 MiB; no fixed duration limit). The worker polls automatically, processes one transcription or correction at a time, and updates progress. Check actual text/audio/frame alignment, search for the topic in both languages, and try **Correct text** with a technical term. Select matching passages, wait for proposals, then accept or dismiss them. A hint guides Turbo; it does not force exact text. Capture the job result, elapsed time, and any error before judging the installation accepted.
 
 For diagnostics and shutdown:
 
@@ -89,10 +90,15 @@ python3 recordings.py logs
 python3 recordings.py stop
 ```
 
-`logs` is bounded to 100 lines; `stop` preserves all data and weights. The container restarts after a Docker/host reboot unless explicitly stopped. It runs as UID/GID 10001 with a read-only root/models, disk-backed data/work volumes, a 64 MiB temporary mount, capped logs, configured CPU/RAM, and no swap. Docker enforces the aggregate runtime limit across API/search/worker. Turbo unloads after two idle minutes; the search session stays warm. A native worker call has an independent 30-minute deadline. Lease fences protect publication after a timeout; failed temporary work can remain on the work volume.
+`logs` is bounded to 100 lines; `stop` preserves all data and weights. The container restarts after a Docker/host reboot unless explicitly stopped. It runs as UID/GID 10001 with a read-only root/models, disk-backed data/work volumes, a 64 MiB temporary mount, capped logs, configured CPU/RAM, and no swap. Docker enforces the aggregate runtime limit across API/search/worker. Turbo unloads after two idle minutes; the search session stays warm. No default job deadline is applied. Set `resources.job_timeout_seconds` to a positive number if you want an operator deadline; zero disables it. Long recordings need proportionally more retained-audio disk space and CPU time; disk, memory and WAV format budgets still apply. Frame spacing adapts to keep at most 256 visual references. Lease fences protect publication after a timeout; failed temporary work can remain on the work volume.
 
 At startup the service generates a temporary worker credential in process memory and passes it only to its API/worker child processes. It is not written to config, images, Docker Config.Env, logs, or volumes. Restart generates a new credential. No credential management is required for the bundled profile.
 
 ## Updates and data
 
 Keep the installation directory, `recordings.toml`, `models/`, and `.recordings/`. Stop before replacing source files, then run `install` and `start`. Back up the data volume identified by `status`/Docker before upgrades. The current code adds its search/correction tables; it does not prune sources or migrate unrelated databases. There is no destructive uninstall command. Container replacement preserves both named volumes. Public/team deployment and storage lifecycle work remain separate milestones.
+
+
+## Updating an existing Philemon installation
+
+Stop before extracting the update into the same parent directory, then rebuild/start. Do not run `init` again and do not move the installation directory. Source archives exclude `recordings.toml`, `.recordings/`, `models/` and data; the existing settings, weights and named volumes are preserved. After updating, open the failed recording and choose **Retry recording** to reuse its retained upload. Refresh the browser to load the new UI. The old five-minute failure does not require another upload.

@@ -22,10 +22,11 @@ def worker_loop():
     with httpx.Client(base_url='http://127.0.0.1:8000', headers={'Authorization': 'Bearer ' + os.environ['RECORDINGS_WORKER_TOKEN']},
                       timeout=60, trust_env=False) as client:
         while True:
-            # A native call cannot defer this deadline: terminate the child process.
-            watchdog = threading.Timer(1800, lambda: os._exit(124))
-            watchdog.daemon = True
-            watchdog.start()
+            timeout = int(os.environ.get('RECORDINGS_JOB_TIMEOUT_SECONDS', '0'))
+            watchdog = threading.Timer(timeout, lambda: os._exit(124)) if timeout > 0 else None
+            if watchdog:
+                watchdog.daemon = True
+                watchdog.start()
             try:
                 space = os.statvfs('/work')
                 if space.f_bavail * space.f_frsize < 1024**3:
@@ -43,7 +44,8 @@ def worker_loop():
                 logging.error('Worker task failed (%s); inspect the recording error in the app', type(exc).__name__)
                 time.sleep(3)
             finally:
-                watchdog.cancel()
+                if watchdog:
+                    watchdog.cancel()
 
 
 def main():

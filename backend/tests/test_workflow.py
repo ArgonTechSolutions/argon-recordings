@@ -155,3 +155,28 @@ def test_actual_pull_protocol_with_synthetic_inference(client, tmp_path):
             assert run_once(transport, Synthetic(), tmp_path)
     assert client.get(f'/api/recordings/{rid}').json()['status'] == 'ready'
     assert client.get('/api/search', params={'project_id': client.get(f'/api/recordings/{rid}').json()['project_id'], 'q': 'evidence'}).json()
+
+
+def test_retry_preserves_source_and_fences_old_worker(client):
+    rid = upload(client, project(client))
+    old = claim(client)
+    headers = dict(AUTH, **{'X-Lease-Id': old['lease_id']})
+    assert client.post(f'/api/worker/jobs/{old["job_id"]}/fail', headers=headers, json={'message': 'Old five-minute restriction'}).status_code == 200
+    assert client.post(f'/api/recordings/{rid}/retry').json()['status'] == 'queued'
+    assert client.post(f'/api/recordings/{rid}/retry').status_code == 409
+    assert client.post(f'/api/worker/jobs/{old["job_id"]}/heartbeat', headers=headers, json={'progress': .5, 'stage': 'stale'}).status_code == 409
+    new = claim(client)
+    assert new['lease_id'] != old['lease_id']
+    assert client.get(f'/api/worker/jobs/{new["job_id"]}/source', headers=dict(AUTH, **{'X-Lease-Id': new['lease_id']})).content == b'synthetic media'
+
+
+def test_long_completion_and_audio_larger_than_old_twelve_mb_limit(client):
+    rid = upload(client, project(client))
+    job = claim(client)
+    headers = dict(AUTH, **{'X-Lease-Id': job['lease_id']})
+    # Stream a valid WAV-shaped retained artifact above the old five-minute byte budget.
+    payload = b'RIFF' + b'\0'*4 + b'WAVE' + b'\0' * (13 * 1024**2)
+    assert client.put(f'/api/worker/jobs/{job["job_id"]}/artifacts/audio.wav', headers=headers, content=payload).status_code == 200
+    body = {'duration': 7200, 'segments': [{'start': 7100, 'end': 7190, 'text': 'The end of a long recording.'}], 'artifacts': [{'name': 'audio.wav', 'kind': 'audio'}]}
+    assert client.post(f'/api/worker/jobs/{job["job_id"]}/complete', headers=headers, json=body).json()['status'] == 'ready'
+    assert client.get(f'/api/recordings/{rid}/transcript').json()['segments'][0]['start'] == 7100

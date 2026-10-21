@@ -10,12 +10,12 @@ A self-hosted workspace for finding the useful moments in recordings. Built by A
 - Streaming uploads up to 256 MiB, with upload progress/cancellation and a durable queue.
 - SQLite-backed worker leases, fencing, idempotent publication, one active lease, and bounded retry after worker loss. Urgent work gets a five-minute priority advantage; older normal work can overtake it.
 - One-job CPU INT8 Turbo worker using explicit, checksum-verified local model files. No automatic model downloads.
-- Up to five-minute recordings in this foundation profile. Audio extraction, source-relative transcript/word timestamps, and JPEG visual references at explicit 15-second seeks.
+- No fixed recording-duration limit. Audio extraction and source-relative timestamps are preserved; visual references use explicit seeks with adaptive spacing and at most 256 frames per recording. Uploads remain bounded to 256 MiB; retained audio must fit available work space and the WAV format budget.
 - Audio/transcript navigation, nearest retained frame with time offset, multilingual semantic/keyword search, and transcript text download.
 - Mark misheard text, find similar spelling variants in the recording, retry selected audio passages with a hint, and review proposals before acceptance. Prior text is retained in correction history.
 - Light/dark appearance and responsive layouts using the supplied shadcn preset.
 
-Project-wide glossary management, range retention/pruning, original expiry, re-upload restoration, reports/ZIP exports, MCP, and team authorization are later milestones. Originals are retained in this version; nothing automatically deletes them. There is no idle-aware scheduler or job-cancel endpoint yet. See [the plan](docs/PLAN.md) and [validation status](docs/STATUS.md).
+Project-wide glossary management, range retention/pruning, original expiry, re-upload restoration, reports/ZIP exports, MCP, and team authorization are later milestones. Originals are retained in this version; nothing automatically deletes them. There is no idle-aware scheduler or general job-cancel endpoint yet. Failed recordings can be retried from their retained source without re-uploading. See [the plan](docs/PLAN.md) and [validation status](docs/STATUS.md).
 
 ## Easy installation
 
@@ -76,7 +76,7 @@ The one-job CLI accepts `--api-url`, `--model-dir`, and `--work-dir`. Supply the
 
 Use the Turbo model directory produced by the benchmark package, including `benchmark-manifest.json`; its repository, immutable revision, and all required file hashes are checked. The selected model is `mobiuslabsgmbh/faster-whisper-large-v3-turbo` at `0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf`.
 
-Run the worker container with two CPU equivalents, two inference threads, 6 GiB RAM, no swap, read-only root/model mounts, a disk-backed writable work directory, and no Docker socket. The image has an independent 30-minute job deadline. Model downloads are not part of the worker. No persistent polling process is started by the one-job CLI. Keeping one worker instance within an aggregate resource budget is an operator responsibility; an expired lease fences publication but cannot instantly terminate a remote native inference call.
+Run the worker container with two CPU equivalents, two inference threads, 6 GiB RAM, no swap, read-only root/model mounts, a disk-backed writable work directory, and no Docker socket. There is no default job deadline. The bundled installer accepts an optional `resources.job_timeout_seconds` (zero disables it). Model downloads are not part of the worker. No persistent polling process is started by the one-job CLI. Keeping one worker instance within an aggregate resource budget is an operator responsibility; an expired lease fences publication but cannot instantly terminate a remote native inference call.
 
 ## Development and validation
 

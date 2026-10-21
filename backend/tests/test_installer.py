@@ -19,6 +19,7 @@ def test_config_defaults_and_resource_limited_start(tmp_path):
     args = installer.start_args(settings, {'image': 'test-image'})
     assert '127.0.0.1:8877:8000' in args
     assert '--read-only' in args and '--cap-drop' in args
+    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=0' in args
     assert '--memory-swap' in args
     assert '6g' in args
     assert 'RECORDINGS_WORKER_TOKEN' not in ' '.join(args)
@@ -81,3 +82,9 @@ def test_first_up_installs_before_starting(tmp_path, monkeypatch):
     monkeypatch.setattr(installer, 'start', lambda value: calls.append(('start', value['port'])))
     installer.main()
     assert calls == [('install', settings['port']), ('start', settings['port'])]
+
+
+
+def test_optional_timeout_can_be_enabled_explicitly(tmp_path):
+    settings = config(tmp_path, '[resources]\njob_timeout_seconds=14400\n')
+    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=14400' in installer.start_args(settings, {'image': 'test'})

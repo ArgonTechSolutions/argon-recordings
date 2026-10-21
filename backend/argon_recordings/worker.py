@@ -2,6 +2,8 @@
 import argparse
 import hashlib
 import json
+import math
+import shutil
 import os
 from pathlib import Path
 import subprocess
@@ -52,8 +54,8 @@ class Turbo:
         return result
 
 
-def ffmpeg(arguments):
-    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-threads', '2', *arguments], check=True, timeout=120)
+def ffmpeg(arguments, timeout=120):
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-threads', '2', *arguments], check=True, timeout=timeout)
 
 
 def extract(source, output):
@@ -61,20 +63,25 @@ def extract(source, output):
                            check=True, capture_output=True, text=True, timeout=20)
     metadata = json.loads(probe.stdout)
     duration = float(metadata['format']['duration'])
-    if not 0 < duration <= 300:
-        raise RuntimeError('Foundation profile accepts recordings up to five minutes')
+    if not math.isfinite(duration) or duration <= 0:
+        raise RuntimeError('Recording duration must be positive and finite')
+    audio_budget = min(shutil.disk_usage(output).free - 1024**3, 4 * 1024**3 - 1024**2)
+    if duration * 32000 + 4096 > audio_budget:
+        raise RuntimeError('Insufficient workspace or WAV format capacity for retained audio')
     audio = output / 'audio.wav'
-    # Decode at most 300 seconds even if the source's duration metadata is dishonest.
+    # Bound disk use even when the source duration metadata is dishonest.
     # Preserve leading track offsets so transcript times still match video time.
-    ffmpeg(['-i', str(source), '-t', '300', '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '16000',
-            '-af', 'aresample=async=1:first_pts=0', '-threads', '2', '-c:a', 'pcm_s16le', str(audio)])
+    ffmpeg(['-i', str(source), '-fs', str(audio_budget), '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '16000',
+            '-af', 'aresample=async=1:first_pts=0', '-threads', '2', '-c:a', 'pcm_s16le', str(audio)], timeout=max(120, min(3600, math.ceil(duration))))
+    if audio.stat().st_size >= audio_budget - 4096:
+        raise RuntimeError('Audio decode exceeded the workspace budget; no partial transcript published')
     with wave.open(str(audio)) as stream:
         duration = stream.getnframes() / stream.getframerate()
     if duration < 1:
         raise RuntimeError('Recording contains less than one second of audio')
     artifacts = [dict(name='audio.wav', kind='audio', time=None)]
     if any(s['codec_type'] == 'video' for s in metadata['streams']):
-        for i, timestamp in enumerate(range(0, int(duration) + 1, 15)):
+        for i, timestamp in enumerate(range(0, math.ceil(duration), max(15, math.ceil(duration / 256)))):
             if timestamp >= duration:
                 break
             path = output / f'frame-{i:04d}.jpg'
@@ -117,7 +124,7 @@ def run_once(client, transcriber, work_root=None):
                 with source.open('wb') as stream:
                     for block in response.iter_bytes(1024**2):
                         size += len(block)
-                        if cancelled.is_set() or size > 256 * 1024**2:
+                        if cancelled.is_set() or size > job['recording']['bytes']:
                             raise RuntimeError('Lease lost or source exceeds worker budget')
                         digest.update(block)
                         stream.write(block)
@@ -197,7 +204,7 @@ def run_correction(client, transcriber, work_root=None):
                 with audio.open('wb') as out:
                     for block in response.iter_bytes(1024**2):
                         size += len(block)
-                        if size > 12 * 1024**2 or lost.is_set():
+                        if size > math.ceil(job['recording_duration'] * 32000) + 1024**2 or lost.is_set():
                             raise RuntimeError('Audio exceeds budget or lease lost')
                         out.write(block)
             crop_audio(audio, crop, job['start'], job['end'])

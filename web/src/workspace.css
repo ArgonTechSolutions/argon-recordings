@@ -1586,10 +1586,8 @@ h1 {
   }
 }
 
-.search-box select { max-width: 115px; font-size: .75rem; background: transparent; border: 0; color: var(--muted-foreground); }
 .correction-actions { display: flex; gap: .25rem; padding: .25rem .75rem; border-bottom: 1px solid var(--border); }
 .correction-dialog label { display: grid; gap: .4rem; font-size: .85rem; }
-.correction-dialog select { width: 100%; min-width: 0; padding: .5rem; background: var(--background); border: 1px solid var(--border); }
 .correction-dialog { max-height: 90dvh; overflow-y: auto; }
 .correction-source { font-size: .9rem; color: var(--muted-foreground); max-height: 6rem; overflow: auto; }
 .correction-candidates { max-height: 14rem; overflow: auto; }
@@ -1599,3 +1597,9 @@ h1 {
 .correction-review { padding: .7rem 0; border-bottom: 1px solid var(--border); font-size: .9rem; }
 .correction-review small { color: var(--muted-foreground); text-transform: capitalize; }
 .correction-review strong { display: block; margin: .4rem 0; }
+
+.search-box .search-mode-select { max-width: 130px; height: 2rem; flex-shrink: 0; font-size: .75rem; }
+.recording-select { max-width: min(300px, 55vw); min-width: 0; }
+.argon-credit a { font-weight: 600; color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+
+.section-label { font-size: 12px; letter-spacing: normal; }

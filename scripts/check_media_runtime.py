@@ -41,6 +41,14 @@ with tempfile.TemporaryDirectory(prefix='recordings-media-check-') as directory:
     assert max(abs(v) for v in samples[:int(rate * 1.5)]) < 20, 'Leading source-time gap was lost'
     assert max(abs(v) for v in samples[int(rate * 2.2):int(rate * 2.8)]) > 100, 'Expected delayed speech signal missing'
     assert delayed_duration > 4.9
+    long_source = root / 'long-silence.wav'
+    subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono',
+                    '-t', '601', '-c:a', 'pcm_s16le', str(long_source)], check=True, timeout=30)
+    long_output = root / 'long-output'
+    long_output.mkdir()
+    long_duration, long_audio, _ = extract(long_source, long_output)
+    assert long_duration == 601
+    assert long_audio.stat().st_size > 12 * 1024**2
     print(json.dumps({'status': 'passed', 'audio_seconds': duration,
-                      'frame_times': [f['time'] for f in frames], 'int8': True,
+                      'frame_times': [f['time'] for f in frames], 'long_audio_seconds': long_duration, 'int8': True,
                       'delayed_audio_alignment': True, 'speech_inference': False}))

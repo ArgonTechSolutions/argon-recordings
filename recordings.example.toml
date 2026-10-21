@@ -12,6 +12,7 @@ embedding = "large" # large (recommended), base, small, or off
 [resources]
 cpus = 2
 memory_gib = 6
+job_timeout_seconds = 0 # No job deadline; optional positive value for an operator timeout.
 
 [docker]
 sudo = false # Set true for sudo -n docker; first authenticate with sudo -v.

@@ -5,4 +5,4 @@ WORKDIR /app
 COPY backend/requirements-inference.lock backend/requirements.txt ./
 RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements-inference.lock && pip install --no-cache-dir -r requirements.txt && pip check
 COPY backend/argon_recordings ./argon_recordings
-ENTRYPOINT ["/usr/bin/timeout", "--signal=TERM", "--kill-after=5s", "1800s", "python", "-m", "argon_recordings.worker"]
+ENTRYPOINT ["python", "-m", "argon_recordings.worker"]

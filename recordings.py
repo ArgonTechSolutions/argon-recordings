@@ -22,7 +22,7 @@ def load_config(path):
     path = path.resolve()
     data = tomllib.loads(path.read_text())
     allowed = {'app': {'port', 'name'}, 'models': {'transcription', 'embedding', 'turbo_path'},
-               'resources': {'cpus', 'memory_gib'}, 'docker': {'sudo'}}
+               'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}}
     for section, fields in data.items():
         if section not in allowed or not isinstance(fields, dict) or set(fields) - allowed[section]:
             raise ValueError(f'Unknown configuration key in {section}')
@@ -38,6 +38,9 @@ def load_config(path):
     cpus, memory = resources.get('cpus', 2), resources.get('memory_gib', 6)
     if type(cpus) not in {int, float} or not .5 <= cpus <= 8 or type(memory) is not int or not 4 <= memory <= 32:
         raise ValueError('resources: cpus must be 0.5..8 and memory_gib must be 4..32')
+    timeout = resources.get('job_timeout_seconds', 0)
+    if type(timeout) is not int or timeout < 0:
+        raise ValueError('resources.job_timeout_seconds must be zero (disabled) or a positive integer')
     sudo = data.get('docker', {}).get('sudo', False)
     if type(sudo) is not bool:
         raise ValueError('docker.sudo must be true or false')
@@ -48,7 +51,7 @@ def load_config(path):
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
@@ -151,7 +154,7 @@ def start_args(config, installed):
             '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,size=64m',
             '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
             '-p', f"127.0.0.1:{config['port']}:8000", '-v', volume + '-data:/data', '-v', volume + '-work:/work',
-            '-v', str(config['turbo']) + ':/models/turbo:ro']
+            '-v', str(config['turbo']) + ':/models/turbo:ro', '-e', 'RECORDINGS_JOB_TIMEOUT_SECONDS=' + str(config['timeout'])]
     if config['embedding'] != 'off':
         args += ['-v', str(config['home'] / 'models' / ('e5-' + config['embedding'])) + ':/models/embeddings:ro',
                  '-e', 'RECORDINGS_EMBEDDING_DIR=/models/embeddings', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]

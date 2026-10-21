@@ -247,6 +247,45 @@
         }
       }
     },
+    "/api/recordings/{rid}/retry": {
+      "post": {
+        "summary": "Retry",
+        "operationId": "retry_api_recordings__rid__retry_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recording"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/recordings/{rid}/transcript": {
       "get": {
         "summary": "Transcript",
@@ -1415,7 +1454,6 @@
         "properties": {
           "duration": {
             "type": "number",
-            "maximum": 300.0,
             "exclusiveMinimum": 0.0,
             "title": "Duration"
           },
@@ -1424,7 +1462,7 @@
               "$ref": "#/components/schemas/Segment"
             },
             "type": "array",
-            "maxItems": 1000,
+            "maxItems": 100000,
             "title": "Segments"
           },
           "artifacts": {
@@ -1432,7 +1470,7 @@
               "$ref": "#/components/schemas/ArtifactInput"
             },
             "type": "array",
-            "maxItems": 25,
+            "maxItems": 257,
             "title": "Artifacts"
           }
         },

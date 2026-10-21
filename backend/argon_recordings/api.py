@@ -88,14 +88,14 @@ def create_app(settings=None):
 
     async def receive(request, path, limit):
         length = request.headers.get('content-length')
-        if length and int(length) > limit:
+        if length and limit is not None and int(length) > limit:
             raise HTTPException(413, 'File exceeds size limit')
         total, digest = 0, hashlib.sha256()
         try:
             with path.open('xb') as output:
                 async for block in request.stream():
                     total += len(block)
-                    if total > limit:
+                    if limit is not None and total > limit:
                         raise HTTPException(413, 'File exceeds size limit')
                     if shutil.disk_usage(settings.data).free < settings.reserve + len(block):
                         raise HTTPException(507, 'Insufficient workspace capacity')
@@ -115,7 +115,7 @@ def create_app(settings=None):
         return {'status': 'ok', 'profile': 'local', 'model': 'large-v3-turbo', 'search': 'hybrid' if settings.embeddings.configured else 'keyword',
                 'embedding_profile': getattr(settings.embeddings, 'profile', None) if settings.embeddings.configured else 'off',
                 'worker_configured': bool(settings.worker_token), 'max_upload_bytes': settings.max_upload,
-                'max_duration_seconds': 300}
+                'max_duration_seconds': None}
 
     @app.get('/api/projects', response_model=list[Project])
     def projects():
@@ -173,6 +173,20 @@ def create_app(settings=None):
                 with store().db() as db:
                     db.execute("UPDATE recordings SET status='awaiting_upload' WHERE id=? AND status='uploading'", (rid,))
                 raise
+        return view(recording_or_404(rid))
+
+    @app.post('/api/recordings/{rid}/retry', response_model=Recording)
+    def retry(rid: str):
+        recording_or_404(rid)
+        with store().db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute("SELECT r.status,j.state FROM recordings r JOIN jobs j ON j.recording_id=r.id WHERE r.id=?", (rid,)).fetchone()
+            if row['status'] != 'failed' or row['state'] != 'failed':
+                raise HTTPException(409, 'Only a failed recording can be retried')
+            if not (settings.data / 'sources' / rid).is_file():
+                raise HTTPException(409, 'Retained source is unavailable; upload a new recording')
+            db.execute("UPDATE recordings SET status='queued',error=NULL WHERE id=?", (rid,))
+            db.execute("UPDATE jobs SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL,progress=0,stage='Waiting for worker',result_sha=NULL,created=? WHERE recording_id=?", (time.time(), rid))
         return view(recording_or_404(rid))
 
     @app.get('/api/recordings/{rid}/transcript', response_model=Transcript)
@@ -251,7 +265,7 @@ def create_app(settings=None):
         directory = settings.data / 'results' / jid / x_lease_id
         directory.mkdir(parents=True, exist_ok=True)
         temporary = directory / (identity() + '.part')
-        await receive(request, temporary, 12 * 1024**2 if name == 'audio.wav' else 2 * 1024**2)
+        await receive(request, temporary, None if name == 'audio.wav' else 2 * 1024**2)
         try:
             with store().db() as db:
                 db.execute('BEGIN IMMEDIATE')

@@ -119,7 +119,7 @@ def install(app, store, recording_or_404, worker_auth, embeddings):
             if db.execute("SELECT 1 FROM jobs WHERE state='running' AND lease_until>?", (now,)).fetchone() or db.execute("SELECT 1 FROM corrections WHERE state='running' AND lease_until>?", (now,)).fetchone():
                 return None
             db.execute("UPDATE corrections SET state='failed',error='Lease retries exhausted' WHERE state='running' AND lease_until<=? AND attempts>=3", (now,))
-            row = db.execute("SELECT c.*,s.start,s.end,r.language FROM corrections c JOIN segments s ON s.id=c.segment_id JOIN recordings r ON r.id=c.recording_id WHERE c.state='queued' OR (c.state='running' AND c.lease_until<=? AND c.attempts<3) ORDER BY c.created LIMIT 1", (now,)).fetchone()
+            row = db.execute("SELECT c.*,s.start,s.end,r.language,r.duration AS recording_duration FROM corrections c JOIN segments s ON s.id=c.segment_id JOIN recordings r ON r.id=c.recording_id WHERE c.state='queued' OR (c.state='running' AND c.lease_until<=? AND c.attempts<3) ORDER BY c.created LIMIT 1", (now,)).fetchone()
             if not row:
                 return None
             token = identity()

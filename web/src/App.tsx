@@ -18,7 +18,6 @@ import {
   Play,
   Plus,
   Search,
-  ShieldCheck,
   SkipBack,
   SkipForward,
   Sun,
@@ -31,7 +30,6 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -47,6 +45,7 @@ import {
   type Transcript,
 } from "@/lib/api"
 import { Corrections } from "@/components/corrections"
+import { ValueSelect } from "@/components/value-select"
 import "./workspace.css"
 
 const stamp = (seconds: number) =>
@@ -142,6 +141,13 @@ function App() {
       setPage("library")
     },
   })
+  const retryRecording = useMutation({
+    mutationFn: (id: string) =>
+      request<Recording>(`/api/recordings/${id}/retry`, { method: "POST" }),
+    onSuccess: () => {
+      void cache.invalidateQueries({ queryKey: ["recordings"] })
+    },
+  })
   const audioAsset = current?.artifacts?.find((a) => a.kind === "audio")
   const frames = current?.artifacts?.filter((a) => a.kind === "frame") ?? []
   const nearest = frames.reduce<(typeof frames)[number] | undefined>(
@@ -210,14 +216,6 @@ function App() {
             argon<span className="brand-subtitle">RECORDINGS</span>
           </span>
         </a>
-        <div className="workspace-label">
-          <span className="workspace-avatar">A</span>
-          <span>
-            Argon workspace
-            <small>{preview ? "Design preview" : "Local workspace"}</small>
-          </span>
-          <ShieldCheck size={15} />
-        </div>
         <nav aria-label="Main navigation">
           <button
             className={page === "library" ? "nav-item active" : "nav-item"}
@@ -240,7 +238,7 @@ function App() {
           </button>
         </nav>
         <div className="section-label">
-          PROJECTS{" "}
+          Projects{" "}
           <button
             aria-label="New project"
             onClick={() => setProjectOpen(true)}
@@ -277,7 +275,14 @@ function App() {
             {theme === "dark" ? "Light appearance" : "Dark appearance"}
           </button>
           <div className="argon-credit">
-            An open-source project by <strong>Argon</strong>
+            An open-source project by{" "}
+            <a
+              href="https://www.argon.com.pe"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Argon
+            </a>
           </div>
         </div>
       </aside>
@@ -305,10 +310,6 @@ function App() {
             <strong>{activeProject?.name ?? "Recording library"}</strong>
           </div>
           <div className="top-actions">
-            <span className="local-indicator">
-              <span />
-              {preview ? "Example content" : "Private workspace"}
-            </span>
             <Button
               size="sm"
               onClick={() => setUploadOpen(true)}
@@ -332,17 +333,11 @@ function App() {
         <div className="content-shell">
           <section className="page-heading">
             <div>
-              <div className="eyebrow">YOUR WORK, IN CONTEXT</div>
               <h1>
                 {page === "workspace" && current
                   ? current.title
-                  : (activeProject?.name ?? "Find the moment.")}
+                  : (activeProject?.name ?? "Recordings")}
               </h1>
-              <p>
-                {page === "workspace"
-                  ? "Read the conversation. Explore the details. Keep the context."
-                  : "A home for the conversations and walkthroughs worth coming back to."}
-              </p>
             </div>
             <span className="project-counter">
               <Folder size={16} />
@@ -375,19 +370,7 @@ function App() {
               <div className="empty-icon">
                 <Layers3 size={32} />
               </div>
-              <div className="eyebrow">
-                A LITTLE LESS SEARCHING. A LOT MORE CONTEXT.
-              </div>
-              <h2>
-                Your next useful moment
-                <br />
-                starts here.
-              </h2>
-              <p>
-                Create a project to collect recordings, browse transcripts,
-                <br />
-                and return to the part that matters.
-              </p>
+              <h2>No projects yet</h2>
               <Button onClick={() => setProjectOpen(true)}>
                 <Plus size={15} /> Create your first project
               </Button>
@@ -421,21 +404,25 @@ function App() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
-                  <select
-                    aria-label="Search mode"
+                  <ValueSelect
+                    label="Search mode"
                     value={searchMode}
-                    onChange={(e) => setSearchMode(e.target.value)}
-                  >
-                    <option value="hybrid">
-                      {health.data?.search === "keyword"
-                        ? "Keywords"
-                        : "All matches"}
-                    </option>
-                    {health.data?.search !== "keyword" && (
-                      <option value="semantic">Meaning</option>
-                    )}
-                    <option value="keyword">Exact words</option>
-                  </select>
+                    onChange={setSearchMode}
+                    className="search-mode-select"
+                    items={[
+                      {
+                        value: "hybrid",
+                        label:
+                          health.data?.search === "keyword"
+                            ? "Keywords"
+                            : "All matches",
+                      },
+                      ...(health.data?.search !== "keyword"
+                        ? [{ value: "semantic", label: "Meaning" }]
+                        : []),
+                      { value: "keyword", label: "Exact words" },
+                    ]}
+                  />
                   {query && (
                     <button
                       aria-label="Clear search"
@@ -449,8 +436,7 @@ function App() {
               {debounced.trim() ? (
                 <section className="search-results">
                   <div className="section-label">
-                    MATCHING MOMENTS{" "}
-                    <span>{hits.data?.length ?? 0} results</span>
+                    Matches <span>{hits.data?.length ?? 0} results</span>
                   </div>
                   {hits.isFetching ? (
                     <div className="loading-state">
@@ -586,18 +572,18 @@ function App() {
                       <ArrowLeft size={15} /> All recordings
                     </button>
                     <label>
-                      RECORDING{" "}
-                      <select
-                        aria-label="Select recording"
+                      <ValueSelect
+                        label="Select recording"
                         value={current.id}
-                        onChange={(e) => chooseRecording(e.target.value)}
-                      >
-                        {recordings.data?.map((r) => (
-                          <option value={r.id} key={r.id}>
-                            {r.title}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(id) => chooseRecording(id)}
+                        className="recording-select"
+                        items={
+                          recordings.data?.map((r) => ({
+                            value: r.id,
+                            label: r.title,
+                          })) ?? []
+                        }
+                      />
                     </label>
                     <Button
                       size="sm"
@@ -619,10 +605,10 @@ function App() {
                       </div>
                       <h2>
                         {current.status === "failed"
-                          ? "This recording needs attention."
+                          ? "Processing failed"
                           : current.status === "awaiting_upload"
                             ? "Waiting for the source file."
-                            : "Your recording is in good hands."}
+                            : "Recording queued"}
                       </h2>
                       <p>
                         {current.error ??
@@ -632,10 +618,19 @@ function App() {
                       {isBusy(current) && (
                         <progress max={1} value={current.job?.progress ?? 0} />
                       )}
-                      <span>
-                        The transcript and visual references will appear here
-                        when processing finishes.
-                      </span>
+                      {current.status === "failed" && (
+                        <Button
+                          disabled={retryRecording.isPending}
+                          onClick={() => retryRecording.mutate(current.id)}
+                        >
+                          {retryRecording.isPending
+                            ? "Queuing…"
+                            : "Retry recording"}
+                        </Button>
+                      )}
+                      {retryRecording.isError && (
+                        <p role="alert">{retryRecording.error.message}</p>
+                      )}
                     </div>
                   ) : (
                     <div className="recording-workspace">
@@ -862,22 +857,12 @@ function App() {
               ) : null}
             </>
           )}
-          <footer className="page-footer">
-            <span>Less scrubbing. More understanding.</span>
-            <span>
-              ARGON RECORDINGS <span className="footer-dot">·</span> EARLY
-              PREVIEW
-            </span>
-          </footer>
         </div>
       </main>
       <Dialog open={projectOpen} onOpenChange={setProjectOpen}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>A place for your recordings.</DialogTitle>
-            <DialogDescription>
-              Group related conversations, demos, and walkthroughs in a project.
-            </DialogDescription>
+            <DialogTitle>Create project</DialogTitle>
           </DialogHeader>
           <form
             className="dialog-form"
@@ -1012,16 +997,9 @@ function UploadDialog({
         if (!mutation.isPending) onOpenChange(value)
       }}
     >
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
-          <div className="dialog-kicker">
-            <Upload size={18} /> ADD TO {project.name.toUpperCase()}
-          </div>
-          <DialogTitle>Bring the conversation.</DialogTitle>
-          <DialogDescription>
-            Upload a recording. Come back to a transcript and the moments that
-            matter.
-          </DialogDescription>
+          <DialogTitle>Upload recording</DialogTitle>
         </DialogHeader>
         <form
           className="dialog-form"
@@ -1050,9 +1028,7 @@ function UploadDialog({
             </div>
             <strong>{file?.name ?? "Choose a file or drop it here"}</strong>
             <span>
-              {file
-                ? size(file.size)
-                : "Video or audio · up to 5 minutes · 256 MB"}
+              {file ? size(file.size) : "Video or audio · up to 256 MB"}
             </span>
           </label>
           <label htmlFor="recording-title">Recording title</label>
@@ -1068,15 +1044,18 @@ function UploadDialog({
           <div className="upload-options">
             <label>
               Spoken language
-              <select
+              <ValueSelect
+                label="Spoken language"
                 value={language}
                 disabled={mutation.isPending}
-                onChange={(e) => setLanguage(e.target.value)}
-              >
-                <option value="auto">Detect automatically</option>
-                <option value="es">Spanish</option>
-                <option value="en">English</option>
-              </select>
+                onChange={setLanguage}
+                className="w-full"
+                items={[
+                  { value: "auto", label: "Detect automatically" },
+                  { value: "es", label: "Spanish" },
+                  { value: "en", label: "English" },
+                ]}
+              />
             </label>
             <label className="priority-option">
               <input
@@ -1173,7 +1152,6 @@ function ExampleVisual() {
           <i />
         </aside>
         <div className="example-form">
-          <div className="eyebrow">YOUR TEAM, TOGETHER</div>
           <h3>
             A good place
             <br />

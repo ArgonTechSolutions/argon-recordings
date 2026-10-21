@@ -11,6 +11,7 @@ import {
 import { preview, request, type Transcript } from "@/lib/api"
 
 type Passage = Transcript["segments"][number]
+import { ValueSelect } from "@/components/value-select"
 import type { components } from "@/lib/schema"
 type Candidate = components["schemas"]["CorrectionCandidateHit"]
 type Correction = components["schemas"]["CorrectionView-Output"]
@@ -177,20 +178,19 @@ export function Corrections({
           </DialogHeader>
           <label>
             Passage
-            <select
-              aria-label="Passage"
+            <ValueSelect
+              label="Passage"
               value={segmentId}
-              onChange={(e) => {
-                setSegmentId(e.target.value)
+              onChange={(id) => {
+                setSegmentId(id)
                 resetCandidates()
               }}
-            >
-              {segments.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {timestamp(s.start)} · {s.text.slice(0, 90)}
-                </option>
-              ))}
-            </select>
+              className="w-full"
+              items={segments.map((s) => ({
+                value: s.id,
+                label: `${timestamp(s.start)} · ${s.text.slice(0, 90)}`,
+              }))}
+            />
           </label>
           <p className="correction-source">
             {segments.find((s) => s.id === segmentId)?.text}

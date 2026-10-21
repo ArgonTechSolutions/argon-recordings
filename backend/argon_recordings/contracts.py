@@ -99,9 +99,9 @@ class ArtifactInput(Strict):
 
 
 class Completion(Strict):
-    duration: float = Field(gt=0, le=300)
-    segments: list[Segment] = Field(max_length=1000)
-    artifacts: list[ArtifactInput] = Field(max_length=25)
+    duration: float = Field(gt=0)
+    segments: list[Segment] = Field(max_length=100000)
+    artifacts: list[ArtifactInput] = Field(max_length=257)
 
     @model_validator(mode='after')
     def valid(self):
