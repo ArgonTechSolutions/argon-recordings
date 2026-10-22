@@ -104,3 +104,17 @@ def test_invalid_upload_limits_are_rejected(tmp_path, value):
     path.write_text('[app]\nmax_upload_mb=' + value + '\n')
     with pytest.raises(ValueError, match='max_upload_mb'):
         installer.load_config(path)
+
+
+def test_accounts_are_configured_without_credentials_in_environment(tmp_path):
+    settings = config(tmp_path,'[auth]\nmode="accounts"\npublic_url="https://recordings.example.com"\n')
+    args = installer.start_args(settings, {'image':'test'})
+    assert 'RECORDINGS_AUTH_MODE=accounts' in args
+    assert 'RECORDINGS_PUBLIC_URL=https://recordings.example.com' in args
+    assert 'secret' not in ' '.join(args)
+
+
+@pytest.mark.parametrize('extra',['mode="unknown"','mode="local"\npublic_url="https://example.com"','mode="accounts"\npublic_url="http://example.com"'])
+def test_invalid_auth_configuration_fails_closed(tmp_path, extra):
+    with pytest.raises(ValueError):
+        config(tmp_path,'[auth]\n'+extra+'\n')

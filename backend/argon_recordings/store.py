@@ -26,7 +26,7 @@ def identity():
 
 
 class Store:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, recover_uploads=True):
         self.on_commit = None
         self.root = root
         for folder in ['sources', 'staging', 'results']:
@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS corrections(id TEXT PRIMARY KEY,recording_id TEXT NOT
  lease_id TEXT,lease_until REAL,attempts INTEGER DEFAULT 0,proposal TEXT,error TEXT,created REAL NOT NULL);
 """)
             # An interrupted upload can be retried. Completed source files are never pruned here.
-            db.execute("UPDATE recordings SET status='awaiting_upload' WHERE status='uploading'")
+            if recover_uploads:
+                db.execute("UPDATE recordings SET status='awaiting_upload' WHERE status='uploading'")
 
     @contextmanager
     def db(self):

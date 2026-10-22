@@ -15,6 +15,7 @@ class ProjectEvents:
         self.changed = asyncio.Event()
         self.subscribers = {}
         self.latest = {}
+        self.guards = {}
         self.task = asyncio.create_task(self.broadcast())
 
     def notify(self):
@@ -44,18 +45,28 @@ class ProjectEvents:
                 queues = self.subscribers.get(pid)
                 if not queues:
                     continue
+                allowed_queues = []
+                for queue in list(queues):
+                    guard = self.guards.get(queue)
+                    if guard and not await asyncio.to_thread(guard):
+                        if queue.full():
+                            queue.get_nowait()
+                        queue.put_nowait(None)
+                    else:
+                        allowed_queues.append(queue)
                 if payload != self.latest.get(pid):
                     self.latest[pid] = payload
-                    for queue in queues:
+                    for queue in allowed_queues:
                         # Coalesce updates instead of accumulating work for slow clients.
                         if queue.full():
                             queue.get_nowait()
                         queue.put_nowait(payload)
 
-    async def stream(self, pid):
+    async def stream(self, pid, guard=None):
         queue = asyncio.Queue(maxsize=1)
         queues = self.subscribers.setdefault(pid, set())
         queues.add(queue)
+        self.guards[queue] = guard
         # A new connection always gets an authoritative snapshot, not a partial replay.
         if pid in self.latest:
             queue.put_nowait(self.latest[pid])
@@ -65,11 +76,18 @@ class ProjectEvents:
             while True:
                 try:
                     payload = await asyncio.wait_for(queue.get(), self.keepalive)
+                    if payload is None or (guard and not await asyncio.to_thread(guard)):
+                        yield 'event: access-revoked\ndata: {}\n\n'
+                        return
                     yield f'event: recordings\ndata: {payload}\n\n'
                 except asyncio.TimeoutError:
+                    if guard and not await asyncio.to_thread(guard):
+                        yield 'event: access-revoked\ndata: {}\n\n'
+                        return
                     yield ': keepalive\n\n'
         finally:
             queues.discard(queue)
+            self.guards.pop(queue, None)
             if not queues:
                 self.subscribers.pop(pid, None)
                 self.latest.pop(pid, None)

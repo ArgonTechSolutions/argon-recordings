@@ -25,6 +25,11 @@ export function useProjectEvents(projectId: string | undefined) {
       current.onerror = () => {
         if (source === current && !closed) setDisconnected(true)
       }
+      current.addEventListener("access-revoked", () => {
+        current.close()
+        cache.clear()
+        window.dispatchEvent(new Event("recordings-access-changed"))
+      })
       current.addEventListener("recordings", (event: MessageEvent<string>) => {
         if (closed || source !== current || document.hidden) return
         const rows = JSON.parse(event.data) as Recording[]

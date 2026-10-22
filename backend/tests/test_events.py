@@ -129,3 +129,21 @@ def test_live_sse_snapshots_reconnect_and_bounded_shutdown(tmp_path):
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=5)
+
+
+def test_revocation_discards_pending_snapshot_without_waiting_for_keepalive():
+    async def check():
+        allowed = [True]
+        broker = ProjectEvents(lambda pid: [{'secret':'project data'}],debounce=.001,keepalive=60)
+        stream = broker.stream('project',lambda:allowed[0])
+        try:
+            await anext(stream)
+            assert 'project data' in await anext(stream)
+            allowed[0] = False
+            broker.notify()
+            result = await asyncio.wait_for(anext(stream),1)
+            assert 'access-revoked' in result and 'project data' not in result
+        finally:
+            await stream.aclose()
+            await broker.close()
+    asyncio.run(check())

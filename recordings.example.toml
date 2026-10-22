@@ -17,3 +17,7 @@ job_timeout_seconds = 0 # No job deadline; optional positive value for an operat
 
 [docker]
 sudo = false # Set true for sudo -n docker; first authenticate with sudo -v.
+
+[auth]
+mode = "accounts" # Existing configurations without [auth] keep the private local preview.
+# public_url = "https://recordings.example.com" # Required for OIDC; does not expose the port.

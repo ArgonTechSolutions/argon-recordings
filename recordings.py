@@ -22,7 +22,7 @@ def load_config(path):
     path = path.resolve()
     data = tomllib.loads(path.read_text())
     allowed = {'app': {'port', 'name', 'max_upload_mb'}, 'models': {'transcription', 'embedding', 'turbo_path'},
-               'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}}
+               'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}, 'auth': {'mode', 'public_url'}}
     for section, fields in data.items():
         if section not in allowed or not isinstance(fields, dict) or set(fields) - allowed[section]:
             raise ValueError(f'Unknown configuration key in {section}')
@@ -50,11 +50,20 @@ def load_config(path):
     external = models.get('turbo_path')
     if external is not None and (not isinstance(external, str) or not external.strip()):
         raise ValueError('models.turbo_path must be a nonempty path when specified')
+    auth = data.get('auth', {})
+    auth_mode, public_url = auth.get('mode', 'local'), auth.get('public_url', '')
+    from urllib.parse import urlsplit
+    if auth_mode not in {'local', 'accounts'} or not isinstance(public_url, str):
+        raise ValueError('auth.mode must be local or accounts')
+    if public_url:
+        url = urlsplit(public_url)
+        if auth_mode != 'accounts' or url.scheme != 'https' or not url.netloc or url.username or url.password or url.path not in {'', '/'} or url.query or url.fragment:
+            raise ValueError('auth.public_url requires account mode and an HTTPS origin')
     home = path.parent
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
@@ -158,6 +167,7 @@ def start_args(config, installed):
             '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
             '-p', f"127.0.0.1:{config['port']}:8000", '-v', volume + '-data:/data', '-v', volume + '-work:/work',
             '-v', str(config['turbo']) + ':/models/turbo:ro', '-e', 'RECORDINGS_JOB_TIMEOUT_SECONDS=' + str(config['timeout']), '-e', 'RECORDINGS_MAX_UPLOAD_MB=' + str(config['max_upload_mb'])]
+    args += ['-e', 'RECORDINGS_AUTH_MODE=' + config['auth_mode'], '-e', 'RECORDINGS_PUBLIC_URL=' + config['public_url']]
     if config['embedding'] != 'off':
         args += ['-v', str(config['home'] / 'models' / ('e5-' + config['embedding'])) + ':/models/embeddings:ro',
                  '-e', 'RECORDINGS_EMBEDDING_DIR=/models/embeddings', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]
@@ -189,6 +199,8 @@ def start(config):
             running = inspect(config)
             if running and running['State']['Running'] and health.get('status') == 'ok' and health.get('worker_configured'):
                 print('Ready:', f"http://localhost:{config['port']}")
+                if health.get('accounts_setup_required'):
+                    print('Create the initial administrator: python3 recordings.py setup-admin (see docs/ACCOUNTS.md for existing projects).')
                 return
         except (OSError, ValueError):
             pass
@@ -199,7 +211,8 @@ def start(config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT / 'recordings.toml')
-    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update'])
+    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-admin', 'setup-oidc', 'recover-admin'])
+    parser.add_argument('--adopt-existing', action='store_true')
     args = parser.parse_args()
     try:
         if args.command == 'init':
@@ -208,7 +221,15 @@ def main():
             print('Created', args.config, '— edit it, then run install.')
             return
         config = load_config(args.config)
-        if args.command == 'update':
+        if args.command in {'setup-admin', 'setup-oidc', 'recover-admin'}:
+            item = inspect(config)
+            if config['auth_mode'] != 'accounts' or not item or not item['State']['Running'] or 'RECORDINGS_AUTH_MODE=accounts' not in item['Config']['Env']:
+                raise ValueError('Set auth.mode=accounts and restart the app before interactive setup')
+            command = ['exec', '-it', config['name'], 'python', '-m', 'argon_recordings.account_cli', args.command]
+            if args.adopt_existing:
+                command += ['--adopt-existing']
+            docker(config, *command)
+        elif args.command == 'update':
             from scripts.git_updates import update
             update(sys.modules[__name__], config)
         elif args.command == 'doctor':

@@ -1,3 +1,8 @@
+import {
+  AccountControls,
+  ProjectMembers,
+  useAccountSession,
+} from "@/components/accounts"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -64,6 +69,7 @@ const isBusy = (r: Recording) =>
   ["queued", "running", "uploading"].includes(r.status)
 
 function App() {
+  const account = useAccountSession()
   const cache = useQueryClient()
   const { theme, setTheme } = useTheme()
   const [projectId, setProjectId] = useState<string>()
@@ -102,6 +108,7 @@ function App() {
   })
   const activeProject =
     projects.data?.find((p) => p.id === projectId) ?? projects.data?.[0]
+  const canEdit = activeProject?.role !== "viewer"
   const recordings = useQuery({
     queryKey: ["recordings", activeProject?.id],
     enabled: !!activeProject,
@@ -270,6 +277,7 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <AccountControls />
           <button
             className="theme-toggle"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -316,7 +324,7 @@ function App() {
             <Button
               size="sm"
               onClick={() => setUploadOpen(true)}
-              disabled={!activeProject || preview}
+              disabled={!activeProject || preview || !canEdit}
             >
               <Plus size={14} /> Upload recording
             </Button>
@@ -334,6 +342,9 @@ function App() {
           </div>
         )}
         <div className="content-shell">
+          {account?.enabled && activeProject?.role === "owner" && !preview && (
+            <ProjectMembers projectId={activeProject.id} />
+          )}
           <section className="page-heading">
             <div>
               <h1>
@@ -638,7 +649,7 @@ function App() {
                       {current.status === "failed" && (
                         <Button
                           className="retry-recording"
-                          disabled={retryRecording.isPending}
+                          disabled={retryRecording.isPending || !canEdit}
                           onClick={() => retryRecording.mutate(current.id)}
                         >
                           {retryRecording.isPending
@@ -670,11 +681,13 @@ function App() {
                                 : "English"}
                           </Badge>
                         </div>
-                        <Corrections
-                          key={current.id}
-                          recordingId={current.id}
-                          segments={segments}
-                        />
+                        {canEdit && (
+                          <Corrections
+                            key={current.id}
+                            recordingId={current.id}
+                            segments={segments}
+                          />
+                        )}
                         <div className="transcript-scroll">
                           {transcript.isLoading ? (
                             <div className="loading-state">

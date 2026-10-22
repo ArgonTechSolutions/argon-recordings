@@ -1,6 +1,6 @@
 # Foundation architecture
 
-The coordinator is the only writer to its local SQLite database. Remote workers use HTTP; never share the SQLite file over a network filesystem.
+The API is the runtime writer to its local SQLite database. Interactive account provisioning writes identity/membership metadata through local transactions without resetting live uploads. Remote workers use HTTP; never share the SQLite file over a network filesystem.
 
 1. A project owns recordings. Creating a recording reserves metadata and an unclaimable job.
 2. The source is streamed to a unique staging file under a byte/disk limit, hashed, fsynced, and moved to its generated source ID. Only then is the job queued. A failed upload is retryable; original client filenames are never storage paths.
@@ -11,7 +11,7 @@ The coordinator is the only writer to its local SQLite database. Remote workers 
 
 `recordings.sqlite`, `sources/`, and accepted artifact paths under `results/` are authoritative. `staging/` and unpublished artifact remnants can accumulate after failed jobs; automated garbage collection and quotas beyond upload/disk reserve are not implemented yet. Do not delete them blindly while processing. No automatic original expiry/pruning runs. New embedding/correction tables and an index are created additively for foundation databases; existing tables are not rewritten. Unknown versions fail closed.
 
-The first profile is intentionally single-user on loopback. Worker bearer credentials do not authenticate browser users. Uploads, media decoding, model runtime, browser access and worker publication are separate trust boundaries. No Docker socket is mounted in application code, no remote URLs are ingested, and no credential is generated. Public/team deployment needs further authentication, per-project authorization, storage policy, decoder isolation and release qualification.
+The original local-preview profile remains single-user on loopback. New installer configurations select invitation-only accounts; see [accounts and administration](ACCOUNTS.md). Worker bearer credentials do not authenticate browser users. Uploads, media decoding, model runtime, browser access and worker publication are separate trust boundaries. No Docker socket is mounted in application code, no remote URLs are ingested, and bundled worker credentials remain temporary in memory. Account mode adds server-side sessions, project roles and optional OIDC. Public deployment still requires the remaining storage policy, decoder isolation, strong administrator authentication, ingress and release qualification gates.
 
 The first functional tests substitute only inference/extraction where documented; live Chromium checks exercise actual API, SQLite search and file serving with synthetic data. None of these tests qualifies real speech inference through a remote deployment.
 

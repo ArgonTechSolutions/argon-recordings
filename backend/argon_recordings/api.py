@@ -15,6 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .events import ProjectEvents
+from .accounts import Accounts, AccountRequestBudget
+from .account_routes import install as install_accounts
 
 from .contracts import (ClaimRequest, Completion, Failure, Heartbeat, Project, ProjectCreate,
                         Recording, RecordingCreate, SearchHit, Transcript)
@@ -24,7 +26,9 @@ from .store import Store, identity, lease_row
 
 
 class Settings:
-    def __init__(self, data=None, worker_token=None, max_upload=None, reserve=1024**3, embeddings=None):
+    def __init__(self, data=None, worker_token=None, max_upload=None, reserve=1024**3, embeddings=None, auth_mode=None, public_url=None):
+        self.auth_mode = auth_mode or os.environ.get("RECORDINGS_AUTH_MODE", "local")
+        self.public_url = public_url if public_url is not None else os.environ.get("RECORDINGS_PUBLIC_URL", "")
         self.embeddings = embeddings or Embeddings(os.environ.get('RECORDINGS_EMBEDDING_DIR'), os.environ.get('RECORDINGS_EMBEDDING_PROFILE', 'large'))
         self.data = Path(data or os.environ.get('RECORDINGS_DATA', 'data'))
         self.worker_token = worker_token if worker_token is not None else os.environ.get('RECORDINGS_WORKER_TOKEN', '')
@@ -44,8 +48,11 @@ def create_app(settings=None):
     @asynccontextmanager
     async def lifespan(app):
         app.state.store = Store(settings.data)
+        app.state.accounts = Accounts(app.state.store, settings.auth_mode, settings.public_url)
+        if app.state.accounts.enabled:
+            app.state.accounts.oidc_config()
         app.state.upload_lock = asyncio.Lock()
-        app.state.events = ProjectEvents(lambda pid: [Recording.model_validate(row).model_dump(mode='json') for row in recordings(pid)])
+        app.state.events = ProjectEvents(lambda pid: [Recording.model_validate(row).model_dump(mode='json') for row in recording_snapshot(pid)])
         app.state.store.on_commit = app.state.events.notify
         try:
             yield
@@ -54,19 +61,48 @@ def create_app(settings=None):
             await app.state.events.close()
 
     app = FastAPI(title='Argon Recordings', version='0.1.0', lifespan=lifespan)
+    app.add_middleware(AccountRequestBudget)
+
+    @app.exception_handler(HTTPException)
+    async def account_error(request, exc):
+        if request.url.path == '/api/auth/oidc/callback':
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse('/?auth_error=oidc', status_code=303)
+        return JSONResponse({'detail': exc.detail}, status_code=exc.status_code)
+
 
     @app.middleware('http')
     async def local_boundary(request, call_next):
-        # Foundation profile is loopback-only. Worker credentials do not authorize browser access.
+        manager = app.state.accounts
         host = request.url.hostname
-        if host not in {'localhost', '127.0.0.1', '::1', 'testserver'}:
-            return JSONResponse({'detail': 'Local profile requires a loopback host'}, status_code=403)
+        from urllib.parse import urlsplit
+        hosts = {'localhost', '127.0.0.1', '::1', 'testserver'}
+        if manager.public_url:
+            hosts.add(urlsplit(manager.public_url).hostname)
+        if host not in hosts:
+            return JSONResponse({'detail': 'Host is not allowed'}, status_code=403)
+        callback = request.method == 'GET' and request.url.path == '/api/auth/oidc/callback'
         origin = request.headers.get('origin')
-        if origin and origin != str(request.base_url).rstrip('/'):
+        allowed_origins = {str(request.base_url).rstrip('/')}
+        if manager.public_url:
+            allowed_origins.add(manager.public_url)
+        if origin and origin not in allowed_origins:
             return JSONResponse({'detail': 'Cross-origin access denied'}, status_code=403)
-        if request.headers.get('sec-fetch-site') == 'cross-site':
+        if request.headers.get('sec-fetch-site') == 'cross-site' and not callback:
             return JSONResponse({'detail': 'Cross-site access denied'}, status_code=403)
-        return await call_next(request)
+        public = {'/api/health', '/api/auth/session', '/api/auth/login', '/api/auth/accept-invitation',
+                  '/api/auth/reset-password', '/api/auth/oidc/start', '/api/auth/oidc/callback'}
+        path = request.url.path
+        if manager.enabled and path.startswith('/api/') and not path.startswith('/api/worker/') and path not in public:
+            try:
+                await asyncio.to_thread(manager.authorize, request)
+            except HTTPException as exc:
+                return JSONResponse({'detail': exc.detail}, status_code=exc.status_code)
+        response = await call_next(request)
+        if manager.enabled and path.startswith('/api/'):
+            response.headers['Cache-Control'] = 'no-store'
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     def store():
         return app.state.store
@@ -132,25 +168,34 @@ def create_app(settings=None):
 
     @app.get('/api/health')
     def health():
-        return {'status': 'ok', 'profile': 'local', 'model': 'large-v3-turbo', 'search': 'hybrid' if settings.embeddings.configured else 'keyword',
+        with store().db() as db:
+            needs_admin = app.state.accounts.enabled and not db.execute('SELECT 1 FROM users').fetchone()
+        return {'status': 'ok', 'profile': settings.auth_mode, 'model': 'large-v3-turbo', 'search': 'hybrid' if settings.embeddings.configured else 'keyword',
                 'embedding_profile': getattr(settings.embeddings, 'profile', None) if settings.embeddings.configured else 'off',
                 'worker_configured': bool(settings.worker_token), 'max_upload_bytes': settings.max_upload,
-                'max_duration_seconds': None}
+                'max_duration_seconds': None, 'accounts_setup_required': bool(needs_admin)}
 
     @app.get('/api/projects', response_model=list[Project])
-    def projects():
+    def projects(request: Request):
         with store().db() as db:
+            if app.state.accounts.enabled:
+                return [dict(r) for r in db.execute('SELECT p.*,m.role,count(r.id) AS recording_count FROM projects p JOIN memberships m ON m.project_id=p.id LEFT JOIN recordings r ON r.project_id=p.id WHERE m.user_id=? GROUP BY p.id ORDER BY p.created DESC', (request.state.account['id'],))]
             return [dict(r) for r in db.execute('SELECT p.*,count(r.id) AS recording_count FROM projects p LEFT JOIN recordings r ON r.project_id=p.id GROUP BY p.id ORDER BY p.created DESC')]
 
     @app.post('/api/projects', response_model=Project, status_code=201)
-    def create_project(body: ProjectCreate):
+    def create_project(body: ProjectCreate, request: Request):
         row = {'id': identity(), 'name': body.name.strip(), 'created': time.time()}
         with store().db() as db:
             db.execute('INSERT INTO projects(id,name,created) VALUES(:id,:name,:created)', row)
+            if app.state.accounts.enabled:
+                db.execute("INSERT INTO memberships VALUES(?,?,'owner')", (row['id'], request.state.account['id']))
         return dict(row, recording_count=0)
 
     @app.get('/api/projects/{pid}/recordings', response_model=list[Recording])
     def recordings(pid: str):
+        return recording_snapshot(pid)
+
+    def recording_snapshot(pid):
         project_or_404(pid)
         with store().db() as db:
             rows = db.execute('SELECT * FROM recordings WHERE project_id=? ORDER BY created DESC', (pid,)).fetchall()
@@ -159,9 +204,10 @@ def create_app(settings=None):
     @app.get('/api/projects/{pid}/events', response_class=StreamingResponse,
              responses={200: {'content': {'text/event-stream': {'schema': {'type': 'string'}}},
                               'description': 'SSE recordings snapshots; initial state and committed changes. Reconnect for current state.'}})
-    def project_events(pid: str):
+    def project_events(pid: str, request: Request):
         project_or_404(pid)
-        return StreamingResponse(app.state.events.stream(pid), media_type='text/event-stream',
+        guard = (lambda: app.state.accounts.allowed(request.cookies.get('recordings_session', ''), pid)) if app.state.accounts.enabled else None
+        return StreamingResponse(app.state.events.stream(pid, guard), media_type='text/event-stream',
                                  headers={'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no'})
 
     @app.post('/api/projects/{pid}/recordings', response_model=Recording, status_code=201)
@@ -350,6 +396,8 @@ def create_app(settings=None):
             db.execute("UPDATE jobs SET state='failed',stage='Failed' WHERE id=?", (jid,))
             db.execute("UPDATE recordings SET status='failed',error=? WHERE id=?", (body.message, job['recording_id']))
         return {'status': 'failed'}
+
+    install_accounts(app, lambda: app.state.accounts)
 
     static = os.environ.get('RECORDINGS_STATIC')
     if static:

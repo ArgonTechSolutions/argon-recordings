@@ -15,6 +15,7 @@ class Project(Strict):
     name: str
     created: float
     recording_count: int = 0
+    role: Literal['owner', 'editor', 'viewer'] = 'owner'
 
 
 class RecordingCreate(Strict):

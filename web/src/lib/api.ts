@@ -1,3 +1,4 @@
+import { accountHeaders } from "./account-session"
 import type { components } from "./schema"
 import { previewRequest } from "./preview"
 export type Project = components["schemas"]["Project"]
@@ -18,9 +19,15 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (preview) return previewRequest<T>(path, init)
   const response = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...accountHeaders(),
+      ...init?.headers,
+    },
   })
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith("/api/auth/login"))
+      window.dispatchEvent(new Event("recordings-access-changed"))
     const error = await response.json().catch(() => null)
     throw new Error(
       typeof error?.detail === "string"
@@ -41,6 +48,8 @@ export function uploadSource(
     const xhr = new XMLHttpRequest()
     xhr.open("PUT", `/api/recordings/${id}/source`)
     xhr.setRequestHeader("Content-Type", "application/octet-stream")
+    for (const [name, value] of Object.entries(accountHeaders()))
+      xhr.setRequestHeader(name, value)
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable)
         progress(Math.round((event.loaded / event.total) * 100))
