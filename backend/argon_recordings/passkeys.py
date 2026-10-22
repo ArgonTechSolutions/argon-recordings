@@ -1,4 +1,4 @@
-"""Administrator second factor. WebAuthn cryptography is verified by py_webauthn."""
+"""Administrator MFA: preferred WebAuthn passkeys and optional authenticator apps."""
 import json
 import secrets
 import sqlite3
@@ -15,6 +15,7 @@ from webauthn.helpers.structs import (AuthenticatorSelectionCriteria, PublicKeyC
 
 from .accounts import cookie, digest
 from .contracts import Strict
+from . import totp
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS passkeys(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),
@@ -24,11 +25,15 @@ CREATE TABLE IF NOT EXISTS mfa_challenges(session TEXT PRIMARY KEY,user_id TEXT 
  challenge BLOB NOT NULL,origin TEXT NOT NULL,rp TEXT NOT NULL,ticket TEXT,expires REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS mfa_enrollments(user_id TEXT PRIMARY KEY,digest TEXT NOT NULL,rp TEXT NOT NULL,expires REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS mfa_recovery(digest TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id));
-'''
+''' + totp.SCHEMA
 
 
 class Enrollment(Strict):
     code: str = Field(default='', max_length=200)
+
+
+class OTP(Strict):
+    code: str = Field(pattern=r'^[0-9]{6}$')
 
 
 class Credential(Strict):
@@ -51,11 +56,13 @@ def enrollment_ticket(manager, address, reset=False):
             raise ValueError('Active administrator not found')
         uid = row[0]
         if reset:
+            db.execute('DELETE FROM totp_factors WHERE user_id=?', (uid,))
+            db.execute('DELETE FROM totp_pending WHERE user_id=?', (uid,))
             db.execute('DELETE FROM passkeys WHERE user_id=?', (uid,))
             db.execute('DELETE FROM mfa_recovery WHERE user_id=?', (uid,))
             db.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
-        elif db.execute('SELECT 1 FROM passkeys WHERE user_id=? AND rp=?', (uid, rp)).fetchone():
-            raise ValueError('A passkey is already enrolled; sign in with it or use recover-admin-mfa')
+        elif db.execute('SELECT 1 FROM passkeys WHERE user_id=? AND rp=?', (uid, rp)).fetchone() or (manager.allow_totp and db.execute('SELECT 1 FROM totp_factors WHERE user_id=? AND rp=?', (uid, rp)).fetchone()):
+            raise ValueError('An MFA factor is already enrolled; sign in with it or use recover-admin-mfa')
         db.execute('DELETE FROM mfa_challenges WHERE user_id=?', (uid,))
         db.execute('INSERT OR REPLACE INTO mfa_enrollments VALUES(?,?,?,?)', (uid, digest(token), rp, time.time() + 600))
         manager.audit(db, uid, 'operator-mfa-recovery' if reset else 'operator-mfa-enrollment')
@@ -63,22 +70,27 @@ def enrollment_ticket(manager, address, reset=False):
 
 
 def install(app, get_accounts):
+    def manager_allowed_totp():
+        return get_accounts().allow_totp
+
     def context(request, fresh=False, passkey=False):
         manager = get_accounts()
+        if not manager.enabled:
+            raise HTTPException(404, 'Accounts are not enabled')
         user = request.state.account
         if not user['admin'] or request.headers.get('x-session-audience') != 'admin':
             raise HTTPException(403, 'An administrator session is required')
         if time.time() - user['created'] > 900 and not user['mfa_at']:
-            raise HTTPException(401, 'Sign in again before verifying your passkey')
+            raise HTTPException(401, 'Sign in again before verifying your second factor')
         if fresh and (not user['mfa_at'] or time.time() - user['mfa_at'] > 900):
-            raise HTTPException(401, 'Sign in and verify your passkey again')
+            raise HTTPException(401, 'Sign in and verify your second factor again')
         if passkey and user['mfa_method'] != 'passkey':
             raise HTTPException(403, 'Verify a passkey before replacing recovery codes')
         # Never derive the public RP from forwarded/client-controlled headers.
         origin = manager.public_url or str(request.base_url).rstrip('/')
         rp = urlsplit(origin).hostname
         if not manager.public_url and rp != 'localhost':
-            raise HTTPException(409, 'Use http://localhost through your SSH tunnel to enroll or verify passkeys')
+            raise HTTPException(409, 'Use http://localhost through your SSH tunnel to enroll or verify administrator MFA')
         return manager, user, digest(request.cookies.get(cookie('admin'), '')), origin, rp
 
     def keys(db, uid, rp):
@@ -105,10 +117,10 @@ def install(app, get_accounts):
         row = db.execute("SELECT s.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.digest=? "
                          "AND s.user_id=? AND s.audience='admin' AND s.expires>? AND u.admin=1 AND u.disabled=0",
                          (sid, uid, time.time())).fetchone()
-        if not row:
+        if not row or (row['mfa_method'] == 'totp' and not manager_allowed_totp()):
             raise HTTPException(401, 'Sign in again')
         if fresh and (not row['mfa_at'] or time.time() - row['mfa_at'] > 900):
-            raise HTTPException(401, 'Sign in and verify your passkey again')
+            raise HTTPException(401, 'Sign in and verify your second factor again')
         if passkey and row['mfa_method'] != 'passkey':
             raise HTTPException(403, 'Verify a passkey before changing security credentials')
         return row
@@ -135,6 +147,16 @@ def install(app, get_accounts):
         manager.audit(db, uid, 'mfa-recovery-codes-replaced')
         return codes
 
+    def credential_session(db, sid, uid):
+        row = active_session(db, sid, uid, fresh=True)
+        if row['mfa_method'] not in ({'passkey', 'totp'} if manager_allowed_totp() else {'passkey'}):
+            raise HTTPException(403, 'Verify a passkey or authenticator code before changing credentials')
+        return row
+
+    def enrolled_totp(manager, uid, rp):
+        with manager.store.db() as db:
+            return db.execute('SELECT 1 FROM totp_factors WHERE user_id=? AND rp=?', (uid, rp)).fetchone() is not None
+
     @app.get('/api/auth/mfa')
     def status(request: Request):
         manager, user, sid, origin, rp = context(request)
@@ -142,7 +164,8 @@ def install(app, get_accounts):
             rows = keys(db, user['id'], rp)
             remaining = db.execute('SELECT count(*) FROM mfa_recovery WHERE user_id=?', (user['id'],)).fetchone()[0]
         return {'verified': bool(user['mfa_at']), 'method': user['mfa_method'], 'rp': rp,
-                'keys': [{'id': row['id'], 'name': row['name']} for row in rows], 'recovery_remaining': remaining}
+                'keys': [{'id': row['id'], 'name': row['name']} for row in rows], 'recovery_remaining': remaining, 'totp_allowed': manager.allow_totp,
+                'totp_enrolled': bool(manager.allow_totp and enrolled_totp(manager, user['id'], rp))}
 
     @app.post('/api/auth/mfa/register/options')
     def registration_options(body: Enrollment, request: Request):
@@ -154,7 +177,7 @@ def install(app, get_accounts):
             if len(rows) >= 8:
                 raise HTTPException(409, 'Keep at most eight passkeys per hostname')
             ticket = None
-            if rows:
+            if rows or (manager.allow_totp and db.execute('SELECT 1 FROM totp_factors WHERE user_id=? AND rp=?', (user['id'], rp)).fetchone()):
                 active_session(db, sid, user['id'], fresh=True)
             else:
                 entry = db.execute('SELECT * FROM mfa_enrollments WHERE user_id=? AND digest=? AND rp=? AND expires>?',
@@ -247,8 +270,9 @@ def install(app, get_accounts):
         manager.limit('mfa-recovery:' + user['id'], maximum=8, seconds=900)
         with manager.store.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            # Recovery codes only restore access at a hostname with an enrolled key.
-            if not keys(db, user['id'], rp) or db.execute('DELETE FROM mfa_recovery WHERE digest=? AND user_id=?',
+            # Recovery only restores access at a hostname with an enabled enrolled factor.
+            has_factor = bool(keys(db, user['id'], rp) or (manager.allow_totp and db.execute('SELECT 1 FROM totp_factors WHERE user_id=? AND rp=?', (user['id'], rp)).fetchone()))
+            if not has_factor or db.execute('DELETE FROM mfa_recovery WHERE digest=? AND user_id=?',
                 (digest(body.code.strip()), user['id'])).rowcount != 1:
                 raise HTTPException(400, 'Recovery code is invalid or already used')
             db.execute('DELETE FROM mfa_challenges WHERE session=?', (sid,))
@@ -257,10 +281,10 @@ def install(app, get_accounts):
 
     @app.post('/api/auth/mfa/recovery-codes')
     def replace_codes(request: Request):
-        manager, user, sid, origin, rp = context(request, fresh=True, passkey=True)
+        manager, user, sid, origin, rp = context(request, fresh=True)
         with manager.store.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            active_session(db, sid, user['id'], fresh=True, passkey=True)
+            credential_session(db, sid, user['id'])
             codes = recovery_codes(manager, db, user['id'])
         return {'codes': codes}
 
@@ -278,4 +302,108 @@ def install(app, get_accounts):
             db.execute("DELETE FROM sessions WHERE user_id=? AND audience='admin' AND digest!=?", (user['id'], sid))
             db.execute('DELETE FROM mfa_challenges WHERE user_id=?', (user['id'],))
             manager.audit(db, user['id'], 'passkey-removed', rp)
+        return {'ok': True}
+
+
+    def totp_context(request):
+        result = context(request)
+        if not result[0].allow_totp:
+            raise HTTPException(404, 'Authenticator apps are not enabled for this installation')
+        return result
+
+    @app.post('/api/auth/mfa/totp/setup')
+    def totp_setup(body: Enrollment, request: Request):
+        import pyotp
+        import segno
+        manager, user, sid, origin, rp = totp_context(request)
+        manager.limit('totp-setup:' + user['id'], maximum=8)
+        with manager.store.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            active_session(db, sid, user['id'])
+            if db.execute('SELECT 1 FROM totp_factors WHERE user_id=? AND rp=?', (user['id'], rp)).fetchone():
+                raise HTTPException(409, 'An authenticator app is already enrolled')
+            ticket = None
+            if keys(db, user['id'], rp):
+                active_session(db, sid, user['id'], fresh=True)
+            else:
+                entry = db.execute('SELECT digest FROM mfa_enrollments WHERE user_id=? AND digest=? AND rp=? AND expires>?',
+                                   (user['id'], digest(body.code), rp, time.time())).fetchone()
+                if not entry:
+                    raise HTTPException(403, 'Request a one-time enrollment code from the host operator')
+                ticket = entry[0]
+            db.execute('DELETE FROM totp_pending WHERE expires<?', (time.time(),))
+            secret = pyotp.random_base32()
+            encrypted = totp.encrypt(manager, db, user['id'], rp, secret)
+            db.execute('INSERT OR REPLACE INTO totp_pending VALUES(?,?,?,?,?,?,?)',
+                       (sid, user['id'], rp, origin, encrypted, ticket, time.time() + 600))
+        uri = pyotp.TOTP(secret).provisioning_uri(name=user['email'] + ' (' + rp + ')', issuer_name='Argon Recordings')
+        # Generate locally: never send an otpauth URI to an external QR service.
+        return {'secret': secret, 'qr': segno.make(uri, micro=False).png_data_uri(scale=4), 'expires_in': 600}
+
+    @app.post('/api/auth/mfa/totp/confirm')
+    def totp_confirm(body: OTP, request: Request):
+        manager, user, sid, origin, rp = totp_context(request)
+        manager.limit('totp-verify:' + user['id'], maximum=8)
+        with manager.store.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            live = active_session(db, sid, user['id'])
+            entry = db.execute('SELECT * FROM totp_pending WHERE session=? AND user_id=? AND rp=? AND origin=? AND expires>?',
+                               (sid, user['id'], rp, origin, time.time())).fetchone()
+            if not entry:
+                raise HTTPException(400, 'Authenticator setup expired; start again')
+            if entry['ticket']:
+                if db.execute('DELETE FROM mfa_enrollments WHERE user_id=? AND digest=? AND rp=? AND expires>?',
+                              (user['id'], entry['ticket'], rp, time.time())).rowcount != 1:
+                    raise HTTPException(400, 'Enrollment code expired or was already used')
+            else:
+                active_session(db, sid, user['id'], fresh=True)
+            secret = totp.decrypt(manager, db, user['id'], rp, entry['secret'])
+            counter = totp.matching_counter(secret, body.code)
+            if db.execute('SELECT 1 FROM totp_factors WHERE user_id=? AND rp=?', (user['id'], rp)).fetchone():
+                raise HTTPException(409, 'An authenticator app is already enrolled')
+            db.execute('INSERT INTO totp_factors VALUES(?,?,?,?,?)', (user['id'], rp, entry['secret'], counter, time.time()))
+            db.execute('DELETE FROM totp_pending WHERE user_id=?', (user['id'],))
+            db.execute('DELETE FROM mfa_challenges WHERE user_id=?', (user['id'],))
+            token = elevate(manager, db, sid, user['id'], 'totp')
+            db.execute("DELETE FROM sessions WHERE user_id=? AND audience='admin' AND digest!=?", (user['id'], digest(token)))
+            codes = recovery_codes(manager, db, user['id']) if entry['ticket'] or live['mfa_method'] == 'recovery' else None
+            manager.audit(db, user['id'], 'totp-enrolled', rp)
+        return response(manager, token, recovery_codes=codes)
+
+    @app.post('/api/auth/mfa/totp/verify')
+    def totp_verify(body: OTP, request: Request):
+        manager, user, sid, origin, rp = totp_context(request)
+        manager.limit('totp-verify:' + user['id'], maximum=8)
+        with manager.store.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            active_session(db, sid, user['id'])
+            entry = db.execute('SELECT * FROM totp_factors WHERE user_id=? AND rp=?', (user['id'], rp)).fetchone()
+            if not entry:
+                raise HTTPException(400, 'No authenticator app is enrolled for this hostname')
+            counter = totp.matching_counter(totp.decrypt(manager, db, user['id'], rp, entry['secret']), body.code, entry['last_counter'])
+            db.execute('UPDATE totp_factors SET last_counter=? WHERE user_id=? AND rp=?', (counter, user['id'], rp))
+            token = elevate(manager, db, sid, user['id'], 'totp')
+        return response(manager, token)
+
+    @app.delete('/api/auth/mfa/totp')
+    def totp_remove(request: Request):
+        manager, user, sid, origin, rp = totp_context(request)
+        with manager.store.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            credential_session(db, sid, user['id'])
+            if not keys(db, user['id'], rp):
+                raise HTTPException(409, 'Add a passkey before removing your authenticator app')
+            if db.execute('DELETE FROM totp_factors WHERE user_id=? AND rp=?', (user['id'], rp)).rowcount != 1:
+                raise HTTPException(404, 'Authenticator app not found')
+            db.execute('DELETE FROM totp_pending WHERE user_id=?', (user['id'],))
+            db.execute('DELETE FROM mfa_challenges WHERE user_id=?', (user['id'],))
+            db.execute("DELETE FROM sessions WHERE user_id=? AND audience='admin'", (user['id'],))
+            manager.audit(db, user['id'], 'totp-removed', rp)
+        return {'ok': True}
+
+    @app.delete('/api/auth/mfa/totp/setup')
+    def totp_cancel(request: Request):
+        manager, user, sid, origin, rp = totp_context(request)
+        with manager.store.db() as db:
+            db.execute('DELETE FROM totp_pending WHERE session=? AND user_id=?', (sid, user['id']))
         return {'ok': True}

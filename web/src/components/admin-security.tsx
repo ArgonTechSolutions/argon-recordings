@@ -4,6 +4,7 @@ import { request } from "@/lib/api"
 import { setSessionTransport, type AccountSession } from "@/lib/account-session"
 import { performPasskey } from "@/lib/passkeys"
 import { Button } from "@/components/ui/button"
+import { AuthenticatorApp } from "./authenticator-app"
 import { Input } from "@/components/ui/input"
 
 type Status = {
@@ -11,6 +12,8 @@ type Status = {
   method: string | null
   rp: string
   keys: { id: string; name: string }[]
+  totp_allowed: boolean
+  totp_enrolled: boolean
   recovery_remaining: number
 }
 const message = (error: unknown) =>
@@ -32,6 +35,9 @@ export function AdminSecurity({
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [codes, setCodes] = useState<string[] | null>(null)
+  const [authenticator, setAuthenticator] = useState<"setup" | "verify" | null>(
+    null
+  )
   const [recovery, setRecovery] = useState(false)
   const status = useQuery({
     queryKey: ["admin-mfa"],
@@ -53,15 +59,8 @@ export function AdminSecurity({
       setBusy(false)
     }
   }
-  async function passkey(register: boolean, form?: FormData) {
-    if (register) onEnrollment?.()
-    const result = await performPasskey(
-      register,
-      String(form?.get("code") ?? ""),
-      String(form?.get("name") ?? "Passkey")
-    )
+  async function completed(result: { recovery_codes?: string[] }) {
     if (result.recovery_codes) setCodes(result.recovery_codes)
-    // Refresh CSRF after session rotation, before another request can be made.
     const session = await request<AccountSession>(
       "/api/auth/session?audience=admin"
     )
@@ -69,6 +68,16 @@ export function AdminSecurity({
     await status.refetch()
     if (!result.recovery_codes) await onVerified?.()
   }
+  async function passkey(register: boolean, form?: FormData) {
+    if (register) onEnrollment?.()
+    const result = await performPasskey(
+      register,
+      String(form?.get("code") ?? ""),
+      String(form?.get("name") ?? "Passkey")
+    )
+    await completed(result)
+  }
+
   if (status.isPending) return <p>Loading security settings…</p>
   if (status.isError)
     return (
@@ -102,12 +111,41 @@ export function AdminSecurity({
       </section>
     )
   const enrolled = value.keys.length > 0
+  const hasFactor = enrolled || value.totp_enrolled
+  if (authenticator)
+    return (
+      <section className={locked ? "account-form" : "admin-card"}>
+        <AuthenticatorApp
+          setup={authenticator === "setup"}
+          needsEnrollmentCode={!hasFactor}
+          onEnrollment={onEnrollment}
+          onComplete={async (result) => {
+            setAuthenticator(null)
+            await completed(result)
+          }}
+          onCancel={() => setAuthenticator(null)}
+        />
+        {locked && (
+          <Button
+            variant="ghost"
+            onClick={() =>
+              act(async () => {
+                await request("/api/auth/logout", { method: "POST" })
+                location.reload()
+              })
+            }
+          >
+            Sign out
+          </Button>
+        )}
+      </section>
+    )
   return (
     <section className={locked ? "account-form" : "admin-card"}>
       <h2>
         {locked
-          ? enrolled
-            ? "Verify your passkey"
+          ? hasFactor
+            ? "Verify your identity"
             : "Set up administrator security"
           : "Administrator security"}
       </h2>
@@ -116,7 +154,7 @@ export function AdminSecurity({
           Continue with passkey
         </Button>
       )}
-      {(!locked || !enrolled) && (
+      {(!locked || !hasFactor) && (
         <form
           className="account-form"
           onSubmit={(event) => {
@@ -125,7 +163,7 @@ export function AdminSecurity({
             void act(() => passkey(true, form))
           }}
         >
-          {!enrolled && (
+          {!hasFactor && (
             <>
               <p>
                 Ask the host operator to run{" "}
@@ -158,7 +196,48 @@ export function AdminSecurity({
           </Button>
         </form>
       )}
-      {locked && enrolled && (
+      {value.totp_allowed &&
+        (!value.totp_enrolled || locked) &&
+        (!locked || value.totp_enrolled || !hasFactor) && (
+          <Button
+            variant={locked && !enrolled ? "default" : "outline"}
+            disabled={busy}
+            onClick={() =>
+              setAuthenticator(
+                value.totp_enrolled && locked ? "verify" : "setup"
+              )
+            }
+          >
+            {value.totp_enrolled && locked
+              ? "Use authenticator code"
+              : !value.totp_enrolled
+                ? "Set up authenticator app"
+                : ""}
+          </Button>
+        )}
+      {!locked && value.totp_enrolled && (
+        <div className="admin-row">
+          <span>Authenticator app enabled</span>
+          <Button
+            variant="outline"
+            disabled={busy || !enrolled}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Remove your authenticator app? You will need to sign in again."
+                )
+              )
+                void act(async () => {
+                  await request("/api/auth/mfa/totp", { method: "DELETE" })
+                  location.reload()
+                })
+            }}
+          >
+            Remove authenticator app
+          </Button>
+        </div>
+      )}
+      {locked && hasFactor && (
         <>
           <Button
             variant="ghost"
@@ -226,7 +305,8 @@ export function AdminSecurity({
             </div>
           ))}
           <p>{value.recovery_remaining} recovery codes remaining.</p>
-          {value.method === "passkey" && (
+          {(value.method === "passkey" ||
+            (value.method === "totp" && value.totp_allowed)) && (
             <Button
               variant="outline"
               disabled={busy}

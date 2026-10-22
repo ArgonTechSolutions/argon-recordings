@@ -6,3 +6,6 @@ httpx==0.28.1
 argon2-cffi==25.1.0
 Authlib==1.9.1
 webauthn==3.0.1
+pyotp==2.10.0
+segno==1.6.6
+cryptography==50.0.2

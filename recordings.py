@@ -22,7 +22,7 @@ def load_config(path):
     path = path.resolve()
     data = tomllib.loads(path.read_text())
     allowed = {'app': {'port', 'name', 'max_upload_mb'}, 'models': {'transcription', 'embedding', 'turbo_path'},
-               'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}, 'auth': {'mode', 'public_url'}}
+               'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}, 'auth': {'mode', 'public_url', 'allow_totp'}}
     for section, fields in data.items():
         if section not in allowed or not isinstance(fields, dict) or set(fields) - allowed[section]:
             raise ValueError(f'Unknown configuration key in {section}')
@@ -55,6 +55,9 @@ def load_config(path):
     from urllib.parse import urlsplit
     if auth_mode not in {'local', 'accounts'} or not isinstance(public_url, str):
         raise ValueError('auth.mode must be local or accounts')
+    allow_totp = auth.get('allow_totp', False)
+    if type(allow_totp) is not bool or (allow_totp and auth_mode != 'accounts'):
+        raise ValueError('auth.allow_totp must be a boolean and requires account mode')
     if public_url:
         url = urlsplit(public_url)
         if auth_mode != 'accounts' or url.scheme != 'https' or not url.netloc or url.username or url.password or url.path not in {'', '/'} or url.query or url.fragment:
@@ -63,7 +66,7 @@ def load_config(path):
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(allow_totp=allow_totp, auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
@@ -167,7 +170,7 @@ def start_args(config, installed):
             '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
             '-p', f"127.0.0.1:{config['port']}:8000", '-v', volume + '-data:/data', '-v', volume + '-work:/work',
             '-v', str(config['turbo']) + ':/models/turbo:ro', '-e', 'RECORDINGS_JOB_TIMEOUT_SECONDS=' + str(config['timeout']), '-e', 'RECORDINGS_MAX_UPLOAD_MB=' + str(config['max_upload_mb'])]
-    args += ['-e', 'RECORDINGS_AUTH_MODE=' + config['auth_mode'], '-e', 'RECORDINGS_PUBLIC_URL=' + config['public_url']]
+    args += ['-e', 'RECORDINGS_ALLOW_TOTP=' + str(config['allow_totp']).lower(), '-e', 'RECORDINGS_AUTH_MODE=' + config['auth_mode'], '-e', 'RECORDINGS_PUBLIC_URL=' + config['public_url']]
     if config['embedding'] != 'off':
         args += ['-v', str(config['home'] / 'models' / ('e5-' + config['embedding'])) + ':/models/embeddings:ro',
                  '-e', 'RECORDINGS_EMBEDDING_DIR=/models/embeddings', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]

@@ -37,9 +37,9 @@ If an administrator loses access, the host operator can run `python3 recordings.
 
 ## Administrator passkeys and recovery
 
-Administration now requires a passkey second factor after local-password or OIDC sign-in. Password-only admin sessions cannot read or change `/api/admin/*`. WebAuthn requires authenticator user verification (PIN/biometric), an exact RP/origin and a short-lived server challenge. The app does not retain biometric data or authenticator private keys. App sign-in for recording access is unchanged.
+Administration requires a second factor after local-password or OIDC sign-in. Passkeys remain preferred; an optional installation policy can also allow Google Authenticator-compatible TOTP codes. Password-only admin sessions cannot read or change `/api/admin/*`. WebAuthn requires authenticator user verification (PIN/biometric), an exact RP/origin and a short-lived server challenge. The app does not retain biometric data or authenticator private keys. App sign-in for recording access is unchanged.
 
-After updating, existing administrators must enroll before using the admin panel. Existing app sessions, accounts, recordings and model directories remain intact; schema 2 adds MFA tables and session proof fields. Old admin sessions have no proof. Back up the consistent data volume before updating; rollback needs matching source/database versions.
+After updating, existing administrators must enroll before using the admin panel. Existing app sessions, accounts, recordings and model directories remain intact; schema 2 adds passkey tables/session proof fields and schema 3 adds encrypted authenticator-app factors and pending enrollments. Old admin sessions have no proof. Back up the consistent data volume before updating; rollback needs matching source/database versions.
 
 In the host terminal, run:
 
@@ -57,9 +57,43 @@ Successful verification rotates the admin cookie and gives a one-hour admin sess
 python3 recordings.py recover-admin-mfa
 ```
 
-This asks for the administrator email and an explicit `RESET` confirmation, removes that administrator's keys/recovery codes, revokes all their sessions, and issues a new short-lived enrollment code. It does not alter recordings, models or memberships. No browser administrator can reset another administrator's MFA. The host operator retains the explicit recovery authority.
+This asks for the administrator email and an explicit `RESET` confirmation, removes that administrator's passkeys, authenticator apps, pending enrollments and recovery codes, revokes all their sessions, and issues a new short-lived enrollment code. It does not alter recordings, models or memberships. No browser administrator can reset another administrator's MFA. The host operator retains the explicit recovery authority.
 
 For SSH-tunnel testing browse `http://localhost:8787`, not a remote IP or `127.0.0.1`. Public operation requires the final HTTPS `auth.public_url` before enrollment. Localhost and public-hostname passkeys are different; changing the hostname requires a new operator-authorized enrollment for that hostname. OIDC remains subject to the same admin second factor, regardless of upstream MFA claims. See the [Forculus/Tailscale draft](PUBLIC-ACCESS-DRAFT.md) before planning public exposure.
+
+## Optional Google Authenticator support
+
+TOTP is an administrator second-factor alternative, compatible with Google Authenticator and other RFC 6238 apps. It is disabled by default and requires no Google account, SMTP or external authentication service. Passkeys stay the preferred sign-in button when enrolled; TOTP codes are phishable and enabling this policy permits that lower-assurance alternative.
+
+To enable it, update through the normal launcher after a consistent data backup, then edit the existing `[auth]` section in `recordings.toml`:
+
+```toml
+[auth]
+mode = "accounts"
+allow_totp = true
+# Keep your existing public_url, if configured.
+```
+
+Restart to apply the policy:
+
+```bash
+python3 recordings.py stop
+python3 recordings.py start
+```
+
+Use `sudo -v` first on installations with `docker.sudo=true`. No model downloads, additional services or manually managed encryption environment variables are required.
+
+An administrator with recent passkey verification opens **Passkeys and recovery → Set up authenticator app**. Scan the locally generated QR code with Google Authenticator, or copy the manual setup key, then confirm a six-digit code. Pending setup expires after ten minutes and grants no administrative access until confirmation. The setup key/QR is displayed only for that enrollment and retained only in component memory. Cancel/navigation/confirmation clear that UI state. Do not share screenshots of enrollment or recovery codes.
+
+An administrator with no factor can choose **Set up authenticator app** at the verification screen instead. The host operator must first run `python3 recordings.py setup-admin-mfa` and privately supply that administrator's ten-minute enrollment code. First enrollment needs both this code and the signed-in administrator session. Existing password/OIDC sign-in alone cannot enroll a factor. The same enrollment ticket cannot complete both TOTP and passkey enrollment.
+
+On later sign-ins choose **Use authenticator code**. Codes have six digits and a 30-second step; the server permits one adjacent step in either direction for clock skew. Successful codes, including the enrollment confirmation code, cannot be reused. If a code was just used, wait for the next one. Keep Philemon's system clock synchronized. Verification attempts are rate-limited per administrator and successful verification rotates the admin cookie.
+
+TOTP-verified sessions may administer the instance, add a passkey and replace recovery codes. Recovery-code sessions cannot remove factors or replace recovery codes until an actual authenticator is verified. Removing a passkey still requires passkey verification and retains the last passkey. Removing an authenticator app requires a recent passkey/TOTP verification and at least one passkey at that hostname; removal revokes all admin sessions for that account. First TOTP enrollment and replacement following recovery rotate recovery codes and revoke other admin sessions. Password reset does not disable MFA; `recover-admin-mfa` remains the explicit terminal recovery path for loss of all factors.
+
+Set `allow_totp=false` and restart to disable this alternative. TOTP-verified sessions are deleted, not merely hidden until re-enablement. The encrypted enrollment is retained so enabling the policy later does not require rescanning, but a fresh sign-in is required. Have a passkey or terminal recovery path available before disabling TOTP on a TOTP-only account. This toggle does not alter recording/model files or app sessions.
+
+TOTP requires a recoverable shared secret, unlike passkeys. SQLite stores authenticated encrypted ciphertext bound to account and hostname. The app automatically creates `/data/auth/totp.key` with mode `0600` on first authorized setup and retains it across restarts. Back up the entire existing data volume, including that key and the matching SQLite database; keep backups private. A missing, corrupt, mismatched or insecurely permissioned key fails closed for TOTP and is not silently regenerated while encrypted factors exist. Restore the matching key/database or use operator MFA recovery. Encryption protects a database-only leak; it does not protect against an attacker controlling the host or the entire data volume. The existing public worker-isolation release gate still applies.
 
 ## OIDC setup
 

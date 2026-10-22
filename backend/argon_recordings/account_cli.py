@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
     if os.environ.get('RECORDINGS_AUTH_MODE') != 'accounts':
         parser.exit(1, 'Enable auth.mode=accounts and restart before account setup.\n')
-    manager = Accounts(Store(Path(os.environ.get('RECORDINGS_DATA', '/data')), recover_uploads=False), 'accounts', os.environ.get('RECORDINGS_PUBLIC_URL', ''))
+    manager = Accounts(Store(Path(os.environ.get('RECORDINGS_DATA', '/data')), recover_uploads=False), 'accounts', os.environ.get('RECORDINGS_PUBLIC_URL', ''), os.environ.get('RECORDINGS_ALLOW_TOTP', 'false') == 'true')
     try:
         if args.command == 'setup-oidc':
             if not manager.public_url:
@@ -47,10 +47,10 @@ def main():
         if args.command in {'setup-admin-mfa', 'recover-admin-mfa'}:
             from .passkeys import enrollment_ticket
             reset = args.command == 'recover-admin-mfa'
-            if reset and input('Remove administrator passkeys and recovery codes? Type RESET: ') != 'RESET':
+            if reset and input('Remove administrator passkeys, authenticator apps and recovery codes? Type RESET: ') != 'RESET':
                 raise ValueError('Recovery cancelled')
             ticket = enrollment_ticket(manager, address, reset=reset)
-            print('One-time passkey enrollment code (expires in 10 minutes):', ticket)
+            print('One-time MFA enrollment code (expires in 10 minutes):', ticket)
             print('Enter this privately at /admin/. Do not share it in chat or logs.')
             return
         name = input('Display name: ').strip() if args.command == 'setup-admin' else None

@@ -18,3 +18,5 @@
 .account-screen > section { width: min(420px, calc(100vw - 48px)); }
 
 .admin-security-toggle { cursor: pointer; padding: 12px 0; }
+
+.authenticator-qr { display: block; width: min(260px, 100%); height: auto; }

@@ -118,3 +118,13 @@ def test_accounts_are_configured_without_credentials_in_environment(tmp_path):
 def test_invalid_auth_configuration_fails_closed(tmp_path, extra):
     with pytest.raises(ValueError):
         config(tmp_path,'[auth]\n'+extra+'\n')
+
+
+def test_totp_option_is_opt_in_and_passed_to_container(tmp_path):
+    default = config(tmp_path)
+    assert default['allow_totp'] is False
+    configured = config(tmp_path, '[auth]\nmode="accounts"\nallow_totp=true\n')
+    assert 'RECORDINGS_ALLOW_TOTP=true' in installer.start_args(configured, {'image': 'synthetic'})
+    for extra in ['[auth]\nallow_totp=true\n', '[auth]\nmode="accounts"\nallow_totp="true"\n']:
+        with pytest.raises(ValueError, match='allow_totp'):
+            config(tmp_path, extra)

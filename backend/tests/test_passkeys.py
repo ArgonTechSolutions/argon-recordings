@@ -123,7 +123,7 @@ def test_old_account_schema_upgrades_without_authorizing_old_admin(tmp_path):
     assert upgraded.session(app_token)['id'] == uid
     assert upgraded.session(admin_token, 'admin')['mfa_at'] is None
     with store.db() as db:
-        assert db.execute("SELECT value FROM account_settings WHERE key='schema'").fetchone()[0] == '2'
+        assert db.execute("SELECT value FROM account_settings WHERE key='schema'").fetchone()[0] == '3'
 
 
 def add_key(client):

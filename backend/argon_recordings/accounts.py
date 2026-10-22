@@ -52,7 +52,7 @@ def csrf(token):
 
 
 class Accounts:
-    def __init__(self, store, mode='local', public_url=''):
+    def __init__(self, store, mode='local', public_url='', allow_totp=False):
         if mode not in {'local', 'accounts'}:
             raise ValueError('auth.mode must be local or accounts')
         self.store, self.enabled = store, mode == 'accounts'
@@ -63,13 +63,14 @@ class Accounts:
                 raise ValueError('auth.public_url must be an HTTPS origin without a path')
             if not self.enabled:
                 raise ValueError('Public origin requires account mode')
+        self.allow_totp = allow_totp
         self.secure = bool(self.public_url)
         self.hashes = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
         self.password_slot = threading.BoundedSemaphore(1)
         with store.db() as db:
             db.executescript(SCHEMA)
             version = db.execute("SELECT value FROM account_settings WHERE key='schema'").fetchone()
-            if version and version[0] not in {'1', '2'}:
+            if version and version[0] not in {'1', '2', '3'}:
                 raise ValueError('Unsupported account schema version')
             # Additive migration preserves projects, models and app sessions. Old admin sessions
             # receive no second-factor proof and cannot authorize administrative routes.
@@ -80,11 +81,13 @@ class Accounts:
                 db.execute('ALTER TABLE sessions ADD COLUMN mfa_method TEXT')
             from .passkeys import SCHEMA as PASSKEY_SCHEMA
             db.executescript(PASSKEY_SCHEMA)
-            db.execute("INSERT OR REPLACE INTO account_settings VALUES('schema','2')")
+            db.execute("INSERT OR REPLACE INTO account_settings VALUES('schema','3')")
             active = db.execute("SELECT value FROM account_settings WHERE key='enabled'").fetchone()
             if active and active[0] == 'true' and not self.enabled:
                 raise ValueError('Accounts have been activated; anonymous fallback is disabled')
             db.execute("INSERT OR IGNORE INTO account_settings VALUES('registration','invite')")
+            if not self.allow_totp:
+                db.execute("DELETE FROM sessions WHERE mfa_method='totp'")
         self.dummy = self.hashes.hash(secrets.token_urlsafe(32)) if self.enabled else ''
 
     def audit(self, db, actor, action, target=None):
@@ -132,6 +135,9 @@ class Accounts:
         with self.store.db() as db:
             row = db.execute('SELECT u.id,u.email,u.name,u.admin,s.created,s.expires,s.mfa_at,s.mfa_method FROM sessions s JOIN users u ON u.id=s.user_id '
                              'WHERE s.digest=? AND s.audience=? AND s.expires>? AND u.disabled=0', (digest(token), audience, time.time())).fetchone()
+            if row and row['mfa_method'] == 'totp' and not self.allow_totp:
+                db.execute('DELETE FROM sessions WHERE digest=?', (digest(token),))
+                return None
             return dict(row) if row else None
 
     def new_session(self, uid, audience):

@@ -26,7 +26,11 @@ from .store import Store, identity, lease_row
 
 
 class Settings:
-    def __init__(self, data=None, worker_token=None, max_upload=None, reserve=1024**3, embeddings=None, auth_mode=None, public_url=None):
+    def __init__(self, data=None, worker_token=None, max_upload=None, reserve=1024**3, embeddings=None, auth_mode=None, public_url=None, allow_totp=None):
+        value = os.environ.get('RECORDINGS_ALLOW_TOTP', 'false') if allow_totp is None else allow_totp
+        if type(value) is not bool and (not isinstance(value, str) or value not in {'true', 'false'}):
+            raise ValueError('RECORDINGS_ALLOW_TOTP must be true or false')
+        self.allow_totp = value is True or value == 'true'
         self.auth_mode = auth_mode or os.environ.get("RECORDINGS_AUTH_MODE", "local")
         self.public_url = public_url if public_url is not None else os.environ.get("RECORDINGS_PUBLIC_URL", "")
         self.embeddings = embeddings or Embeddings(os.environ.get('RECORDINGS_EMBEDDING_DIR'), os.environ.get('RECORDINGS_EMBEDDING_PROFILE', 'large'))
@@ -48,7 +52,7 @@ def create_app(settings=None):
     @asynccontextmanager
     async def lifespan(app):
         app.state.store = Store(settings.data)
-        app.state.accounts = Accounts(app.state.store, settings.auth_mode, settings.public_url)
+        app.state.accounts = Accounts(app.state.store, settings.auth_mode, settings.public_url, settings.allow_totp)
         if app.state.accounts.enabled:
             app.state.accounts.oidc_config()
         app.state.upload_lock = asyncio.Lock()
