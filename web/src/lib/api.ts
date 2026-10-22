@@ -15,6 +15,14 @@ export const preview = new URLSearchParams(window.location.search).has(
   "preview"
 )
 
+export class ApiError extends Error {
+  readonly code?: string
+  constructor(message: string, code?: string) {
+    super(message)
+    this.code = code
+  }
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (preview) return previewRequest<T>(path, init)
   const response = await fetch(path, {
@@ -29,10 +37,13 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (response.status === 401 && !path.startsWith("/api/auth/login"))
       window.dispatchEvent(new Event("recordings-access-changed"))
     const error = await response.json().catch(() => null)
-    throw new Error(
+    throw new ApiError(
       typeof error?.detail === "string"
         ? error.detail
-        : `Request failed (${response.status})`
+        : typeof error?.detail?.message === "string"
+          ? error.detail.message
+          : `Request failed (${response.status})`,
+      typeof error?.detail?.code === "string" ? error.detail.code : undefined
     )
   }
   return response.json()

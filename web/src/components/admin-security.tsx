@@ -119,6 +119,7 @@ export function AdminSecurity({
           setup={authenticator === "setup"}
           needsEnrollmentCode={!hasFactor}
           onEnrollment={onEnrollment}
+          onReverify={enrolled ? () => passkey(false) : undefined}
           onComplete={async (result) => {
             setAuthenticator(null)
             await completed(result)

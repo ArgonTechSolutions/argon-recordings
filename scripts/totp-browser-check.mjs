@@ -61,8 +61,29 @@ try {
  await page.getByRole('button',{name:'Use authenticator code',exact:true}).waitFor()
  await page.getByRole('button',{name:'Continue with passkey',exact:true}).click()
  await page.getByLabel('Invitation email').waitFor()
+ // Regression: stale MFA must retain setup and offer re-verification, not reset the page.
+ await page.getByText('Passkeys and recovery',{exact:true}).click()
+ page.once('dialog',dialog=>dialog.accept())
+ await page.getByRole('button',{name:'Remove authenticator app',exact:true}).click()
+ await signIn()
+ await page.getByRole('button',{name:'Continue with passkey',exact:true}).click()
+ await page.getByLabel('Invitation email').waitFor()
+ await page.getByText('Passkeys and recovery',{exact:true}).click()
+ execFileSync('python',['-c',`import time
+from pathlib import Path
+from argon_recordings.store import Store
+with Store(Path(${JSON.stringify(data)}),recover_uploads=False).db() as db:
+ db.execute("UPDATE sessions SET mfa_at=? WHERE audience='admin'",(time.time()-901,))`],{env})
+ await page.getByRole('button',{name:'Set up authenticator app',exact:true}).click()
+ await page.getByRole('button',{name:'Show QR code',exact:true}).click()
+ await page.getByRole('alert').filter({hasText:'Verify your identity again'}).waitFor({timeout:5000})
+ await page.getByRole('heading',{name:'Set up authenticator app',exact:true}).waitFor()
+ await page.getByRole('button',{name:'Verify passkey again',exact:true}).click()
+ await page.getByRole('button',{name:'Show QR code',exact:true}).click()
+ await page.getByAltText('Scan to add Argon Recordings to your authenticator app').waitFor()
+ await page.getByRole('button',{name:'Cancel',exact:true}).click()
  assert.deepEqual(errors,[])
- console.log(JSON.stringify({checks:['opt-in TOTP-first QR enrollment','manual setup key','mobile setup geometry','confirmation and recovery acknowledgment','TOTP login','last-factor protection','add preferred passkey from TOTP session','passkey and authenticator alternatives','actual WebAuthn verification'],console_errors:errors},null,2))
+ console.log(JSON.stringify({checks:['stale MFA retains QR setup and re-verifies without reset','opt-in TOTP-first QR enrollment','manual setup key','mobile setup geometry','confirmation and recovery acknowledgment','TOTP login','last-factor protection','add preferred passkey from TOTP session','passkey and authenticator alternatives','actual WebAuthn verification'],console_errors:errors},null,2))
 } finally {
  if(browser)await browser.close()
  server.kill('SIGTERM');await new Promise(resolve=>{if(server.exitCode!==null)resolve();else server.once('exit',resolve)});log.end()

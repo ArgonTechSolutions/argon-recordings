@@ -159,3 +159,24 @@ def test_revocation_cannot_race_totp_writes(team, monkeypatch, operation):
     body = {} if operation == 'setup' else {'code': pyotp.TOTP(setup['secret']).now()}
     result = client.request('DELETE' if operation == 'remove' else 'POST', path, json=body, headers=h)
     assert result.status_code == 401, result.text
+
+
+def test_stale_mfa_requires_reverification_without_revoking_live_session(team):
+    app, client, manager, uid = team
+    password_login(client)
+    key, _ = enroll(client, manager)
+    manager.allow_totp = True
+    old = client.cookies.get(cookie('admin'))
+    with manager.store.db() as db:
+        db.execute("UPDATE sessions SET mfa_at=? WHERE user_id=?", (time.time() - 901, uid))
+    result = client.post('/api/auth/mfa/totp/setup', json={}, headers=headers(client))
+    assert result.status_code == 403
+    assert result.json()['detail']['code'] == 'reauthentication_required'
+    assert manager.session(old, 'admin')
+    with manager.store.db() as db:
+        assert not db.execute('SELECT 1 FROM totp_pending').fetchone()
+    options = client.post('/api/auth/mfa/authenticate/options', headers=headers(client)).json()
+    result = client.post('/api/auth/mfa/authenticate/verify', json={'credential': key.authentication(options)}, headers=headers(client))
+    assert result.status_code == 200
+    assert manager.session(old, 'admin') is None
+    assert client.post('/api/auth/mfa/totp/setup', json={}, headers=headers(client)).status_code == 200

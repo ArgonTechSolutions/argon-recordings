@@ -25,7 +25,7 @@ def test_password_only_admin_session_cannot_read_or_write_admin_api(team):
     assert client.patch('/api/admin/settings', json={'registration': 'closed'}, headers=h).status_code == 403
     assert client.get('/api/auth/session?audience=admin').json()['mfa_verified'] is False
     assert client.post('/api/auth/mfa/register/options', json={'code': 'invented'}, headers=h).status_code == 403
-    assert client.post('/api/auth/mfa/recovery-codes', headers=h).status_code == 401
+    assert client.post('/api/auth/mfa/recovery-codes', headers=h).status_code == 403
     assert client.post('/api/auth/mfa/authenticate/options', headers=h).status_code == 409
 
 

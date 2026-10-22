@@ -83,7 +83,7 @@ def install(app, get_accounts):
         if time.time() - user['created'] > 900 and not user['mfa_at']:
             raise HTTPException(401, 'Sign in again before verifying your second factor')
         if fresh and (not user['mfa_at'] or time.time() - user['mfa_at'] > 900):
-            raise HTTPException(401, 'Sign in and verify your second factor again')
+            raise HTTPException(403, {'code': 'reauthentication_required', 'message': 'Verify your identity again before changing security settings.'})
         if passkey and user['mfa_method'] != 'passkey':
             raise HTTPException(403, 'Verify a passkey before replacing recovery codes')
         # Never derive the public RP from forwarded/client-controlled headers.
@@ -120,7 +120,7 @@ def install(app, get_accounts):
         if not row or (row['mfa_method'] == 'totp' and not manager_allowed_totp()):
             raise HTTPException(401, 'Sign in again')
         if fresh and (not row['mfa_at'] or time.time() - row['mfa_at'] > 900):
-            raise HTTPException(401, 'Sign in and verify your second factor again')
+            raise HTTPException(403, {'code': 'reauthentication_required', 'message': 'Verify your identity again before changing security settings.'})
         if passkey and row['mfa_method'] != 'passkey':
             raise HTTPException(403, 'Verify a passkey before changing security credentials')
         return row

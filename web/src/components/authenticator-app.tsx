@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { request } from "@/lib/api"
+import { ApiError, request } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -10,15 +10,18 @@ export function AuthenticatorApp({
   onEnrollment,
   onComplete,
   onCancel,
+  onReverify,
 }: {
   setup: boolean
   needsEnrollmentCode?: boolean
   onEnrollment?: () => void
   onComplete: (result: { recovery_codes?: string[] }) => Promise<unknown>
   onCancel: () => void
+  onReverify?: () => Promise<void>
 }) {
   const [provision, setProvision] = useState<Setup | null>(null)
   const [busy, setBusy] = useState(false)
+  const [needsReverification, setNeedsReverification] = useState(false)
   const [error, setError] = useState("")
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -46,6 +49,9 @@ export function AuthenticatorApp({
         await onComplete(result)
       }
     } catch (error) {
+      setNeedsReverification(
+        error instanceof ApiError && error.code === "reauthentication_required"
+      )
       setError(error instanceof Error ? error.message : "Please try again.")
     } finally {
       setBusy(false)
@@ -131,6 +137,32 @@ export function AuthenticatorApp({
         Cancel
       </Button>
       {error && <p role="alert">{error}</p>}
+      {needsReverification && onReverify && (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true)
+            try {
+              await onReverify()
+              setProvision(null)
+              setNeedsReverification(false)
+              setError("")
+            } catch (error) {
+              setError(
+                error instanceof Error
+                  ? error.message
+                  : "Verification could not be completed. Try again."
+              )
+            } finally {
+              setBusy(false)
+            }
+          }}
+        >
+          Verify passkey again
+        </Button>
+      )}
     </form>
   )
 }
