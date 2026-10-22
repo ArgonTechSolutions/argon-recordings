@@ -69,9 +69,18 @@ class Accounts:
         with store.db() as db:
             db.executescript(SCHEMA)
             version = db.execute("SELECT value FROM account_settings WHERE key='schema'").fetchone()
-            if version and version[0] != '1':
+            if version and version[0] not in {'1', '2'}:
                 raise ValueError('Unsupported account schema version')
-            db.execute("INSERT OR IGNORE INTO account_settings VALUES('schema','1')")
+            # Additive migration preserves projects, models and app sessions. Old admin sessions
+            # receive no second-factor proof and cannot authorize administrative routes.
+            columns = {row[1] for row in db.execute('PRAGMA table_info(sessions)')}
+            if 'mfa_at' not in columns:
+                db.execute('ALTER TABLE sessions ADD COLUMN mfa_at REAL')
+            if 'mfa_method' not in columns:
+                db.execute('ALTER TABLE sessions ADD COLUMN mfa_method TEXT')
+            from .passkeys import SCHEMA as PASSKEY_SCHEMA
+            db.executescript(PASSKEY_SCHEMA)
+            db.execute("INSERT OR REPLACE INTO account_settings VALUES('schema','2')")
             active = db.execute("SELECT value FROM account_settings WHERE key='enabled'").fetchone()
             if active and active[0] == 'true' and not self.enabled:
                 raise ValueError('Accounts have been activated; anonymous fallback is disabled')
@@ -121,7 +130,7 @@ class Accounts:
         if not token:
             return None
         with self.store.db() as db:
-            row = db.execute('SELECT u.id,u.email,u.name,u.admin,s.created,s.expires FROM sessions s JOIN users u ON u.id=s.user_id '
+            row = db.execute('SELECT u.id,u.email,u.name,u.admin,s.created,s.expires,s.mfa_at,s.mfa_method FROM sessions s JOIN users u ON u.id=s.user_id '
                              'WHERE s.digest=? AND s.audience=? AND s.expires>? AND u.disabled=0', (digest(token), audience, time.time())).fetchone()
             return dict(row) if row else None
 
@@ -136,7 +145,7 @@ class Accounts:
             db.execute('DELETE FROM sessions WHERE expires<?', (now,))
             # Bound retained sessions per user/audience.
             db.execute('DELETE FROM sessions WHERE digest IN (SELECT digest FROM sessions WHERE user_id=? AND audience=? ORDER BY created DESC LIMIT -1 OFFSET 9)', (uid, audience))
-            db.execute('INSERT INTO sessions VALUES(?,?,?,?,?)', (digest(token), uid, audience, now, now + (3600 if audience == 'admin' else 43200)))
+            db.execute('INSERT INTO sessions(digest,user_id,audience,created,expires) VALUES(?,?,?,?,?)', (digest(token), uid, audience, now, now + (3600 if audience == 'admin' else 43200)))
             self.audit(db, uid, 'login', audience)
         return token
 
@@ -150,7 +159,7 @@ class Accounts:
         return bool(user and self.role(user['id'], pid))
 
     def authorize(self, request):
-        path = request.url.path
+        path = request.scope['path']
         audience = 'admin' if path.startswith('/api/admin/') else request.headers.get('x-session-audience', 'app')
         if audience not in {'app', 'admin'}:
             raise HTTPException(400, 'Unknown session audience')
@@ -161,7 +170,9 @@ class Accounts:
         if path.startswith('/api/admin/'):
             if not user['admin']:
                 raise HTTPException(403, 'Administrator access required')
-            if time.time() - user['created'] > 900 and request.method not in {'GET', 'HEAD'}:
+            if not user['mfa_at']:
+                raise HTTPException(403, 'Verify your administrator passkey first')
+            if time.time() - user['mfa_at'] > 900 and request.method not in {'GET', 'HEAD'}:
                 with self.store.db() as db:
                     db.execute('DELETE FROM sessions WHERE digest=?', (digest(token),))
                 raise HTTPException(401, 'Sign in again before changing instance settings')

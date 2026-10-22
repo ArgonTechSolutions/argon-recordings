@@ -593,7 +593,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/CorrectionView-Output"
+                    "$ref": "#/components/schemas/CorrectionView"
                   },
                   "title": "Response List Corrections Api Recordings  Rid  Corrections Get"
                 }
@@ -1373,6 +1373,235 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa": {
+      "get": {
+        "summary": "Status",
+        "operationId": "status_api_auth_mfa_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/register/options": {
+      "post": {
+        "summary": "Registration Options",
+        "operationId": "registration_options_api_auth_mfa_register_options_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Enrollment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/register/verify": {
+      "post": {
+        "summary": "Registration Verify",
+        "operationId": "registration_verify_api_auth_mfa_register_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/authenticate/options": {
+      "post": {
+        "summary": "Authentication Options",
+        "operationId": "authentication_options_api_auth_mfa_authenticate_options_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/authenticate/verify": {
+      "post": {
+        "summary": "Authentication Verify",
+        "operationId": "authentication_verify_api_auth_mfa_authenticate_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/recovery": {
+      "post": {
+        "summary": "Recover",
+        "operationId": "recover_api_auth_mfa_recovery_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Recovery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/recovery-codes": {
+      "post": {
+        "summary": "Replace Codes",
+        "operationId": "replace_codes_api_auth_mfa_recovery_codes_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/keys/{key_id}": {
+      "delete": {
+        "summary": "Remove Key",
+        "operationId": "remove_key_api_auth_mfa_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2354,7 +2583,7 @@
         ],
         "title": "CorrectionCreate"
       },
-      "CorrectionView-Input": {
+      "CorrectionView": {
         "properties": {
           "id": {
             "type": "string",
@@ -2425,76 +2654,40 @@
         ],
         "title": "CorrectionView"
       },
-      "CorrectionView-Output": {
+      "Credential": {
         "properties": {
-          "id": {
+          "credential": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credential"
+          },
+          "name": {
             "type": "string",
-            "title": "Id"
-          },
-          "segment_id": {
-            "type": "string",
-            "title": "Segment Id"
-          },
-          "original": {
-            "type": "string",
-            "title": "Original"
-          },
-          "hint": {
-            "type": "string",
-            "title": "Hint"
-          },
-          "state": {
-            "type": "string",
-            "title": "State"
-          },
-          "proposal": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/Segment"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proposal"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "start": {
-            "type": "number",
-            "title": "Start"
-          },
-          "end": {
-            "type": "number",
-            "title": "End"
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "default": "Passkey"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "id",
-          "segment_id",
-          "original",
-          "hint",
-          "state",
-          "proposal",
-          "error",
-          "start",
-          "end"
+          "credential"
         ],
-        "title": "CorrectionView"
+        "title": "Credential"
+      },
+      "Enrollment": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Code",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Enrollment"
       },
       "Failure": {
         "properties": {
@@ -2953,6 +3146,22 @@
         ],
         "title": "RecordingCreate"
       },
+      "Recovery": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 20,
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "Recovery"
+      },
       "Reset": {
         "properties": {
           "token": {
@@ -3196,6 +3405,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",

@@ -211,7 +211,7 @@ def start(config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT / 'recordings.toml')
-    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-admin', 'setup-oidc', 'recover-admin'])
+    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa'])
     parser.add_argument('--adopt-existing', action='store_true')
     args = parser.parse_args()
     try:
@@ -221,7 +221,7 @@ def main():
             print('Created', args.config, '— edit it, then run install.')
             return
         config = load_config(args.config)
-        if args.command in {'setup-admin', 'setup-oidc', 'recover-admin'}:
+        if args.command in {'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa'}:
             item = inspect(config)
             if config['auth_mode'] != 'accounts' or not item or not item['State']['Running'] or 'RECORDINGS_AUTH_MODE=accounts' not in item['Config']['Env']:
                 raise ValueError('Set auth.mode=accounts and restart the app before interactive setup')

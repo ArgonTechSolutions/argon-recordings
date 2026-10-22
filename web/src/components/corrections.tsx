@@ -14,7 +14,7 @@ type Passage = Transcript["segments"][number]
 import { ValueSelect } from "@/components/value-select"
 import type { components } from "@/lib/schema"
 type Candidate = components["schemas"]["CorrectionCandidateHit"]
-type Correction = components["schemas"]["CorrectionView-Output"]
+type Correction = components["schemas"]["CorrectionView"]
 const timestamp = (value: number) =>
   `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`
 

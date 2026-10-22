@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ValueSelect } from "@/components/value-select"
+import { AdminSecurity } from "./admin-security"
 import "./accounts.css"
 
 const Session = createContext<AccountSession | null>(null)
@@ -41,6 +42,7 @@ export function AuthGate({
       : ""
   )
   const [pending, setPending] = useState(false)
+  const [enrolling, setEnrolling] = useState(false)
   const session = useQuery({
     queryKey: ["account-session", audience],
     enabled: !preview,
@@ -93,6 +95,19 @@ export function AuthGate({
       </main>
     ) : (
       children
+    )
+  if (audience === "admin" && value.user && (!value.mfa_verified || enrolling))
+    return (
+      <main className="account-screen">
+        <AdminSecurity
+          locked
+          onEnrollment={() => setEnrolling(true)}
+          onVerified={async () => {
+            setEnrolling(false)
+            await session.refetch()
+          }}
+        />
+      </main>
     )
   if (value.user && !invitation && !reset)
     return (
@@ -396,6 +411,18 @@ export function AdminPanel() {
         </Button>
       </header>
       <p>{session?.user?.email}</p>
+      <details>
+        <summary className="admin-security-toggle">
+          Passkeys and recovery
+        </summary>
+        <AdminSecurity
+          onVerified={async () => {
+            await cache.refetchQueries({
+              queryKey: ["account-session", "admin"],
+            })
+          }}
+        />
+      </details>
       {(error || users.isError || settings.isError) && (
         <p role="alert">
           {error ||

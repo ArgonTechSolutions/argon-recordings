@@ -104,6 +104,9 @@ def install(app, get_accounts):
         response.headers['Cache-Control'] = 'no-store'
         return response
 
+    from .passkeys import install as install_passkeys
+    install_passkeys(app, get_accounts)
+
     @app.get('/api/auth/session')
     def session(request: Request, audience: Literal['app', 'admin'] = 'app'):
         manager = get_accounts()
@@ -113,7 +116,8 @@ def install(app, get_accounts):
         user = manager.session(token, audience)
         login_token = request.cookies.get('recordings_login') or secrets.token_urlsafe(32)
         response = JSONResponse({'enabled': True, 'user': user, 'csrf': csrf(token if user else login_token),
-                                 'oidc': manager.oidc_config() is not None, 'registration': manager.policy()})
+                                 'oidc': manager.oidc_config() is not None, 'registration': manager.policy(),
+                                 'mfa_verified': bool(user and user['mfa_at'])})
         response.set_cookie('recordings_login', login_token, httponly=True, secure=manager.secure, samesite='lax', max_age=3600)
         response.headers['Cache-Control'] = 'no-store'
         return response

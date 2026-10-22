@@ -14,7 +14,7 @@ PASSWORD = 'correct horse battery staple'
 @pytest.fixture
 def team(tmp_path):
     app = create_app(Settings(tmp_path, auth_mode='accounts', worker_token='worker-only', reserve=0))
-    with TestClient(app) as owner:
+    with TestClient(app, base_url='http://localhost:8787') as owner:
         manager = app.state.accounts
         uid = manager.bootstrap('owner@example.com', 'Owner', PASSWORD)
         yield app, owner, manager, uid
@@ -29,12 +29,17 @@ def session(client, audience='app'):
 def login(client, address='owner@example.com', audience='app'):
     response = client.post('/api/auth/login', json={'email': address, 'password': PASSWORD, 'audience': audience}, headers=session(client, audience))
     assert response.status_code == 200, response.text
+    if audience == 'admin':
+        from passkey_fixture import enroll, headers as mfa_headers
+        manager = client.app.state.accounts
+        enroll(client, manager, address)
+        return mfa_headers(client)
     return session(client, audience)
 
 
 def invited(app, manager, owner_id, address):
     token = manager.invite(owner_id, address)
-    client = TestClient(app)
+    client = TestClient(app, base_url='http://localhost:8787')
     response = client.post('/api/auth/accept-invitation', json={'token': token, 'name': address.split('@')[0], 'password': PASSWORD}, headers=session(client))
     assert response.status_code == 200, response.text
     return client, session(client)

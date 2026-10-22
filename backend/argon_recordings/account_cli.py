@@ -12,7 +12,7 @@ from .store import Store
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['setup-admin', 'setup-oidc', 'recover-admin'])
+    parser.add_argument('command', choices=['setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa'])
     parser.add_argument('--adopt-existing', action='store_true')
     args = parser.parse_args()
     if os.environ.get('RECORDINGS_AUTH_MODE') != 'accounts':
@@ -44,6 +44,15 @@ def main():
             print('OIDC configuration saved privately. Redirect URI:', manager.public_url + '/api/auth/oidc/callback')
             return
         address = email(input('Administrator email: '))
+        if args.command in {'setup-admin-mfa', 'recover-admin-mfa'}:
+            from .passkeys import enrollment_ticket
+            reset = args.command == 'recover-admin-mfa'
+            if reset and input('Remove administrator passkeys and recovery codes? Type RESET: ') != 'RESET':
+                raise ValueError('Recovery cancelled')
+            ticket = enrollment_ticket(manager, address, reset=reset)
+            print('One-time passkey enrollment code (expires in 10 minutes):', ticket)
+            print('Enter this privately at /admin/. Do not share it in chat or logs.')
+            return
         name = input('Display name: ').strip() if args.command == 'setup-admin' else None
         password = getpass.getpass('Password (15–128 characters): ')
         if password != getpass.getpass('Confirm password: '):

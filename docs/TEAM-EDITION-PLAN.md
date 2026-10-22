@@ -1,6 +1,6 @@
 # Team edition and public hosting plan
 
-Status: proposed architecture. Public exposure, identity-provider configuration, SMTP setup, and production migration have not been performed. The current application remains a local single-user profile until these milestones are implemented and accepted.
+Status: accounts, invitations, project permissions, the separate admin frontend and administrator passkeys are implemented for private testing. Public exposure, external identity-provider configuration and SMTP setup have not been performed. Public worker isolation, uploads and ingress remain separate acceptance gates; see [the public-access draft](PUBLIC-ACCESS-DRAFT.md).
 
 ## Product and deployment contract
 

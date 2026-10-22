@@ -13,3 +13,8 @@
 .admin-inline input { flex: 1; min-width: min(220px,100%); }
 .admin-row { justify-content: space-between; padding-block: 12px; border-bottom: 1px solid var(--border); min-width: 0; overflow-wrap: anywhere; }
 .admin-row > * { min-width: 0; }
+
+.recovery-codes { display: grid; gap: 8px; overflow-wrap: anywhere; font-size: 13px; }
+.account-screen > section { width: min(420px, calc(100vw - 48px)); }
+
+.admin-security-toggle { cursor: pointer; padding: 12px 0; }

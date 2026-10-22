@@ -65,7 +65,7 @@ def create_app(settings=None):
 
     @app.exception_handler(HTTPException)
     async def account_error(request, exc):
-        if request.url.path == '/api/auth/oidc/callback':
+        if request.scope['path'] == '/api/auth/oidc/callback':
             from fastapi.responses import RedirectResponse
             return RedirectResponse('/?auth_error=oidc', status_code=303)
         return JSONResponse({'detail': exc.detail}, status_code=exc.status_code)
@@ -74,14 +74,24 @@ def create_app(settings=None):
     @app.middleware('http')
     async def local_boundary(request, call_next):
         manager = app.state.accounts
-        host = request.url.hostname
         from urllib.parse import urlsplit
         hosts = {'localhost', '127.0.0.1', '::1', 'testserver'}
         if manager.public_url:
             hosts.add(urlsplit(manager.public_url).hostname)
-        if host not in hosts:
+        raw_hosts = [value.decode('latin-1') for key, value in request.scope['headers'] if key.lower() == b'host']
+        try:
+            raw_host = raw_hosts[0] if len(raw_hosts) == 1 else ''
+            authority = urlsplit('//' + raw_host)
+            port = authority.port  # Validate port syntax as well as hostname.
+            valid_host = (bool(raw_host) and not any(char.isspace() for char in raw_host)
+                          and not any(char in raw_host for char in '/\\?#@')
+                          and authority.hostname in hosts and not authority.username and not authority.password
+                          and not authority.path and not authority.query and not authority.fragment)
+        except ValueError:
+            valid_host = False
+        if not valid_host or not request.scope['path'].startswith('/'):
             return JSONResponse({'detail': 'Host is not allowed'}, status_code=403)
-        callback = request.method == 'GET' and request.url.path == '/api/auth/oidc/callback'
+        callback = request.method == 'GET' and request.scope['path'] == '/api/auth/oidc/callback'
         origin = request.headers.get('origin')
         allowed_origins = {str(request.base_url).rstrip('/')}
         if manager.public_url:
@@ -92,7 +102,7 @@ def create_app(settings=None):
             return JSONResponse({'detail': 'Cross-site access denied'}, status_code=403)
         public = {'/api/health', '/api/auth/session', '/api/auth/login', '/api/auth/accept-invitation',
                   '/api/auth/reset-password', '/api/auth/oidc/start', '/api/auth/oidc/callback'}
-        path = request.url.path
+        path = request.scope['path']
         if manager.enabled and path.startswith('/api/') and not path.startswith('/api/worker/') and path not in public:
             try:
                 await asyncio.to_thread(manager.authorize, request)

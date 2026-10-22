@@ -40,3 +40,34 @@ def test_private_setup_oidc_and_recovery(tmp_path, monkeypatch, capsys):
     account_cli.main()
     assert manager.session(token) is None
     assert 'another valid password' not in capsys.readouterr().out
+
+
+def test_terminal_mfa_enrollment_and_explicit_recovery(tmp_path, monkeypatch, capsys):
+    from argon_recordings.accounts import digest
+    monkeypatch.setenv('RECORDINGS_DATA', str(tmp_path))
+    monkeypatch.setenv('RECORDINGS_AUTH_MODE', 'accounts')
+    manager = Accounts(Store(tmp_path), 'accounts')
+    uid = manager.bootstrap('owner@example.com', 'Owner', PASSWORD)
+    monkeypatch.setattr('builtins.input', lambda _: 'owner@example.com')
+    monkeypatch.setattr('sys.argv', ['account_cli', 'setup-admin-mfa'])
+    account_cli.main()
+    output = capsys.readouterr().out
+    code = output.split('minutes): ', 1)[1].splitlines()[0]
+    with manager.store.db() as db:
+        assert db.execute('SELECT digest FROM mfa_enrollments WHERE user_id=?', (uid,)).fetchone()[0] == digest(code)
+        db.execute("INSERT INTO passkeys VALUES('synthetic',?,'localhost','Lost key',X'00',0,0)", (uid,))
+    token = manager.new_session(uid, 'app')
+    monkeypatch.setattr('sys.argv', ['account_cli', 'recover-admin-mfa'])
+    values = iter(['owner@example.com', 'cancel'])
+    monkeypatch.setattr('builtins.input', lambda _: next(values))
+    import pytest
+    with pytest.raises(SystemExit):
+        account_cli.main()
+    assert manager.session(token)
+    values = iter(['owner@example.com', 'RESET'])
+    monkeypatch.setattr('builtins.input', lambda _: next(values))
+    account_cli.main()
+    assert manager.session(token) is None
+    with manager.store.db() as db:
+        assert not db.execute('SELECT 1 FROM passkeys').fetchone()
+        assert db.execute('SELECT 1 FROM users WHERE id=?', (uid,)).fetchone()

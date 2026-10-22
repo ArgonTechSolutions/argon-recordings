@@ -4,6 +4,7 @@ export type AccountSession = {
   user: Account | null
   csrf: string | null
   oidc: boolean
+  mfa_verified?: boolean
   registration?: "invite" | "closed"
 }
 let csrfToken: string | null = null

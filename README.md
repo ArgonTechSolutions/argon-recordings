@@ -125,4 +125,4 @@ The event broker is in memory and supports the current single API process with m
 
 ## Accounts and administration
 
-New installer configurations use invitation-only accounts. Run `python3 recordings.py setup-admin` after startup, then use `/admin/` to invite users and manage registration. Existing configurations retain private preview mode until explicitly enabled. See [account setup, existing-data adoption and OIDC](docs/ACCOUNTS.md). Public exposure remains a separate release gate.
+New installer configurations use invitation-only accounts. Run `python3 recordings.py setup-admin` after startup, then `python3 recordings.py setup-admin-mfa` to authorize passkey enrollment at `/admin/`. Administration requires a passkey second factor; save the one-time recovery codes. Existing configurations retain private preview mode until explicitly enabled. See [account setup, existing-data adoption and OIDC](docs/ACCOUNTS.md). Public exposure remains a separate release gate.

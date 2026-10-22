@@ -1,6 +1,6 @@
 # Accounts and instance administration
 
-This slice adds local accounts, invitation-only or closed registration, optional OpenID Connect, project roles and a separate `/admin/` frontend. It does not publish the app. Public ingress, SMTP delivery, administrator MFA/passkeys, resumable uploads, and API/worker isolation remain release gates in [the team plan](TEAM-EDITION-PLAN.md). Keep the current deployment private until those gates and a focused security review are complete.
+This slice adds local accounts, invitation-only or closed registration, optional OpenID Connect, project roles and a separate `/admin/` frontend. It does not publish the app. Public ingress, SMTP delivery, resumable uploads, and API/worker isolation remain release gates in [the team plan](TEAM-EDITION-PLAN.md). Keep the current deployment private until those gates and a focused security review are complete.
 
 ## Installation
 
@@ -34,6 +34,32 @@ python3 recordings.py setup-admin --adopt-existing
 Adoption is transactional: it creates the initial administrator, assigns existing projects, and marks authentication activated. It refuses an active transcription lease or an existing account. Recording/model files are not rewritten. Once activated, this code refuses startup in anonymous mode; do not downgrade to earlier anonymous-only releases against an account-enabled database. Rollback requires a matching pre-upgrade database/source backup. No real-data adoption has been performed by development tests.
 
 If an administrator loses access, the host operator can run `python3 recordings.py recover-admin` in a private terminal. It prompts for an existing administrator email and new password, revokes that user's sessions, and records an operator-recovery audit event. It cannot silently create a new administrator.
+
+## Administrator passkeys and recovery
+
+Administration now requires a passkey second factor after local-password or OIDC sign-in. Password-only admin sessions cannot read or change `/api/admin/*`. WebAuthn requires authenticator user verification (PIN/biometric), an exact RP/origin and a short-lived server challenge. The app does not retain biometric data or authenticator private keys. App sign-in for recording access is unchanged.
+
+After updating, existing administrators must enroll before using the admin panel. Existing app sessions, accounts, recordings and model directories remain intact; schema 2 adds MFA tables and session proof fields. Old admin sessions have no proof. Back up the consistent data volume before updating; rollback needs matching source/database versions.
+
+In the host terminal, run:
+
+```bash
+python3 recordings.py setup-admin-mfa
+```
+
+Enter the active administrator email. The CLI displays a one-time enrollment code, valid for ten minutes, for that administrator and configured hostname. Keep it private. Sign in at `/admin/`, enter the code and a passkey name, then create the passkey using your browser/password manager/security key. First enrollment needs both the authenticated administrator and the host-issued code; knowing the password alone cannot claim the first passkey. New enrollments require authenticator user verification and consume the code atomically only when successful. Challenges expire after two minutes and are bound to the exact admin session, operation and origin; retries issue a new challenge.
+
+Save the eight recovery codes shown after enrollment in a password manager. They are displayed once and stored only as hashes. Each restores admin access once after normal password/OIDC sign-in. A recovery session may add a replacement passkey for a lost device; doing so rotates all remaining recovery codes and revokes other admin sessions. It cannot remove existing passkeys or replace recovery codes until a passkey is verified. A passkey-verified recent session can add keys, replace recovery codes and remove keys, with at least one key retained per hostname. Up to eight keys per administrator/hostname are allowed. Credential changes are audited without recording codes or credential material.
+
+Successful verification rotates the admin cookie and gives a one-hour admin session; sensitive writes require proof within 15 minutes. App sessions remain separate. No claim is made that ordinary app sessions have MFA. Password resets do not remove passkeys. For lost passwords use `recover-admin`; for loss of all passkeys and recovery codes the host operator can use:
+
+```bash
+python3 recordings.py recover-admin-mfa
+```
+
+This asks for the administrator email and an explicit `RESET` confirmation, removes that administrator's keys/recovery codes, revokes all their sessions, and issues a new short-lived enrollment code. It does not alter recordings, models or memberships. No browser administrator can reset another administrator's MFA. The host operator retains the explicit recovery authority.
+
+For SSH-tunnel testing browse `http://localhost:8787`, not a remote IP or `127.0.0.1`. Public operation requires the final HTTPS `auth.public_url` before enrollment. Localhost and public-hostname passkeys are different; changing the hostname requires a new operator-authorized enrollment for that hostname. OIDC remains subject to the same admin second factor, regardless of upstream MFA claims. See the [Forculus/Tailscale draft](PUBLIC-ACCESS-DRAFT.md) before planning public exposure.
 
 ## OIDC setup
 
