@@ -23,7 +23,7 @@ with TestClient(create_app(Settings(root, worker_token='synthetic-browser-only')
     response = c.post(f'/api/worker/jobs/{job["job_id"]}/complete', headers=headers, json={
         'duration': 31, 'segments': [
             {'start': 0, 'end': 10, 'text': 'Welcome to a synthetic recording for interface validation.'},
-            {'start': 10, 'end': 20, 'text': 'Workspace permissions are visible before an invitation is sent.'},
+            {'start': 10, 'end': 20, 'text': 'Workspace permissions are visible before an invitation is sent. ' + 'TechnicalIdentifier' * 20},
             {'start': 20, 'end': 31, 'text': 'Search the transcript and return to the relevant moment.'},
         ], 'artifacts': [{'name': 'audio.wav', 'kind': 'audio', 'time': None}]})
     assert response.status_code == 200, response.text

@@ -88,6 +88,20 @@ try {
   await page.getByRole('button', { name: 'Find matching passages', exact: true }).click()
   await page.locator('.correction-candidates input').first().waitFor()
   assert.equal(await page.locator('.correction-candidates input:checked').count(), 1)
+  for (const width of [1440, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.waitForTimeout(150) // Let the dialog's 100ms transition settle after resizing.
+    const layout = await page.locator('.correction-dialog').evaluate(dialog => {
+      const rect = dialog.getBoundingClientRect()
+      return { width: rect.width, left: rect.left, right: rect.right, boxSizing: getComputedStyle(dialog).boxSizing, cssWidth: getComputedStyle(dialog).width,
+        overflow: [dialog, ...dialog.querySelectorAll('.correction-source, .correction-candidates')]
+          .some(element => element.scrollWidth > element.clientWidth + 1) }
+    })
+    assert.ok(layout.left >= 15 && layout.right <= width - 15 && !layout.overflow, JSON.stringify({ width, ...layout }))
+    if (width === 1440) assert.ok(layout.width >= 700, JSON.stringify(layout))
+  }
+  result.checks.push('correction dialog is wide on desktop and has no horizontal scroll at 320/390/768/1440px with long technical text')
+
   await page.setViewportSize({ width: 390, height: 844 })
   await fits()
   await page.screenshot({ path: path.join(evidence, 'correction-mobile.png'), fullPage: true })

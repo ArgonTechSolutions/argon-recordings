@@ -1588,7 +1588,24 @@ h1 {
 
 .correction-actions { display: flex; gap: .25rem; padding: .25rem .75rem; border-bottom: 1px solid var(--border); }
 .correction-dialog label { display: grid; gap: .4rem; font-size: .85rem; }
-.correction-dialog { max-height: 90dvh; overflow-y: auto; }
+.correction-dialog[data-slot="dialog-content"] {
+  width: calc(100vw - 2rem);
+  max-width: 48rem;
+  max-height: 90dvh;
+  min-width: 0;
+  overflow-y: auto;
+}
+.correction-dialog > *, .correction-dialog label { min-width: 0; }
+.correction-dialog [data-slot="select-trigger"] { min-width: 0; max-width: 100%; }
+.correction-dialog [data-slot="select-value"] {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.correction-source, .correction-candidates span { overflow-wrap: anywhere; }
+.correction-candidates span { min-width: 0; }
+.correction-candidates input { flex-shrink: 0; }
 .correction-source { font-size: .9rem; color: var(--muted-foreground); max-height: 6rem; overflow: auto; }
 .correction-candidates { max-height: 14rem; overflow: auto; }
 .correction-candidates label { display: flex; align-items: start; gap: .6rem; padding: .7rem 0; border-bottom: 1px solid var(--border); }
