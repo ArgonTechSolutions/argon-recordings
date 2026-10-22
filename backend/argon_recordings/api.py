@@ -26,11 +26,17 @@ from .store import Store, identity, lease_row
 
 
 class Settings:
-    def __init__(self, data=None, worker_token=None, max_upload=None, reserve=1024**3, embeddings=None, auth_mode=None, public_url=None, allow_totp=None):
+    def __init__(self, data=None, worker_token=None, max_upload=None, reserve=1024**3, embeddings=None, auth_mode=None, public_url=None, allow_totp=None, worker_tokens=None, worker_limit=1, chunk_seconds=180, overlap_seconds=2):
         value = os.environ.get('RECORDINGS_ALLOW_TOTP', 'false') if allow_totp is None else allow_totp
         if type(value) is not bool and (not isinstance(value, str) or value not in {'true', 'false'}):
             raise ValueError('RECORDINGS_ALLOW_TOTP must be true or false')
         self.allow_totp = value is True or value == 'true'
+        self.worker_tokens = dict(worker_tokens or {})
+        if type(worker_limit) is not int or not 1 <= worker_limit <= 8:
+            raise ValueError('worker_limit must be 1..8')
+        if type(chunk_seconds) is not int or not 30 <= chunk_seconds <= 600 or not .5 <= overlap_seconds <= 5:
+            raise ValueError('Invalid bounded chunk configuration')
+        self.worker_limit, self.chunk_seconds, self.overlap_seconds = worker_limit, chunk_seconds, overlap_seconds
         self.auth_mode = auth_mode or os.environ.get("RECORDINGS_AUTH_MODE", "local")
         self.public_url = public_url if public_url is not None else os.environ.get("RECORDINGS_PUBLIC_URL", "")
         self.embeddings = embeddings or Embeddings(os.environ.get('RECORDINGS_EMBEDDING_DIR'), os.environ.get('RECORDINGS_EMBEDDING_PROFILE', 'large'))
@@ -52,6 +58,10 @@ def create_app(settings=None):
     @asynccontextmanager
     async def lifespan(app):
         app.state.store = Store(settings.data)
+        app.state.store.worker_limit = settings.worker_limit
+        app.state.store.chunk_seconds = settings.chunk_seconds
+        app.state.store.overlap_seconds = settings.overlap_seconds
+        app.state.worker_seen = {}
         app.state.accounts = Accounts(app.state.store, settings.auth_mode, settings.public_url, settings.allow_totp)
         if app.state.accounts.enabled:
             app.state.accounts.oidc_config()
@@ -80,6 +90,8 @@ def create_app(settings=None):
         manager = app.state.accounts
         from urllib.parse import urlsplit
         hosts = {'localhost', '127.0.0.1', '::1', 'testserver'}
+        if request.scope.get('worker_interface'):
+            hosts.add('api')
         if manager.public_url:
             hosts.add(urlsplit(manager.public_url).hostname)
         raw_hosts = [value.decode('latin-1') for key, value in request.scope['headers'] if key.lower() == b'host']
@@ -121,11 +133,34 @@ def create_app(settings=None):
     def store():
         return app.state.store
 
-    def worker_auth(authorization: str | None = Header(default=None)):
-        if not settings.worker_token:
-            raise HTTPException(503, 'Worker access is not configured')
-        if not authorization or not hmac.compare_digest(authorization, 'Bearer ' + settings.worker_token):
-            raise HTTPException(401, 'Worker credentials required')
+    def worker_auth(request: Request, authorization: str | None = Header(default=None)):
+        request.state.worker_id = None
+        if settings.worker_tokens:
+            if request.scope['path'] == '/api/worker/claim' or re.fullmatch(r'/api/worker/jobs/[^/]+/complete', request.scope['path']):
+                raise HTTPException(404, 'Legacy worker protocol is disabled in isolated mode')
+            worker_id = next((key for key, value in settings.worker_tokens.items()
+                              if authorization and hmac.compare_digest(authorization, 'Bearer ' + value)), None)
+            if worker_id is None:
+                raise HTTPException(401, 'Worker credentials required')
+            request.state.worker_id = worker_id
+            app.state.worker_seen[worker_id] = time.monotonic()
+            match = re.fullmatch(r'/api/worker/(jobs|corrections)/([^/]+)/.*', request.scope['path'])
+            if match:
+                table = 'jobs' if match[1] == 'jobs' else 'corrections'
+                with store().db() as db:
+                    row = db.execute('SELECT worker FROM ' + table + ' WHERE id=?', (match[2],)).fetchone()
+                if not row or row['worker'] != worker_id:
+                    raise HTTPException(404, 'Assigned job not found')
+        else:
+            if not settings.worker_token:
+                raise HTTPException(503, 'Worker access is not configured')
+            if not authorization or not hmac.compare_digest(authorization, 'Bearer ' + settings.worker_token):
+                raise HTTPException(401, 'Worker credentials required')
+
+    @app.post('/api/worker/ready', dependencies=[Depends(worker_auth)])
+    def worker_ready():
+        return {'ok': True}
+
 
     def recording_or_404(rid):
         row = store().recording(rid)
@@ -146,7 +181,7 @@ def create_app(settings=None):
         if row['job']:
             payload = row['job'].pop('payload')
             row['job']['updated_at'] = row['job'].pop('updated')
-            row['job']['transcription'] = json.loads(payload) if payload and job['state'] == 'running' else None
+            row['job']['transcription'] = json.loads(payload) if payload and job['state'] in {'running', 'prepared'} else None
         row['artifacts'] = [dict(a, url=f'/api/recordings/{row["id"]}/media/{a["name"]}') for a in artifacts]
         return row
 
@@ -186,7 +221,7 @@ def create_app(settings=None):
             needs_admin = app.state.accounts.enabled and not db.execute('SELECT 1 FROM users').fetchone()
         return {'status': 'ok', 'profile': settings.auth_mode, 'model': 'large-v3-turbo', 'search': 'hybrid' if settings.embeddings.configured else 'keyword',
                 'embedding_profile': getattr(settings.embeddings, 'profile', None) if settings.embeddings.configured else 'off',
-                'worker_configured': bool(settings.worker_token), 'max_upload_bytes': settings.max_upload,
+                'worker_configured': bool(settings.worker_token or settings.worker_tokens), 'worker_count': settings.worker_limit, 'workers_online': sum(time.monotonic() - seen < 130 for seen in app.state.worker_seen.values()), 'max_upload_bytes': settings.max_upload,
                 'max_duration_seconds': None, 'accounts_setup_required': bool(needs_admin)}
 
     @app.get('/api/projects', response_model=list[Project])
@@ -273,8 +308,19 @@ def create_app(settings=None):
                 raise HTTPException(409, 'Only a failed recording can be retried')
             if not (settings.data / 'sources' / rid).is_file():
                 raise HTTPException(409, 'Retained source is unavailable; upload a new recording')
-            db.execute("UPDATE recordings SET status='queued',error=NULL WHERE id=?", (rid,))
-            db.execute("UPDATE jobs SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL,progress=0,stage='Waiting for worker',result_sha=NULL,created=? WHERE recording_id=?", (time.time(), rid))
+            job_id = db.execute('SELECT id FROM jobs WHERE recording_id=?', (rid,)).fetchone()[0]
+            if db.execute('SELECT 1 FROM preparations WHERE job_id=?', (job_id,)).fetchone():
+                db.execute("UPDATE chunks SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL WHERE job_id=? AND state!='completed'", (job_id,))
+                if not db.execute("SELECT 1 FROM chunks WHERE job_id=? AND state='queued'", (job_id,)).fetchone():
+                    # Reconciliation can fail after every inference task completed.
+                    # Preserve core results and repeat the wider boundary reviews.
+                    boundaries = db.execute('SELECT 1 FROM chunks WHERE job_id=? AND boundary=1', (job_id,)).fetchone()
+                    db.execute("UPDATE chunks SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL,result=NULL,result_sha=NULL,error=NULL WHERE job_id=?" + (' AND boundary=1' if boundaries else ''), (job_id,))
+                db.execute("UPDATE jobs SET state='prepared',stage='Resuming unfinished chunks',result_sha=NULL WHERE id=?", (job_id,))
+                db.execute("UPDATE recordings SET status='running',error=NULL WHERE id=?", (rid,))
+            else:
+                db.execute("UPDATE recordings SET status='queued',error=NULL WHERE id=?", (rid,))
+                db.execute("UPDATE jobs SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL,progress=0,stage='Waiting for worker',result_sha=NULL,created=? WHERE recording_id=?", (time.time(), rid))
         return view(recording_or_404(rid))
 
     @app.get('/api/recordings/{rid}/transcript', response_model=Transcript)
@@ -327,8 +373,8 @@ def create_app(settings=None):
     install_corrections(app, store, recording_or_404, worker_auth, settings.embeddings)
 
     @app.post('/api/worker/claim', dependencies=[Depends(worker_auth)])
-    def claim(body: ClaimRequest):
-        return store().claim(body.worker)
+    def claim(body: ClaimRequest, request: Request):
+        return store().claim(request.state.worker_id or body.worker)
 
     @app.post('/api/worker/jobs/{jid}/heartbeat', dependencies=[Depends(worker_auth)])
     def heartbeat(jid: str, body: Heartbeat, x_lease_id: str = Header()):
@@ -410,6 +456,9 @@ def create_app(settings=None):
             db.execute("UPDATE jobs SET state='failed',stage='Failed' WHERE id=?", (jid,))
             db.execute("UPDATE recordings SET status='failed',error=? WHERE id=?", (body.message, job['recording_id']))
         return {'status': 'failed'}
+
+    from .chunk_tasks import install as install_chunks
+    install_chunks(app, store, worker_auth, receive, settings.embeddings)
 
     install_accounts(app, lambda: app.state.accounts)
 

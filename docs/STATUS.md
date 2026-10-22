@@ -59,3 +59,17 @@ Verification for the long-recording/UI change: 38 backend tests passed with real
 Upload-limit setting: the validated TOML value is passed through `RECORDINGS_MAX_UPLOAD_MB`, exposed through API health, and used by the upload dialog for validation/help text. The default remains 256 MiB; positive whole MiB values support larger files. The Retry button has 20 px top margin.
 
 Upload-limit verification: 45 backend tests and the OpenAPI check passed. Frontend production build/lint passed. Chromium verified a non-default server limit appears in the dialog, oversized files are rejected, smaller uploads still work, and the Retry button has at least 20 px top margin/gap. The test uses a 1 MiB limit rather than allocating multi-gigabyte fixtures; separate configuration/API checks verify the 2048 MiB byte conversion and container environment argument.
+
+## Isolated workers and overlapping chunks
+
+The installer now starts separate API/account and transcription containers. The default remains one worker; optional workers share the aggregate runtime budget and can process chunks of one recording. Pause-aware cores, two-second context on each side by default, wider-context boundary tasks, timestamp-based duplicate detection and conservative omission checks precede atomic publication. Retries reuse completed cores. Chunk heartbeats refresh aggregate progress and the frontend retains locally ticking elapsed time in the prepared state. See [WORKERS.md](WORKERS.md).
+
+Validation for this slice:
+
+- Full backend suite: **137 passed, 1 skipped** (opt-in real embedding test); two upstream deprecation warnings. Final launcher/isolation/update checks after the port-probe fix: **47 passed**.
+- OpenAPI contract check, generated frontend types, production build and lint passed. Chromium regression passed, including prepared-state elapsed ticking, SSE, corrections and mobile overflow, with no page errors.
+- Actual source-labelled installer image `f9248c8f9a49cd58` built successfully. A disposable two-worker installation processed a 64-second synthetic silence WAV through real FFmpeg/Turbo, distributing core/boundary tasks across both workers. This verifies integration, not spoken-audio accuracy or speed.
+- Container probes passed: separate account/work/model/credential mounts, aggregate CPU/RAM caps, swap disabled, no credential in Docker environment, worker denial of browser/admin APIs, public denial of worker routes, and blocked worker external HTTP/DNS. API restart rotated credentials; full stop/start preserved the synthetic recording. Disposable services were stopped afterward.
+- Independent GPT-6.1 security review found no remaining concrete blocker after bounding malicious word timelines/cut density and disabling legacy whole-job publication in isolated mode.
+
+No Philemon deployment or public exposure occurred. Real-host resource/recording acceptance, public upload quotas and ingress qualification remain pending. Smart visual retention and automatic worker scaling remain future work.

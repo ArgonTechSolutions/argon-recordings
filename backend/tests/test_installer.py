@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+from scripts.worker_stack import worker_args
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,11 +20,18 @@ def test_config_defaults_and_resource_limited_start(tmp_path):
     args = installer.start_args(settings, {'image': 'test-image'})
     assert '127.0.0.1:8877:8000' in args
     assert '--read-only' in args and '--cap-drop' in args
-    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=0' in args
+    worker = worker_args(settings, {'image': 'test-image'}, 1, '172.20.0.2')
+    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=0' in worker
     assert '--memory-swap' in args
-    assert '6g' in args
+    assert str(2 * 1024**3) in args
+    assert str(4 * 1024**3) in worker
+    assert settings['workers'] == 1
+    assert '/data' not in ' '.join(worker)
+    assert '/models/embeddings' not in ' '.join(worker)
+    assert not any(value.endswith(':/work') for value in args)
+    assert '/models/turbo' not in ' '.join(args)
     assert 'RECORDINGS_WORKER_TOKEN' not in ' '.join(args)
-    assert str(tmp_path / 'models/turbo') + ':/models/turbo:ro' in args
+    assert str(tmp_path / 'models/turbo') + ':/models/turbo:ro' in worker
     assert any(':/data' in value for value in args)
 
 
@@ -87,7 +95,7 @@ def test_first_up_installs_before_starting(tmp_path, monkeypatch):
 
 def test_optional_timeout_can_be_enabled_explicitly(tmp_path):
     settings = config(tmp_path, '[resources]\njob_timeout_seconds=14400\n')
-    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=14400' in installer.start_args(settings, {'image': 'test'})
+    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=14400' in worker_args(settings, {'image': 'test'}, 1, '172.20.0.2')
 
 
 def test_upload_limit_is_passed_to_container(tmp_path):
@@ -128,3 +136,13 @@ def test_totp_option_is_opt_in_and_passed_to_container(tmp_path):
     for extra in ['[auth]\nallow_totp=true\n', '[auth]\nmode="accounts"\nallow_totp="true"\n']:
         with pytest.raises(ValueError, match='allow_totp'):
             config(tmp_path, extra)
+
+
+def test_stop_dispatches_even_when_api_container_is_missing(tmp_path, monkeypatch):
+    config(tmp_path)
+    stopped = []
+    monkeypatch.setattr(installer.sys, 'argv', ['recordings.py', '--config', str(tmp_path / 'recordings.toml'), 'stop'])
+    monkeypatch.setattr(installer, 'inspect', lambda cfg: None)
+    monkeypatch.setattr(installer, 'stop', lambda cfg: stopped.append(cfg['name']))
+    installer.main()
+    assert stopped == ['argon-recordings']

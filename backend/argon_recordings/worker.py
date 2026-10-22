@@ -1,4 +1,4 @@
-"""One-job pull worker. Model weights are supplied explicitly; never downloaded here."""
+"""One-task pull worker. Model weights are supplied explicitly; never downloaded here."""
 import argparse
 import hashlib
 import json
@@ -14,7 +14,7 @@ import wave
 
 import httpx
 
-from .contracts import Completion, Segment
+from .contracts import Segment
 
 from .models import TURBO_FILES, TURBO_REPO, TURBO_REVISION
 
@@ -113,23 +113,22 @@ class TranscriptionTracker:
 
 
 def run_once(client, transcriber, work_root=None):
-    claim = client.post('/api/worker/claim', json={'worker': 'cpu-turbo'})
+    claim = client.post('/api/worker/tasks/claim')
     claim.raise_for_status()
     job = claim.json()
     if not job:
         return run_correction(client, transcriber, work_root)
+    if job.get('kind') == 'chunk':
+        return run_chunk(client, transcriber, job, work_root)
     jid, lease = job['job_id'], job['lease_id']
     headers = {'X-Lease-Id': lease}
     cancelled, done = threading.Event(), threading.Event()
     progress = {'progress': 0.0, 'stage': 'Downloading source'}
-    tracker = None
 
     def heartbeat():
         while not done.is_set():
             try:
                 snapshot = progress.copy()
-                if snapshot['stage'] in {'Preparing transcription', 'Transcribing with Turbo'} and tracker is not None:
-                    snapshot['transcription'] = tracker.snapshot()
                 response = client.post(f'/api/worker/jobs/{jid}/heartbeat', headers=headers, json=snapshot)
                 response.raise_for_status()
             except Exception:
@@ -156,32 +155,83 @@ def run_once(client, transcriber, work_root=None):
                 raise RuntimeError('Source integrity mismatch')
             progress.update(progress=.05, stage='Preparing audio and visual references')
             duration, audio, artifacts = extract(source, output)
-            tracker = TranscriptionTracker(duration)
-            progress = dict(progress=.1, stage='Preparing transcription')
-            def advance(seconds):
-                if cancelled.is_set():
-                    raise RuntimeError('Worker lease lost')
-                nonlocal progress
-                tracker.advance(seconds)
-                progress = dict(progress=min(.9, .1 + .8 * tracker.position[0] / duration), stage='Transcribing with Turbo')
-            segments = transcriber.transcribe(audio, job['recording']['language'], advance)
-            if cancelled.is_set():
-                raise RuntimeError('Worker lease lost')
-            progress = dict(progress=.95, stage='Publishing transcript and references')
+            from .chunk_audio import plan
+            _, planned = plan(audio, job.get('chunk_seconds', 180), job.get('overlap_seconds', 2))
+            progress = dict(progress=.08, stage='Uploading prepared audio and references')
             for artifact in artifacts:
                 with (output / artifact['name']).open('rb') as stream:
-                    response = client.put(f'/api/worker/jobs/{jid}/artifacts/{artifact["name"]}', headers=headers, content=stream)
-                    response.raise_for_status()
-            completion = Completion(duration=duration, segments=segments, artifacts=artifacts)
-            response = client.post(f'/api/worker/jobs/{jid}/complete', headers=headers, json=completion.model_dump())
-            response.raise_for_status()
-            print(json.dumps({'job_id': jid, 'status': 'completed', 'segments': len(segments)}), flush=True)
+                    client.put(f'/api/worker/jobs/{jid}/artifacts/{artifact["name"]}', headers=headers, content=stream).raise_for_status()
+            manifest = []
+            for index, chunk in enumerate(planned):
+                if cancelled.is_set():
+                    raise RuntimeError('Worker lease lost')
+                path = output / f'chunk-{index:04d}.wav'
+                crop_audio(audio, path, chunk['start'], chunk['end'])
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                with path.open('rb') as stream:
+                    client.put(f'/api/worker/jobs/{jid}/chunks/{index}', headers=headers, content=stream).raise_for_status()
+                manifest.append({**chunk,'bytes':path.stat().st_size,'sha256':digest})
+                path.unlink()
+            client.post(f'/api/worker/jobs/{jid}/prepare', headers=headers,
+                        json={'duration':duration,'artifacts':artifacts,'chunks':manifest},timeout=600).raise_for_status()
+            print(json.dumps({'job_id': jid, 'status': 'prepared', 'chunks': len(manifest)}), flush=True)
         return True
     except Exception as exc:
         # No blind inference retry; the lease fence prevents stale publication.
         if not cancelled.is_set():
             try:
                 client.post(f'/api/worker/jobs/{jid}/fail', headers=headers, json={'message': str(exc)[:500]}).raise_for_status()
+            except Exception:
+                pass
+        raise
+    finally:
+        done.set()
+        thread.join(timeout=5)
+
+
+def run_chunk(client, transcriber, job, work_root=None):
+    base = f"/api/worker/chunks/{job['id']}"
+    headers = {'X-Lease-Id': job['lease_id']}
+    done, lost = threading.Event(), threading.Event()
+    tracker = TranscriptionTracker(job['end']-job['start'])
+    def heartbeat():
+        while not done.is_set():
+            try:
+                client.post(base+'/heartbeat', headers=headers,
+                            json={'progress':min(.95, tracker.position[0]/tracker.duration), 'stage':'Transcribing chunk'}).raise_for_status()
+            except Exception:
+                lost.set()
+                return
+            done.wait(5)
+    thread = threading.Thread(target=heartbeat, daemon=True)
+    thread.start()
+    try:
+        with tempfile.TemporaryDirectory(prefix='recordings-chunk-',dir=work_root) as directory:
+            audio = Path(directory)/'chunk.wav'
+            digest, size = hashlib.sha256(), 0
+            with client.stream('GET',base+'/audio',headers=headers) as response:
+                response.raise_for_status()
+                with audio.open('wb') as stream:
+                    for block in response.iter_bytes(1024**2):
+                        size += len(block)
+                        if lost.is_set() or size > job['bytes']:
+                            raise RuntimeError('Lease lost or chunk exceeds budget')
+                        digest.update(block); stream.write(block)
+            if size != job['bytes'] or digest.hexdigest() != job['sha256']:
+                raise RuntimeError('Chunk integrity mismatch')
+            def advance(seconds):
+                if lost.is_set():
+                    raise RuntimeError('Worker lease lost')
+                tracker.advance(seconds)
+            segments = transcriber.transcribe(audio,job['language'],advance)
+            if lost.is_set():
+                raise RuntimeError('Worker lease lost')
+            client.post(base+'/complete',headers=headers,json={'segments':[s.model_dump() for s in segments]}).raise_for_status()
+        return True
+    except Exception as exc:
+        if not lost.is_set():
+            try:
+                client.post(base+'/fail',headers=headers,json={'message':str(exc)[:500]}).raise_for_status()
             except Exception:
                 pass
         raise

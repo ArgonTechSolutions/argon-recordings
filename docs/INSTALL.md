@@ -1,6 +1,6 @@
 # Install and test on Ubuntu
 
-This local installation bundles the web app, API, FFmpeg, Turbo worker, and multilingual search runtime in one Docker container. You need **Linux x86-64, Python 3.11 or later, working Docker 28+, and at least 8 GiB free disk**. Ubuntu's existing Docker installation is sufficient; no host Python packages, Node, FFmpeg, Compose, systemd units, or Docker socket mounts are needed. Docker itself is not installed or reconfigured by the launcher.
+This local installation bundles the web app, API, FFmpeg, Turbo worker, and multilingual search runtime in one image, run as separate API and worker containers. You need **Linux x86-64, Python 3.11 or later, working Docker 28+, and at least 8 GiB free disk**. Ubuntu's existing Docker installation is sufficient; no host Python packages, Node, FFmpeg, Compose, systemd units, or Docker socket mounts are needed. Docker itself is not installed or reconfigured by the launcher.
 
 The app remains single-user and loopback-only. Use an SSH tunnel for a remote laptop/server. This is a public source preview; license selection, release qualification, and team authentication remain pending.
 
@@ -15,7 +15,7 @@ nano recordings.toml
 python3 recordings.py up
 ```
 
-`up` builds the image, prepares the selected pinned models, starts the container, and waits for API readiness. Later use `start` without rebuilding. All inference dependencies are installed inside Docker. Building on an older laptop can take several minutes; build-time resources are separate from the configured running-container budget. First download: about 1.62 GB for Turbo plus your embedding choice. Existing valid model files are reused.
+`up` builds the image, prepares the selected pinned models, starts the isolated stack, and waits for API and worker readiness. Later use `start` without rebuilding. All inference dependencies are installed inside Docker. Building on an older laptop can take several minutes; build-time resources are separate from the configured running-container budget. First download: about 1.62 GB for Turbo plus your embedding choice. Existing valid model files are reused.
 
 The config is TOML:
 
@@ -82,7 +82,7 @@ python3 recordings.py evaluate
 
 `evaluate` runs the existing 16-query bilingual fixture in a separate disposable two-CPU container with the selected prepared search model. It prints recall, warm encoding time and peak process RSS on this host; these synthetic relevance results are not a representative accuracy benchmark. Stop the app before evaluation if you want to avoid competing with it for CPU/RAM.
 
-In the app, upload a Spanish or English clip (up to your configured per-file limit; no fixed duration limit). The worker polls automatically, processes one transcription or correction at a time, and updates progress. Check actual text/audio/frame alignment, search for the topic in both languages, and try **Correct text** with a technical term. Select matching passages, wait for proposals, then accept or dismiss them. A hint guides Turbo; it does not force exact text. Capture the job result, elapsed time, and any error before judging the installation accepted.
+In the app, upload a Spanish or English clip (up to your configured per-file limit; no fixed duration limit). The default single worker claims one preparation, transcription chunk or correction at a time and updates progress. Check actual text/audio/frame alignment, search for the topic in both languages, and try **Correct text** with a technical term. Select matching passages, wait for proposals, then accept or dismiss them. A hint guides Turbo; it does not force exact text. Capture the job result, elapsed time, and any error before judging the installation accepted.
 
 For diagnostics and shutdown:
 
@@ -91,13 +91,13 @@ python3 recordings.py logs
 python3 recordings.py stop
 ```
 
-`logs` is bounded to 100 lines; `stop` preserves all data and weights. The container restarts after a Docker/host reboot unless explicitly stopped. It runs as UID/GID 10001 with a read-only root/models, disk-backed data/work volumes, a 64 MiB temporary mount, capped logs, configured CPU/RAM, and no swap. Docker enforces the aggregate runtime limit across API/search/worker. Turbo unloads after two idle minutes; the search session stays warm. No default job deadline is applied. Set `resources.job_timeout_seconds` to a positive number if you want an operator deadline; zero disables it. Long recordings need proportionally more retained-audio disk space and CPU time; disk, memory and WAV format budgets still apply. Frame spacing adapts to keep at most 256 visual references. Lease fences protect publication after a timeout; failed temporary work can remain on the work volume.
+`logs` is bounded to 100 lines; `stop` preserves all data and weights. The containers restart after a Docker/host reboot unless explicitly stopped. It runs as UID/GID 10001 with a read-only root/models, disk-backed data/work volumes, a 64 MiB temporary mount, capped logs, configured CPU/RAM, and no swap. The launcher divides the aggregate runtime budget among the API/search container and isolated workers; Docker enforces each allocation. See [worker configuration](WORKERS.md). Turbo unloads after two idle minutes; the search session stays warm. No default job deadline is applied. Set `resources.job_timeout_seconds` to a positive number if you want an operator deadline; zero disables it. Long recordings need proportionally more retained-audio disk space and CPU time; disk, memory and WAV format budgets still apply. Frame spacing adapts to keep at most 256 visual references. Lease fences protect publication after a timeout; failed temporary work can remain on the work volume.
 
-At startup the service generates a temporary worker credential in process memory and passes it only to its API/worker child processes. It is not written to config, images, Docker Config.Env, logs, or volumes. Restart generates a new credential. No credential management is required for the bundled profile.
+At startup the API generates one temporary credential per worker and writes each to its dedicated RAM-backed tmpfs volume. Workers mount only their own credential read-only. Tokens are not written to config, images, Docker Config.Env, logs or disk-backed volumes; API restart rotates them. No manual token management is required.
 
 ## Updates and data
 
-Keep the installation directory, `recordings.toml`, `models/`, and `.recordings/`. Stop before replacing source files, then run `install` and `start`. Back up the data volume identified by `status`/Docker before upgrades. The current code adds its search/correction tables; it does not prune sources or migrate unrelated databases. There is no destructive uninstall command. Container replacement preserves both named volumes. Public/team deployment and storage lifecycle work remain separate milestones.
+Keep the installation directory, `recordings.toml`, `models/`, and `.recordings/`. Stop before replacing source files, then run `install` and `start`. Back up the data volume identified by `status`/Docker before upgrades. The current code adds its search/correction tables; it does not prune sources or migrate unrelated databases. There is no destructive uninstall command. Container replacement preserves existing data/work volumes and models. Public/team deployment and storage lifecycle work remain separate milestones.
 
 
 ## Updating an existing Philemon installation

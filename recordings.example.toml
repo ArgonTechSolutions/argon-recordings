@@ -22,3 +22,11 @@ sudo = false # Set true for sudo -n docker; first authenticate with sudo -v.
 allow_totp = false # Optional Google Authenticator-compatible admin alternative.
 mode = "accounts" # Existing configurations without [auth] keep the private local preview.
 # public_url = "https://recordings.example.com" # Required for OIDC; does not expose the port.
+
+[workers]
+count = 1 # One isolated worker by default; more workers share the aggregate resource budget.
+chunk_seconds = 180
+# Context added on EACH side of a chunk boundary.
+overlap_seconds = 2
+api_cpus = 0.5
+api_memory_gib = 2

@@ -22,7 +22,8 @@ def load_config(path):
     path = path.resolve()
     data = tomllib.loads(path.read_text())
     allowed = {'app': {'port', 'name', 'max_upload_mb'}, 'models': {'transcription', 'embedding', 'turbo_path'},
-               'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}, 'auth': {'mode', 'public_url', 'allow_totp'}}
+               'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}, 'auth': {'mode', 'public_url', 'allow_totp'},
+               'workers': {'count', 'chunk_seconds', 'overlap_seconds', 'api_cpus', 'api_memory_gib'}}
     for section, fields in data.items():
         if section not in allowed or not isinstance(fields, dict) or set(fields) - allowed[section]:
             raise ValueError(f'Unknown configuration key in {section}')
@@ -62,11 +63,25 @@ def load_config(path):
         url = urlsplit(public_url)
         if auth_mode != 'accounts' or url.scheme != 'https' or not url.netloc or url.username or url.password or url.path not in {'', '/'} or url.query or url.fragment:
             raise ValueError('auth.public_url requires account mode and an HTTPS origin')
+    workers = data.get('workers', {})
+    count = workers.get('count', 1)
+    chunk_seconds, overlap = workers.get('chunk_seconds', 180), workers.get('overlap_seconds', 2)
+    api_cpus, api_memory = workers.get('api_cpus', .5), workers.get('api_memory_gib', 2)
+    if type(count) is not int or not 1 <= count <= 8:
+        raise ValueError('workers.count must be an integer from 1 to 8')
+    if type(chunk_seconds) is not int or not 30 <= chunk_seconds <= 600:
+        raise ValueError('workers.chunk_seconds must be 30..600')
+    if type(overlap) not in {int, float} or not .5 <= overlap <= 5:
+        raise ValueError('workers.overlap_seconds must be 0.5..5 per side')
+    if type(api_cpus) not in {int, float} or api_cpus < .25 or cpus - api_cpus < .5 * count:
+        raise ValueError('Reserve at least 0.5 CPU per worker after workers.api_cpus')
+    if type(api_memory) is not int or api_memory < 1 or memory - api_memory < 2 * count:
+        raise ValueError('Reserve at least 2 GiB per worker after workers.api_memory_gib')
     home = path.parent
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(allow_totp=allow_totp, auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(workers=count, chunk_seconds=chunk_seconds, overlap_seconds=overlap, api_cpus=api_cpus, api_memory=api_memory, allow_totp=allow_totp, auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
@@ -80,6 +95,7 @@ def source_id():
     paths = [ROOT / 'Dockerfile.install', ROOT / 'backend/requirements.txt', ROOT / 'backend/requirements-inference.lock']
     paths += list((ROOT / 'backend/argon_recordings').glob('*.py'))
     paths += [ROOT / 'scripts' / name for name in ['prepare_turbo.py', 'prepare_embeddings.py', 'check_media_runtime.py', 'evaluate_embeddings.py']]
+    paths += [ROOT / 'scripts' / 'worker_stack.py']
     for directory, folders, filenames in os.walk(ROOT / 'web'):
         folders[:] = [name for name in folders if name not in {'node_modules', 'dist', '.git'}]
         paths += [Path(directory) / name for name in filenames if not name.endswith('.log')]
@@ -102,7 +118,7 @@ def state(config):
 
 def inspect(config):
     owned = docker(config, 'container', 'ls', '-a', '--filter', 'label=' + LABEL + '=' + config['identity'], '--format', '{{.Names}}', capture_output=True, text=True).stdout.splitlines()
-    if any(name != config['name'] for name in owned):
+    if any(name != config['name'] and not re.fullmatch(re.escape(config['name']) + r'-worker-[1-8]', name) for name in owned):
         raise ValueError('This installation already has a differently named container; restore app.name before managing it')
     result = docker(config, 'container', 'ls', '-a', '--filter', 'name=^/' + config['name'] + '$', '--format', '{{.ID}}', capture_output=True, text=True)
     if not result.stdout.strip():
@@ -124,14 +140,14 @@ def doctor(config):
     print(f"Docker {info['ServerVersion']} / cgroup {info['CgroupVersion']} / CPUs {info['NCPU']} / RAM {info['MemTotal']}")
     print('Local URL:', f"http://localhost:{config['port']}")
     print('Models: Turbo CPU INT8; embeddings:', config['embedding'])
-    print('Container budget:', config['cpus'], 'CPUs,', config['memory'], 'GiB RAM, no swap')
+    print('Aggregate budget:', config['cpus'], 'CPUs,', config['memory'], 'GiB RAM, no swap;', config['workers'], 'isolated worker(s)')
     print('Free disk GiB:', round(shutil.disk_usage(config['home']).free / 1024**3, 1))
 
 
 def install(config):
     doctor(config)
-    current = inspect(config)
-    if current and current['State']['Running']:
+    from scripts.worker_stack import stack_items
+    if any(item['State']['Running'] for item in stack_items(sys.modules[__name__], config)):
         raise ValueError('Stop this installation before rebuilding or preparing models')
     if shutil.disk_usage(config['home']).free < 8 * 1024**3:
         raise ValueError('At least 8 GiB free required for builds, model preparation and work files')
@@ -162,53 +178,18 @@ def install(config):
 
 
 def start_args(config, installed):
-    volume = 'argon-recordings-' + config['identity']
-    args = ['run', '-d', '--init', '--name', config['name'], '--label', LABEL + '=' + config['identity'],
-            '--restart', 'unless-stopped', '--cpus', str(config['cpus']), '--memory', f"{config['memory']}g",
-            '--memory-swap', f"{config['memory']}g", '--pids-limit', '256', '--read-only', '--cap-drop', 'ALL',
-            '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,size=64m',
-            '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
-            '-p', f"127.0.0.1:{config['port']}:8000", '-v', volume + '-data:/data', '-v', volume + '-work:/work',
-            '-v', str(config['turbo']) + ':/models/turbo:ro', '-e', 'RECORDINGS_JOB_TIMEOUT_SECONDS=' + str(config['timeout']), '-e', 'RECORDINGS_MAX_UPLOAD_MB=' + str(config['max_upload_mb'])]
-    args += ['-e', 'RECORDINGS_ALLOW_TOTP=' + str(config['allow_totp']).lower(), '-e', 'RECORDINGS_AUTH_MODE=' + config['auth_mode'], '-e', 'RECORDINGS_PUBLIC_URL=' + config['public_url']]
-    if config['embedding'] != 'off':
-        args += ['-v', str(config['home'] / 'models' / ('e5-' + config['embedding'])) + ':/models/embeddings:ro',
-                 '-e', 'RECORDINGS_EMBEDDING_DIR=/models/embeddings', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]
-    args += [installed['image']]
-    return args
+    from scripts.worker_stack import api_args
+    return api_args(config, installed, LABEL)
 
 
 def start(config):
-    installed = state(config)
-    if not config['turbo'].is_dir() or (config['embedding'] != 'off' and not (config['home'] / 'models' / ('e5-' + config['embedding'])).is_dir()):
-        raise ValueError('Prepared model directory is missing; run install again')
-    actual_image = json.loads(docker(config, 'image', 'inspect', installed['image'], capture_output=True, text=True).stdout)[0]
-    if actual_image['Config'].get('Labels', {}).get('com.argon.recordings.source') != installed['source']:
-        raise ValueError('Installed image identity does not match; run install again')
-    previous = inspect(config)
-    if previous and previous['State']['Running']:
-        raise ValueError('Already running; stop before changing configuration')
-    with socket.socket() as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        probe.bind(('127.0.0.1', config['port']))
-    if previous:
-        docker(config, 'rm', config['name'])  # Container only; data/work volumes are preserved.
-    docker(config, *start_args(config, installed))
-    url = f"http://127.0.0.1:{config['port']}/api/health"
-    for _ in range(120):
-        try:
-            with urllib.request.urlopen(url, timeout=1) as response:
-                health = json.load(response)
-            running = inspect(config)
-            if running and running['State']['Running'] and health.get('status') == 'ok' and health.get('worker_configured'):
-                print('Ready:', f"http://localhost:{config['port']}")
-                if health.get('accounts_setup_required'):
-                    print('Create the initial administrator: python3 recordings.py setup-admin (see docs/ACCOUNTS.md for existing projects).')
-                return
-        except (OSError, ValueError):
-            pass
-        time.sleep(1)
-    raise ValueError('Startup not ready after 120 seconds; inspect status and logs')
+    from scripts.worker_stack import start_stack
+    start_stack(sys.modules[__name__], config)
+
+
+def stop(config):
+    from scripts.worker_stack import stop_stack
+    stop_stack(sys.modules[__name__], config)
 
 
 def main():
@@ -255,14 +236,18 @@ def main():
                    '--entrypoint', 'python', installed['image'], 'scripts/evaluate_embeddings.py', '/models/embeddings', '--profile', config['embedding'])
         else:
             item = inspect(config)
-            if not item:
-                print('Not started. Data volumes, if any, are preserved.')
-            elif args.command == 'stop':
-                docker(config, 'stop', '-t', '30', config['name'])
+            if args.command == 'stop':
+                stop(config)
             elif args.command == 'logs':
-                docker(config, 'logs', '--tail', '100', config['name'])
+                from scripts.worker_stack import stack_items
+                for member in stack_items(sys.modules[__name__], config):
+                    print('Container:', member['Name'].lstrip('/'))
+                    docker(config, 'logs', '--tail', '100', member['Name'].lstrip('/'))
+            elif not item:
+                print('API not started. Data volumes, if any, are preserved; stop also stops remaining workers.')
             else:
-                print(json.dumps(dict(status=item['State']['Status'], image=item['Config']['Image'],
+                from scripts.worker_stack import stack_items
+                print(json.dumps(dict(workers=[dict(name=member['Name'].lstrip('/'), status=member['State']['Status'], cpus=member['HostConfig']['NanoCpus'], memory_bytes=member['HostConfig']['Memory'], mounts=[dict(destination=m['Destination'], volume=m.get('Name')) for m in member['Mounts']]) for member in stack_items(sys.modules[__name__], config) if member['Name'].lstrip('/') != config['name']], status=item['State']['Status'], image=item['Config']['Image'],
                                       ports=item['HostConfig']['PortBindings'], cpus=item['HostConfig']['NanoCpus'],
                                       memory_bytes=item['HostConfig']['Memory'], mounts=[dict(destination=m['Destination'], volume=m.get('Name'), source=m['Source']) for m in item['Mounts']]), indent=2))
     except (ValueError, OSError, subprocess.CalledProcessError, KeyError) as exc:

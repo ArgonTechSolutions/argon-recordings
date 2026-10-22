@@ -28,6 +28,7 @@ def identity():
 class Store:
     def __init__(self, root: Path, recover_uploads=True):
         self.on_commit = None
+        self.worker_limit = 1
         self.root = root
         for folder in ['sources', 'staging', 'results']:
             (root / folder).mkdir(parents=True, exist_ok=True)
@@ -47,6 +48,14 @@ CREATE TABLE IF NOT EXISTS embedding_versions(recording_id TEXT PRIMARY KEY REFE
 CREATE TABLE IF NOT EXISTS corrections(id TEXT PRIMARY KEY,recording_id TEXT NOT NULL REFERENCES recordings(id),
  segment_id TEXT NOT NULL REFERENCES segments(id),original TEXT NOT NULL,hint TEXT NOT NULL,state TEXT NOT NULL,
  lease_id TEXT,lease_until REAL,attempts INTEGER DEFAULT 0,proposal TEXT,error TEXT,created REAL NOT NULL);
+""")
+            if 'worker' not in {r[1] for r in db.execute('PRAGMA table_info(corrections)')}:
+                db.execute('ALTER TABLE corrections ADD COLUMN worker TEXT')
+            db.executescript("""
+CREATE TABLE IF NOT EXISTS preparations(job_id TEXT PRIMARY KEY REFERENCES jobs(id),lease_id TEXT NOT NULL,duration REAL NOT NULL,artifacts TEXT NOT NULL,result_sha TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS chunks(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES jobs(id),ordinal INTEGER NOT NULL,boundary INTEGER NOT NULL DEFAULT 0,start REAL NOT NULL,end REAL NOT NULL,core_start REAL NOT NULL,core_end REAL NOT NULL,path TEXT NOT NULL,bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'queued',lease_id TEXT,lease_until REAL,worker TEXT,attempts INTEGER NOT NULL DEFAULT 0,result TEXT,result_sha TEXT,error TEXT,UNIQUE(job_id,ordinal));
+CREATE INDEX IF NOT EXISTS chunks_queue ON chunks(state,job_id);
+CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES jobs(id),started REAL NOT NULL);
 """)
             # An interrupted upload can be retried. Completed source files are never pruned here.
             if recover_uploads:
@@ -77,13 +86,17 @@ CREATE TABLE IF NOT EXISTS corrections(id TEXT PRIMARY KEY,recording_id TEXT NOT
         with self.db() as db:
             return db.execute('SELECT * FROM recordings WHERE id=?', (recording_id,)).fetchone()
 
+    def capacity_available(self, db, worker=None):
+        active = []
+        for table in ('jobs', 'corrections', 'chunks'):
+            active.extend(db.execute(f"SELECT worker FROM {table} WHERE state='running' AND lease_until>?", (time.time(),)).fetchall())
+        return len(active) < self.worker_limit and (worker is None or not any(r['worker'] == worker for r in active))
+
     def claim(self, worker):
         now = time.time()
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            if db.execute("SELECT 1 FROM jobs WHERE state='running' AND lease_until>? LIMIT 1", (now,)).fetchone():
-                return None
-            if db.execute("SELECT 1 FROM corrections WHERE state='running' AND lease_until>?", (now,)).fetchone():
+            if not self.capacity_available(db, worker):
                 return None
             exhausted = db.execute("SELECT recording_id FROM jobs WHERE state='running' AND lease_until<=? AND attempts>=3", (now,)).fetchall()
             for row in exhausted:

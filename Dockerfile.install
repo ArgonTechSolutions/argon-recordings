@@ -16,4 +16,4 @@ COPY scripts/prepare_embeddings.py scripts/prepare_turbo.py scripts/check_media_
 COPY --from=web /web/dist ./static
 RUN mkdir -p /data /work && chown 10001:10001 /data /work
 USER 10001:10001
-CMD ["python", "-m", "argon_recordings.service"]
+CMD ["python", "-m", "argon_recordings.isolated", "api"]

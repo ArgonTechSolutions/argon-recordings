@@ -8,8 +8,8 @@ A self-hosted workspace for finding the useful moments in recordings. Built by A
 
 - Projects and recording library, with a clearly labelled synthetic design preview.
 - Streaming uploads with a configurable per-file limit (256 MiB by default), with upload progress/cancellation and a durable queue.
-- SQLite-backed worker leases, fencing, idempotent publication, one active lease, and bounded retry after worker loss. Urgent work gets a five-minute priority advantage; older normal work can overtake it.
-- One-job CPU INT8 Turbo worker using explicit, checksum-verified local model files. No automatic model downloads.
+- SQLite-backed per-worker leases, fencing, idempotent publication, and bounded retry after worker loss. Urgent work gets a five-minute priority advantage; older normal work can overtake it.
+- Isolated CPU INT8 Turbo workers using explicit, checksum-verified local model files, with one worker by default. Recordings split into overlapping chunks with boundary reconciliation; additional workers can share one recording.
 - No fixed recording-duration limit. Audio extraction and source-relative timestamps are preserved; visual references use explicit seeks with adaptive spacing and at most 256 frames per recording. Uploads use the configured per-file limit; retained audio must fit available work space and the WAV format budget.
 - Audio/transcript navigation, nearest retained frame with time offset, multilingual semantic/keyword search, and transcript text download.
 - Mark misheard text, find similar spelling variants in the recording, retry selected audio passages with a hint, and review proposals before acceptance. Prior text is retained in correction history.
@@ -27,7 +27,7 @@ python3 recordings.py init
 python3 recordings.py up
 ```
 
-The launcher builds and installs dependencies inside Docker, prepares verified local models, and starts the web/API/background worker on your configured localhost port. Set `app.max_upload_mb = 2048` for 2 GiB uploads (default 256 MiB); restart after changing the limit. Search choices are `large` (default), `base`, `small`, or `off`; transcription stays Turbo CPU INT8. `stop` preserves data, `start` reuses the installation, and `evaluate` measures the selected embedding model on the host. Temporary internal worker credentials live only in process memory. See [installation and Philemon testing](docs/INSTALL.md) for Docker permissions, benchmark model reuse, SSH access, resource caps and upgrades.
+The launcher builds and installs dependencies inside Docker, prepares verified local models, and starts the web/API/background worker on your configured localhost port. Set `app.max_upload_mb = 2048` for 2 GiB uploads (default 256 MiB); restart after changing the limit. Search choices are `large` (default), `base`, `small`, or `off`; transcription stays Turbo CPU INT8. `stop` preserves data, `start` reuses the installation, and `evaluate` measures the selected embedding model on the host. Temporary internal worker credentials live in dedicated RAM-backed volumes, with a separate credential for each worker. See [installation and Philemon testing](docs/INSTALL.md) for Docker permissions, benchmark model reuse, SSH access, resource caps and upgrades.
 
 ## Local build and preview
 
@@ -117,12 +117,16 @@ It resolved to shadcn 4.22.1 during initialization. Installed dependencies are r
 
 Run `python3 recordings.py update` from a Git installation to fetch `main`, rebuild, and restart an already running app. See [the one-time archive conversion and update instructions](docs/INSTALL.md#git-updates). Public HTTPS pulls need no GitHub credentials.
 
-Transcription progress reports source audio covered, passages produced, and elapsed time. An approximate transcription ETA appears after at least three passages, 30 seconds of covered audio, and 30 seconds elapsed. Silence, model loading, and changing host load can affect the estimate; publishing is a separate stage. Workers report every five seconds; the UI receives commit-driven server-sent events without recording-status polling. No chunk total is invented because Whisper produces variable-length passages.
+Transcription progress reports source audio covered, passages produced, and elapsed time. An approximate transcription ETA appears after at least three passages, 30 seconds of covered audio, and 30 seconds elapsed. Silence, model loading, and changing host load can affect the estimate; publishing is a separate stage. Workers report every five seconds; the UI receives commit-driven server-sent events without recording-status polling. Preparation creates a concrete chunk plan; processing reports completed chunks out of that total. Whisper passages remain variable length.
 
 Live recording updates use `GET /api/projects/{pid}/events` (same-origin SSE). Each connection receives recording snapshots; reconnecting or returning to a visible tab refreshes current state instead of replaying historical events. Idle streams send a keepalive every 15 seconds without database reads. Snapshot generation is shared among viewers of a project, commits are coalesced, and each slow viewer has a single pending snapshot. Disconnections show a reconnecting status; native EventSource retries after three seconds. Reverse proxies must allow long-lived responses and disable buffering/caching for this endpoint. The bundled API bounds shutdown draining to five seconds so open streams cannot indefinitely delay updates.
 
-The event broker is in memory and supports the current single API process with multiple viewers. Keep one API process; multiple API workers/replicas or database writes outside this process require a shared event broker before deployment. Authentication and per-project authorization remain pending; project scoping is not access control. SSE preserves the existing loopback and same-origin boundary. Correction-review polling remains separate from recording status.
+The event broker is in memory and supports the current single API process with multiple viewers. Keep one API process; multiple API workers/replicas or database writes outside this process require a shared event broker before deployment. Account mode enforces project permissions on SSE and other project routes. SSE preserves the existing loopback and same-origin boundary. Correction-review polling remains separate from recording status.
 
 ## Accounts and administration
 
 New installer configurations use invitation-only accounts. Run `python3 recordings.py setup-admin` after startup, then `python3 recordings.py setup-admin-mfa` to authorize passkey enrollment at `/admin/`. Administration prefers passkeys; optional `auth.allow_totp=true` enables Google Authenticator-compatible codes. Save the one-time recovery codes. Existing configurations retain private preview mode until explicitly enabled. See [account setup, existing-data adoption and OIDC](docs/ACCOUNTS.md). Public exposure remains a separate release gate.
+
+## Isolated workers
+
+The installer runs one API container and one worker by default. Workers have no account database or application data mount. Optional extra workers share a durable chunk queue and the configured aggregate CPU/RAM budget. See [worker architecture and configuration](docs/WORKERS.md). Smart visual retention and automatic scaling remain later work.

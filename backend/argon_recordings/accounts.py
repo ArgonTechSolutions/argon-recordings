@@ -283,17 +283,19 @@ class AccountRequestBudget:
         path = scope.get('path', '')
         limited = scope['type'] == 'http' and scope['method'] not in {'GET', 'HEAD', 'OPTIONS'} and (
             path.startswith('/api/auth/') or path.startswith('/api/admin/') or '/members' in path)
-        if not limited:
+        worker_json = scope['type'] == 'http' and scope['method'] == 'POST' and path.startswith('/api/worker/')
+        if not limited and not worker_json:
             return await self.app(scope, receive, send)
+        maximum = 8 * 1024**2 if worker_json else self.maximum
         content = bytearray()
         while True:
             message = await receive()
             if message['type'] == 'http.disconnect':
                 return
             block = message.get('body', b'')
-            if len(content) + len(block) > self.maximum:
+            if len(content) + len(block) > maximum:
                 from fastapi.responses import JSONResponse
-                return await JSONResponse({'detail': 'Account request is too large'}, status_code=413)(scope, receive, send)
+                return await JSONResponse({'detail': 'Worker JSON request is too large' if worker_json else 'Account request is too large'}, status_code=413)(scope, receive, send)
             content.extend(block)
             if not message.get('more_body', False):
                 break

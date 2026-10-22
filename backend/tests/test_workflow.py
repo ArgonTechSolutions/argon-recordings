@@ -149,9 +149,11 @@ def test_actual_pull_protocol_with_synthetic_inference(client, tmp_path):
         def transcribe(self, audio, language, advance):
             assert language == 'es'
             advance(1)
-            return [Segment(start=0, end=1, text='Synthetic worker evidence')]
+            return [Segment(start=0, end=1, text='Synthetic worker evidence', words=[dict(start=0,end=1,word='Synthetic worker evidence',probability=1)])]
     with httpx.Client(base_url='http://testserver', headers=AUTH, transport=httpx.MockTransport(forward)) as transport:
         with patch('argon_recordings.worker.extract', fake_extract):
+            assert run_once(transport, Synthetic(), tmp_path)
+            assert client.get(f'/api/recordings/{rid}').json()['status'] == 'running'
             assert run_once(transport, Synthetic(), tmp_path)
     assert client.get(f'/api/recordings/{rid}').json()['status'] == 'ready'
     assert client.get('/api/search', params={'project_id': client.get(f'/api/recordings/{rid}').json()['project_id'], 'q': 'evidence'}).json()

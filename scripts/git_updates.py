@@ -65,7 +65,10 @@ def update(installer, config):
     current = installer.inspect(config)
     was_running = bool(current and current['State']['Running'])
     if was_running:
-        installer.docker(config, 'stop', '-t', '30', config['name'])
+        if hasattr(installer, 'stop'):
+            installer.stop(config)
+        else:  # Compatibility with the launcher loaded before this update.
+            installer.docker(config, 'stop', '-t', '30', config['name'])
     git(root, 'merge', '--ff-only', target)
     # Execute the new installer, not Python functions loaded from the old version.
     command = [sys.executable, str(root / 'recordings.py'), '--config', str(config['config_path'])]

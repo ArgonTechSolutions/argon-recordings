@@ -18,7 +18,7 @@ export function TranscriptionProgress({ job }: { job: Recording["job"] }) {
     return () => clearInterval(timer)
   }, [])
   const detail = job?.transcription
-  if (!detail || job?.state !== "running") return null
+  if (!detail || !["running", "prepared"].includes(job?.state ?? "")) return null
   const age =
     job.updated_at == null ? null : Math.max(0, now / 1000 - job.updated_at)
   const stale = age === null || age > 20

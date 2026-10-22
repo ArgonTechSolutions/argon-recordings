@@ -5,7 +5,7 @@ import time
 import unicodedata
 import re
 
-from fastapi import BackgroundTasks, Depends, Header, HTTPException
+from fastapi import BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from .contracts import CorrectionCandidates, CorrectionCreate, CorrectionCompletion, CorrectionCandidateHit, CorrectionView, Segment, Heartbeat, Failure
@@ -112,18 +112,19 @@ def install(app, store, recording_or_404, worker_auth, embeddings):
         return {'status': 'accepted' if action == 'accept' else 'dismissed'}
 
     @app.post('/api/worker/corrections/claim', dependencies=[Depends(worker_auth)])
-    def claim():
+    def claim(request: Request):
         now = time.time()
         with store().db() as db:
             db.execute('BEGIN IMMEDIATE')
-            if db.execute("SELECT 1 FROM jobs WHERE state='running' AND lease_until>?", (now,)).fetchone() or db.execute("SELECT 1 FROM corrections WHERE state='running' AND lease_until>?", (now,)).fetchone():
+            worker = getattr(request.state, 'worker_id', None)
+            if not store().capacity_available(db, worker):
                 return None
             db.execute("UPDATE corrections SET state='failed',error='Lease retries exhausted' WHERE state='running' AND lease_until<=? AND attempts>=3", (now,))
             row = db.execute("SELECT c.*,s.start,s.end,r.language,r.duration AS recording_duration FROM corrections c JOIN segments s ON s.id=c.segment_id JOIN recordings r ON r.id=c.recording_id WHERE c.state='queued' OR (c.state='running' AND c.lease_until<=? AND c.attempts<3) ORDER BY c.created LIMIT 1", (now,)).fetchone()
             if not row:
                 return None
             token = identity()
-            db.execute("UPDATE corrections SET state='running',lease_id=?,lease_until=?,attempts=attempts+1 WHERE id=?", (token, now + 120, row['id']))
+            db.execute("UPDATE corrections SET state='running',lease_id=?,lease_until=?,attempts=attempts+1,worker=? WHERE id=?", (token, now + 120, worker, row['id']))
             return dict(row, lease_id=token)
 
     @app.post('/api/worker/corrections/{cid}/heartbeat', dependencies=[Depends(worker_auth)])

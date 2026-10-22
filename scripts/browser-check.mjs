@@ -183,6 +183,22 @@ try {
   assert.equal(recordingListReads, readsBeforeProgress, 'Reconnect uses an SSE snapshot')
   result.checks.push('SSE progress without recording-list polling; hidden tab disconnect and reconnect resynchronization')
 
+  // Synthetic fixture transition: chunk preparation retains the same progress UI.
+  const setJobState = state => execFileSync('python', ['-c',
+    "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]+'/recordings.sqlite'); c.execute('UPDATE jobs SET state=? WHERE id=?',(sys.argv[2],sys.argv[3])); c.commit()",
+    data, state, failedJob.job_id], { env, timeout: 30000 })
+  setJobState('prepared')
+  await page.reload()
+  await page.locator('.recording-card').filter({ hasText: 'Browser upload' }).click()
+  await page.getByText('Audio covered: 5:00 / 10:00', { exact: true }).waitFor()
+  const preparedElapsed = await page.locator('.transcription-progress p').nth(1).innerText()
+  await page.waitForFunction(previous => document.querySelectorAll('.transcription-progress p')[1]?.textContent !== previous, preparedElapsed)
+  result.checks.push('prepared chunk jobs retain locally ticking elapsed time')
+  setJobState('running')
+  await page.reload()
+  await page.locator('.recording-card').filter({ hasText: 'Browser upload' }).click()
+  await page.getByText('Audio covered: 5:00 / 10:00', { exact: true }).waitFor()
+
   await page.setViewportSize({ width: 390, height: 844 })
   await fits()
   await page.screenshot({ path: path.join(evidence, 'transcription-progress-mobile.png'), fullPage: true })

@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/worker/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Worker Ready */
+        post: operations["worker_ready_api_worker_ready_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -409,6 +426,125 @@ export interface paths {
         put?: never;
         /** Fail */
         post: operations["fail_api_worker_jobs__jid__fail_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/tasks/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim */
+        post: operations["claim_api_worker_tasks_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/jobs/{jid}/chunks/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload */
+        put: operations["upload_api_worker_jobs__jid__chunks__index__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/jobs/{jid}/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare */
+        post: operations["prepare_api_worker_jobs__jid__prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/chunks/{cid}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audio */
+        get: operations["audio_api_worker_chunks__cid__audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/chunks/{cid}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Heartbeat */
+        post: operations["heartbeat_api_worker_chunks__cid__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/chunks/{cid}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fail */
+        post: operations["fail_api_worker_chunks__cid__fail_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/chunks/{cid}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete */
+        post: operations["complete_api_worker_chunks__cid__complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -936,6 +1072,31 @@ export interface components {
             /** Time */
             time?: number | null;
         };
+        /** ChunkInput */
+        ChunkInput: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Core Start */
+            core_start: number;
+            /** Core End */
+            core_end: number;
+            /**
+             * Boundary
+             * @default false
+             */
+            boundary: boolean;
+            /** Sha256 */
+            sha256: string;
+            /** Bytes */
+            bytes: number;
+        };
+        /** ChunkResult */
+        ChunkResult: {
+            /** Segments */
+            segments: components["schemas"]["Segment"][];
+        };
         /** ClaimRequest */
         ClaimRequest: {
             /** Worker */
@@ -1125,6 +1286,15 @@ export interface components {
              */
             registration: "closed" | "invite";
         };
+        /** Prepared */
+        Prepared: {
+            /** Duration */
+            duration: number;
+            /** Artifacts */
+            artifacts: components["schemas"]["ArtifactInput"][];
+            /** Chunks */
+            chunks: components["schemas"]["ChunkInput"][];
+        };
         /** Project */
         Project: {
             /** Id */
@@ -1309,6 +1479,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    worker_ready_api_worker_ready_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_health_get: {
         parameters: {
             query?: never;
@@ -2176,6 +2377,258 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["Failure"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_api_worker_tasks_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_api_worker_jobs__jid__chunks__index__put: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                jid: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_api_worker_jobs__jid__prepare_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Prepared"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audio_api_worker_chunks__cid__audio_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_api_worker_chunks__cid__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Heartbeat"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fail_api_worker_chunks__cid__fail_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Failure"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_api_worker_chunks__cid__complete_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChunkResult"];
             };
         };
         responses: {

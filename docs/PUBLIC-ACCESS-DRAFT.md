@@ -32,7 +32,7 @@ Local testing uses `http://localhost:<tunnel-port>`. Credentials enrolled for lo
 
 ## Blocking work before exposure
 
-1. Split API and media/inference worker trust boundaries. The bundled container currently shares `/data`, the account database and process environment with the media worker. A parser compromise can cross the browser-authentication boundary. The public profile must remove account/session storage and browser credentials from the worker, publish only job-scoped artifacts, restrict its filesystem/network, and bound aggregate Philemon resources.
+1. Qualify the isolated worker profile on Philemon. The installer now separates API/account storage from media workers, with per-worker RAM-backed credentials, private work volumes, restricted worker endpoints and aggregate resource limits (see [WORKERS.md](WORKERS.md)). Local/disposable checks do not establish hostile-media containment or real-host acceptance.
 2. Qualify hostile media, upload reservations/quotas, resume/interruption, per-user abuse and concurrency. Preserve one heavy job by default; a public listener must not turn a queue into unbounded storage/CPU use.
 3. Implement and test the gateway/proxy security headers, credential custody, backup/restore and monitoring path. Resolve applicable dependency advisories in the packaged API, worker and media runtime before release.
 4. Test the final HTTPS origin and real user authenticators on Philemon; test lost-passkey/recovery/host recovery and origin cutover. Automated virtual-authenticator evidence is not real-device acceptance.
