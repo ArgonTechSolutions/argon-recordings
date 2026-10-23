@@ -117,7 +117,10 @@ def run_once(client, transcriber, work_root=None):
     claim.raise_for_status()
     job = claim.json()
     if not job:
-        return run_correction(client, transcriber, work_root)
+        if run_correction(client, transcriber, work_root):
+            return True
+        from .diarization_worker import run as run_diarization
+        return run_diarization(client, transcriber, work_root)
     if job.get('kind') == 'chunk':
         return run_chunk(client, transcriber, job, work_root)
     jid, lease = job['job_id'], job['lease_id']

@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES 
                 db.execute("UPDATE recordings SET status='awaiting_upload' WHERE status='uploading'")
             from .evidence import SCHEMA as evidence_schema
             db.executescript(evidence_schema)
+            from .diarization import SCHEMA as diarization_schema
+            db.executescript(diarization_schema)
 
     @contextmanager
     def db(self):
@@ -90,7 +92,7 @@ CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES 
 
     def capacity_available(self, db, worker=None):
         active = []
-        for table in ('jobs', 'corrections', 'chunks'):
+        for table in ('jobs', 'corrections', 'chunks', 'diarization_jobs'):
             active.extend(db.execute(f"SELECT worker FROM {table} WHERE state='running' AND lease_until>?", (time.time(),)).fetchall())
         return len(active) < self.worker_limit and (worker is None or not any(r['worker'] == worker for r in active))
 

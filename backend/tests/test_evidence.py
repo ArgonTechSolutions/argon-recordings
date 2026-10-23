@@ -104,4 +104,6 @@ def test_viewer_and_other_project_isolation(team):
     owner.put(f'/api/projects/{pid}/members', json={'email': 'viewer@example.com', 'role': 'viewer'}, headers=headers)
     assert guest.get(url).status_code == 200
     assert guest.post(url, json=body(owner, rid), headers=guest_headers).status_code == 403
+    assert guest.get(f'/api/recordings/{rid}/speakers').status_code == 200
+    assert guest.post(f'/api/recordings/{rid}/diarization', json={}, headers=guest_headers).status_code == 403
     assert owner.post(url, json=body(owner, rid), headers=headers).status_code == 201

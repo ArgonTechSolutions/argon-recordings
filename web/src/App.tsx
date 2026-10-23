@@ -73,10 +73,23 @@ function App() {
   const account = useAccountSession()
   const cache = useQueryClient()
   const { theme, setTheme } = useTheme()
-  const [projectId, setProjectId] = useState<string>()
-  const [recordingId, setRecordingId] = useState<string>()
+  const [sourceLink] = useState(() => {
+    const query = new URLSearchParams(window.location.search)
+    const at = Number(query.get("at") ?? 0)
+    return {
+      project: query.get("project") || undefined,
+      recording: query.get("recording") || undefined,
+      at: Number.isFinite(at) && at >= 0 ? at : 0,
+    }
+  })
+  const [projectId, setProjectId] = useState<string | undefined>(
+    sourceLink.project
+  )
+  const [recordingId, setRecordingId] = useState<string | undefined>(
+    sourceLink.recording
+  )
   const [page, setPage] = useState<"library" | "workspace">(
-    preview ? "workspace" : "library"
+    preview || sourceLink.recording ? "workspace" : "library"
   )
   const [mobileMenu, setMobileMenu] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -93,12 +106,14 @@ function App() {
   const [searchMode, setSearchMode] = useState("hybrid")
   const [query, setQuery] = useState("")
   const [debounced, setDebounced] = useState("")
-  const [time, setTime] = useState(preview ? 43 : 0)
+  const [time, setTime] = useState(preview ? 43 : sourceLink.at)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [notice, setNotice] = useState("")
   const audio = useRef<HTMLAudioElement>(null)
-  const pendingSeek = useRef<number | null>(null)
+  const pendingSeek = useRef<number | null>(
+    sourceLink.recording ? sourceLink.at : null
+  )
   const projects = useQuery({
     queryKey: ["projects"],
     queryFn: () => request<Project[]>("/api/projects"),
@@ -107,8 +122,9 @@ function App() {
     queryKey: ["health"],
     queryFn: () => request<Health>("/api/health"),
   })
-  const activeProject =
-    projects.data?.find((p) => p.id === projectId) ?? projects.data?.[0]
+  const activeProject = projectId
+    ? projects.data?.find((p) => p.id === projectId)
+    : projects.data?.[0]
   const canEdit = activeProject?.role !== "viewer"
   const recordings = useQuery({
     queryKey: ["recordings", activeProject?.id],
@@ -118,8 +134,9 @@ function App() {
     refetchOnWindowFocus: false,
   })
   const eventsDisconnected = useProjectEvents(activeProject?.id)
-  const current =
-    recordings.data?.find((r) => r.id === recordingId) ?? recordings.data?.[0]
+  const current = recordingId
+    ? recordings.data?.find((r) => r.id === recordingId)
+    : recordings.data?.[0]
   const transcript = useQuery({
     queryKey: ["transcript", current?.id],
     enabled: current?.status === "ready",
@@ -789,6 +806,7 @@ function App() {
                           <VisualMarks
                             key={current.id}
                             recordingId={current.id}
+                            projectId={current.project_id}
                             time={time}
                             duration={duration}
                             canEdit={canEdit}
@@ -885,7 +903,13 @@ function App() {
                           onPause={() => setPlaying(false)}
                           onEnded={() => setPlaying(false)}
                           onLoadedMetadata={(e) => {
-                            const at = pendingSeek.current ?? 0
+                            const at = Math.max(
+                              0,
+                              Math.min(
+                                e.currentTarget.duration || duration,
+                                pendingSeek.current ?? 0
+                              )
+                            )
                             e.currentTarget.currentTime = at
                             setTime(at)
                             pendingSeek.current = null
@@ -955,6 +979,10 @@ function App() {
             setUploadOpen(false)
           }}
         />
+      )}
+      {((projectId && projects.isSuccess && !activeProject) ||
+        (recordingId && recordings.isSuccess && !current)) && (
+        <p role="alert">Recording link is unavailable.</p>
       )}
       {notice && (
         <div className="notice" role="status">

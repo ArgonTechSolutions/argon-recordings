@@ -14,12 +14,14 @@ const stamp = (t: number) =>
 
 export function VisualMarks({
   recordingId,
+  projectId,
   time,
   duration,
   canEdit,
   seek,
 }: {
   recordingId: string
+  projectId: string
   time: number
   duration: number
   canEdit: boolean
@@ -133,6 +135,12 @@ export function VisualMarks({
                 · {mark.label || "Mark"}
                 {mark.pinned ? " · Pinned" : ""}
               </button>
+              <a
+                href={`/?${new URLSearchParams({ project: projectId, recording: recordingId, at: String(mark.interval.start) })}`}
+                aria-label={`Link to ${mark.label || "mark"}`}
+              >
+                Link
+              </a>
               {canEdit && (
                 <>
                   <Button

@@ -467,6 +467,8 @@ def create_app(settings=None):
 
     from .evidence import install as install_evidence
     install_evidence(app, store)
+    from .diarization import install as install_diarization
+    install_diarization(app, store, worker_auth)
 
     static = os.environ.get('RECORDINGS_STATIC')
     if static:

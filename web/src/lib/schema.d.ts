@@ -1119,6 +1119,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/speakers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Speakers */
+        get: operations["speakers_api_recordings__rid__speakers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/diarization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_recordings__rid__diarization_get"];
+        put?: never;
+        /** Schedule */
+        post: operations["schedule_api_recordings__rid__diarization_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/diarization/{jid}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_recordings__rid__diarization__jid__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/diarization/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim */
+        post: operations["claim_api_worker_diarization_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/diarization/{jid}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Heartbeat */
+        post: operations["heartbeat_api_worker_diarization__jid__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/diarization/{jid}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audio */
+        get: operations["audio_api_worker_diarization__jid__audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/diarization/{jid}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete */
+        post: operations["complete_api_worker_diarization__jid__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/diarization/{jid}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fail */
+        post: operations["fail_api_worker_diarization__jid__fail_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1268,6 +1405,40 @@ export interface components {
              */
             name: string;
         };
+        /** DiarizationCompletion */
+        DiarizationCompletion: {
+            /** Model */
+            model: string;
+            /** Turns */
+            turns: components["schemas"]["SpeakerTurn"][];
+        };
+        /** DiarizationJob */
+        DiarizationJob: {
+            /** Id */
+            id: string;
+            /** Recording Id */
+            recording_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Progress */
+            progress: number;
+            /** Error */
+            error: string | null;
+        };
+        /** DiarizationRequest */
+        DiarizationRequest: {
+            reference: components["schemas"]["SourceReference"];
+            /**
+             * @default {
+             *       "min_speakers": 1,
+             *       "max_speakers": 16
+             *     }
+             */
+            options: components["schemas"]["SpeakerOptions"];
+        };
         /** Enrollment */
         Enrollment: {
             /**
@@ -1290,9 +1461,9 @@ export interface components {
             /**
              * Diarization
              * @default not_requested
-             * @constant
+             * @enum {string}
              */
-            diarization: "not_requested";
+            diarization: "not_requested" | "queued" | "running" | "completed" | "failed" | "cancelled";
             /**
              * Visual Extraction
              * @default not_requested
@@ -1605,6 +1776,48 @@ export interface components {
             text: string;
             /** Words */
             words?: components["schemas"]["Word"][];
+        };
+        /** SourceReference */
+        SourceReference: {
+            /** Recording Id */
+            recording_id: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            interval: components["schemas"]["TimelineRange"];
+            versions: components["schemas"]["EvidenceVersions"];
+        };
+        /** SpeakerOptions */
+        SpeakerOptions: {
+            /**
+             * Min Speakers
+             * @default 1
+             */
+            min_speakers: number;
+            /**
+             * Max Speakers
+             * @default 16
+             */
+            max_speakers: number;
+        };
+        /** SpeakerTurn */
+        SpeakerTurn: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Speaker */
+            speaker: string;
+        };
+        /** SpeakersSnapshot */
+        SpeakersSnapshot: {
+            /** Revision */
+            revision: number;
+            /** Model */
+            model: string | null;
+            /** Stale */
+            stale: boolean;
+            /** Turns */
+            turns: components["schemas"]["SpeakerTurn"][];
         };
         /** TimelineRange */
         TimelineRange: {
@@ -4026,6 +4239,314 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarksSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    speakers_api_recordings__rid__speakers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpeakersSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_recordings__rid__diarization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiarizationJob"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_api_recordings__rid__diarization_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiarizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiarizationJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_recordings__rid__diarization__jid__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiarizationJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_api_worker_diarization_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_api_worker_diarization__jid__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Heartbeat"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audio_api_worker_diarization__jid__audio_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_api_worker_diarization__jid__complete_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiarizationCompletion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fail_api_worker_diarization__jid__fail_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Failure"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
