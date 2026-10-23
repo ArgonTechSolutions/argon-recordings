@@ -22,3 +22,7 @@ Large INT8 gives the strongest result in this fixture while remaining well below
 Chunks contain 220 tokenizer tokens with 40 tokens of overlap and source timestamps. A long single-segment tail coverage check passes for all four profiles. New publications and accepted corrections trigger indexing after the response; a missing/interrupted index is rebuilt on search. Per-recording invalidation is durable. Query failures expose an actionable error and keyword mode remains available.
 
 Reproduce with the documented Docker test image and `PYTHONPATH=backend python scripts/evaluate_embeddings.py models/e5-large --profile large`. Preparation downloads immutable revision URLs and verifies embedded SHA-256 values. Model documentation: [multilingual E5](https://huggingface.co/intfloat/multilingual-e5-large), [ONNX artifacts](https://huggingface.co/Xenova/multilingual-e5-large/tree/00fc3aeb3dbb95842de2ac1961d33c6319acf57b).
+
+## Storage checkpoint
+
+Unused comparison downloads and the full corpus archive were retired after dependency checks. Frozen reports, references, hypotheses and evaluation excerpts remain available. See [MODEL-STORAGE.md](MODEL-STORAGE.md) for the retained models and regeneration boundary.

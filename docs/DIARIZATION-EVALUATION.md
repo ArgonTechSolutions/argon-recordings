@@ -110,3 +110,7 @@ P02 requires at least five held-out real clips totaling at least 20 minutes, wit
 - [3D-Speaker repository and license declaration](https://github.com/modelscope/3D-Speaker)
 - [WeSpeaker pretrained models and license notes](https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md)
 - [pyannote.metrics collar and overlap implementation](https://github.com/pyannote/pyannote-metrics/blob/develop/src/pyannote/metrics/utils.py)
+
+## Storage checkpoint
+
+Unused comparison downloads and the full corpus archive were retired after dependency checks. Frozen reports, references, hypotheses and evaluation excerpts remain available. See [MODEL-STORAGE.md](MODEL-STORAGE.md) for the retained models and regeneration boundary.
