@@ -1033,6 +1033,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evidence */
+        get: operations["get_evidence_api_recordings__rid__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/marks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Marks */
+        get: operations["get_marks_api_recordings__rid__marks_get"];
+        put?: never;
+        /** Create Mark */
+        post: operations["create_mark_api_recordings__rid__marks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/marks/{mid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Mark */
+        put: operations["update_mark_api_recordings__rid__marks__mid__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/marks/{mid}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Mark */
+        post: operations["delete_mark_api_recordings__rid__marks__mid__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/marks/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo Mark */
+        post: operations["undo_mark_api_recordings__rid__marks_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1190,6 +1276,56 @@ export interface components {
              */
             code: string;
         };
+        /** EvidenceSnapshot */
+        EvidenceSnapshot: {
+            /** Recording Id */
+            recording_id: string;
+            /** Source Sha256 */
+            source_sha256: string | null;
+            /** Duration */
+            duration: number | null;
+            versions: components["schemas"]["EvidenceVersions"];
+            /** Source Available */
+            source_available: boolean;
+            /**
+             * Diarization
+             * @default not_requested
+             * @constant
+             */
+            diarization: "not_requested";
+            /**
+             * Visual Extraction
+             * @default not_requested
+             * @constant
+             */
+            visual_extraction: "not_requested";
+        };
+        /**
+         * EvidenceVersions
+         * @description Independent revisions: speaker edits do not rewrite recognized words.
+         */
+        EvidenceVersions: {
+            /**
+             * Transcript
+             * @default 0
+             */
+            transcript: number;
+            /**
+             * Speakers
+             * @default 0
+             */
+            speakers: number;
+            /**
+             * Annotations
+             * @default 0
+             */
+            annotations: number;
+            /**
+             * Extraction
+             * @default 0
+             */
+            extraction: number;
+        };
         /** Failure */
         Failure: {
             /** Message */
@@ -1239,6 +1375,70 @@ export interface components {
              * @enum {string}
              */
             audience: "app" | "admin";
+        };
+        /** MarkInput */
+        MarkInput: {
+            interval: components["schemas"]["TimelineRange"];
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Policy
+             * @default auto
+             * @enum {string}
+             */
+            policy: "auto" | "still" | "motion";
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
+        };
+        /** MarkMutation */
+        MarkMutation: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+        };
+        /** MarkView */
+        MarkView: {
+            interval: components["schemas"]["TimelineRange"];
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Policy
+             * @default auto
+             * @enum {string}
+             */
+            policy: "auto" | "still" | "motion";
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
+            /** Id */
+            id: string;
+        };
+        /** MarkWrite */
+        MarkWrite: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+            mark: components["schemas"]["MarkInput"];
+        };
+        /** MarksSnapshot */
+        MarksSnapshot: {
+            /** Revision */
+            revision: number;
+            /** Marks */
+            marks: components["schemas"]["MarkView"][];
         };
         /** Member */
         Member: {
@@ -1405,6 +1605,13 @@ export interface components {
             text: string;
             /** Words */
             words?: components["schemas"]["Word"][];
+        };
+        /** TimelineRange */
+        TimelineRange: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
         };
         /** Transcript */
         Transcript: {
@@ -3615,6 +3822,210 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_api_recordings__rid__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_marks_api_recordings__rid__marks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarksSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mark_api_recordings__rid__marks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarksSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mark_api_recordings__rid__marks__mid__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarksSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mark_api_recordings__rid__marks__mid__delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkMutation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarksSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_mark_api_recordings__rid__marks_undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkMutation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarksSnapshot"];
                 };
             };
             /** @description Validation Error */

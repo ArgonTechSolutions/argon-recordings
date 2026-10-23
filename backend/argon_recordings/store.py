@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES 
             # An interrupted upload can be retried. Completed source files are never pruned here.
             if recover_uploads:
                 db.execute("UPDATE recordings SET status='awaiting_upload' WHERE status='uploading'")
+            from .evidence import SCHEMA as evidence_schema
+            db.executescript(evidence_schema)
 
     @contextmanager
     def db(self):

@@ -465,6 +465,9 @@ def create_app(settings=None):
 
     install_accounts(app, lambda: app.state.accounts)
 
+    from .evidence import install as install_evidence
+    install_evidence(app, store)
+
     static = os.environ.get('RECORDINGS_STATIC')
     if static:
         app.mount('/', StaticFiles(directory=static, html=True), name='web')

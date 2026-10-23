@@ -6,6 +6,8 @@ YouTrack project **REC / Argon Recordings** and its Kanban board have been creat
 
 ## Confirmed product scope
 
+Implementation checkpoint (local source; not installed/deployed): evidence snapshots now persist independent revision counters and detect transcript timing/word/text changes. Revision-checked marks support point/range selection, label/policy/pin edits, deletion and undo, with retained history. UI controls use the existing preset. Backend regression: 166 passed, 1 optional integration skipped; OpenAPI check, frontend production build/lint and the expanded disposable Chromium harness passed. Chromium exercised mark create/edit/pin/delete/undo, source seek, and 320/390/768px layout with no console errors. Evidence: ignored `models/validation/marks/result.json` and screenshot. P01 and P05 remain in Develop pending the remaining integration/deep-link/acceptance details; P02 is in Develop with actual CPU smoke inference but held-out accuracy scoring pending. See `docs/DIARIZATION-EVALUATION.md` for model evidence limits.
+
 - Local CPU diarization with generic speaker labels and manual naming; no paid inference service.
 - Visual handling optimized for screen recordings, code, slides, and demonstrations.
 - A usable end-to-end workflow: speakers → marked video → agent summary with screenshots and source citations.

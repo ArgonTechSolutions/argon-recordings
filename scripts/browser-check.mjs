@@ -31,7 +31,8 @@ try {
     if (request.method() === 'GET' && /\/api\/projects\/[^/]+\/recordings$/.test(request.url())) recordingListReads++
   })
   const fits = async () => {
-    const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }))
+    const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
+      overflow: [...document.querySelectorAll('body *')].filter(el => el.getBoundingClientRect().right > innerWidth + 1).slice(-12).map(el => ({ tag: el.tagName, text: el.textContent.slice(0, 80), cls: el.className, right: el.getBoundingClientRect().right })) }))
     assert.ok(dimensions.scroll <= dimensions.width, JSON.stringify(dimensions))
   }
   await page.goto(base + '/?preview=1')
@@ -74,6 +75,29 @@ try {
   const downloaded = await download
   await downloaded.saveAs(path.join(evidence, 'downloaded-transcript.txt'))
   assert.ok(fs.readFileSync(path.join(evidence, 'downloaded-transcript.txt'), 'utf8').includes('Workspace permissions'))
+  const marks = page.getByRole('region', { name: 'Timeline marks' })
+  await marks.getByLabel('Start (s)', { exact: true }).fill('2')
+  await marks.getByLabel('End (s)', { exact: true }).fill('5')
+  await marks.getByLabel('Label', { exact: true }).fill('Review code')
+  await marks.getByLabel('Pin', { exact: true }).check()
+  await marks.getByRole('button', { name: 'Add mark', exact: true }).click()
+  await marks.getByRole('button', { name: '0:02–0:05 · Review code · Pinned', exact: true }).waitFor()
+  await marks.getByRole('button', { name: 'Edit', exact: true }).click()
+  await marks.getByLabel('Label', { exact: true }).fill('Reviewed code')
+  await marks.getByRole('button', { name: 'Save mark', exact: true }).click()
+  await marks.getByRole('button', { name: '0:02–0:05 · Reviewed code · Pinned', exact: true }).click()
+  assert.ok(Math.abs(await page.locator('audio').evaluate(a => a.currentTime) - 2) < .2)
+  await marks.getByRole('button', { name: 'Remove', exact: true }).click()
+  await marks.getByRole('button', { name: 'Edit', exact: true }).waitFor({ state: 'detached' })
+  await marks.getByRole('button', { name: 'Undo', exact: true }).click()
+  await marks.getByRole('button', { name: '0:02–0:05 · Reviewed code · Pinned', exact: true }).waitFor()
+  for (const width of [768, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await fits()
+  }
+  await page.screenshot({ path: path.join(evidence, 'timeline-marks-mobile.png'), fullPage: true })
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  result.checks.push('timeline mark create/edit/pin/delete/undo, source seek and mobile layout')
   await page.getByLabel('Search project transcripts').fill('permissions')
   await page.locator('.search-hit').first().waitFor()
   assert.ok((await page.locator('.search-hit').first().innerText()).includes('Synthetic demo'))

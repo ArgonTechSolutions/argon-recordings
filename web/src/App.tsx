@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { useProjectEvents } from "@/lib/use-project-events"
 import { TranscriptionProgress } from "@/components/transcription-progress"
+import { VisualMarks } from "@/components/visual-marks"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -784,6 +785,16 @@ function App() {
                             <p>No frames</p>
                           )}
                         </div>
+                        {!preview && (
+                          <VisualMarks
+                            key={current.id}
+                            recordingId={current.id}
+                            time={time}
+                            duration={duration}
+                            canEdit={canEdit}
+                            seek={seek}
+                          />
+                        )}
                       </section>
                     </div>
                   )}

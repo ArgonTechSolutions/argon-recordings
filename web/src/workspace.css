@@ -1,6 +1,14 @@
 :root {
   color-scheme: light;
 }
+.visual-marks { border-top: 1px solid var(--border); padding: 16px; }
+.visual-marks h3 { font-size: 14px; margin: 0; }
+.visual-marks ul { padding: 0; list-style: none; max-height: 240px; overflow: auto; }
+.visual-marks li, .mark-actions, .mark-times { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.visual-marks li { margin-bottom: 8px; }
+.mark-jump { text-align: left; overflow-wrap: anywhere; flex: 1; min-width: 100px; }
+.visual-marks form > label { display: block; margin: 8px 0; }
+.mark-times label { flex: 1; min-width: 80px; }
 .dark {
   color-scheme: dark;
 }
@@ -1455,6 +1463,7 @@ h1 {
   }
   .workspace-topline {
     gap: 10px;
+    flex-wrap: wrap;
   }
   .workspace-topline [data-slot="button"] {
     font-size: 7px;
