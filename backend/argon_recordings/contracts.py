@@ -84,6 +84,7 @@ class Recording(Strict):
     job: Job | None = None
     artifacts: list[Artifact] = []
     speaker_job: EnrichmentJob | None = None
+    visual_job: EnrichmentJob | None = None
     evidence_versions: EvidenceVersions | None = None
 
 

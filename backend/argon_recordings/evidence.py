@@ -36,7 +36,7 @@ class EvidenceSnapshot(Strict):
     versions: EvidenceVersions
     source_available: bool
     diarization: Literal['not_requested', 'queued', 'running', 'completed', 'failed', 'cancelled'] = 'not_requested'
-    visual_extraction: Literal['not_requested'] = 'not_requested'
+    visual_extraction: Literal['not_requested', 'queued', 'running', 'completed', 'failed', 'cancelled'] = 'not_requested'
 
 
 class MarkInput(Strict):
@@ -77,9 +77,11 @@ def snapshot(db, store, rid):
                'WHERE recording_id=? AND transcript_fingerprint!=?', (fingerprint, rid, fingerprint))
     versions = dict(db.execute('SELECT transcript,speakers,annotations,extraction FROM evidence_versions WHERE recording_id=?', (rid,)).fetchone())
     speaker_job = db.execute('SELECT state FROM diarization_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (rid,)).fetchone()
+    visual_job = db.execute('SELECT state FROM visual_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (rid,)).fetchone()
     return EvidenceSnapshot(recording_id=rid, source_sha256=row['sha256'], duration=row['duration'],
                             versions=EvidenceVersions(**versions),
                             diarization=speaker_job['state'] if speaker_job else 'not_requested',
+                            visual_extraction=visual_job['state'] if visual_job else 'not_requested',
                             source_available=(store.root / 'sources' / rid).is_file())
 
 

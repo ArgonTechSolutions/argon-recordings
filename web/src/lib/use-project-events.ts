@@ -51,6 +51,8 @@ export function useProjectEvents(projectId: string | undefined) {
                   "speakers",
                   "evidence",
                   "marks",
+                  "visual-evidence",
+                  "visual-jobs",
                 ])
                   void cache.invalidateQueries({ queryKey: [kind, row.id] })
               }

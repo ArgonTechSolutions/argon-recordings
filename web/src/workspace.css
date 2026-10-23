@@ -1651,3 +1651,66 @@ h1 {
   color: var(--muted-foreground);
   font-size: 13px;
 }
+
+.visual-evidence {
+  border-top: 1px solid var(--border);
+  padding: 1rem;
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.visual-evidence h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.visual-evidence summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.visual-evidence form {
+  display: grid;
+  gap: 0.6rem;
+  padding-top: 0.65rem;
+}
+.evidence-range,
+.evidence-job,
+.evidence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+  min-width: 0;
+}
+.evidence-range label {
+  flex: 1 1 100px;
+  min-width: 0;
+  font-size: 0.75rem;
+}
+.evidence-preview {
+  min-width: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+.evidence-preview video {
+  width: 100%;
+  background: #111;
+}
+.evidence-image {
+  display: block;
+  overflow: auto;
+  max-height: 65vh;
+  width: 100%;
+  cursor: zoom-in;
+}
+.evidence-image img {
+  width: 100%;
+}
+.evidence-image img.zoomed-evidence {
+  width: auto;
+  max-width: none;
+  cursor: zoom-out;
+}
+.visual-evidence p {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}

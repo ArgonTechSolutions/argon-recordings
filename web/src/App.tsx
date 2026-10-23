@@ -32,6 +32,7 @@ import {
 import { useProjectEvents } from "@/lib/use-project-events"
 import { TranscriptionProgress } from "@/components/transcription-progress"
 import { VisualMarks } from "@/components/visual-marks"
+import { VisualEvidence } from "@/components/visual-evidence"
 import { SpeakerReview, type Speakers } from "@/components/speaker-review"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -106,6 +107,7 @@ function App() {
   const [projectName, setProjectName] = useState("")
   const [searchMode, setSearchMode] = useState("hybrid")
   const [speakerFilter, setSpeakerFilter] = useState("all")
+  const [frameLimit, setFrameLimit] = useState(20)
   const [query, setQuery] = useState("")
   const [debounced, setDebounced] = useState("")
   const [time, setTime] = useState(preview ? 43 : sourceLink.at)
@@ -236,10 +238,15 @@ function App() {
     (s) => time >= s.start && time < s.end
   )
   const chooseRecording = (id: string, at = 0) => {
+    if (current?.id !== id) {
+      audio.current?.pause()
+      setPlaying(false)
+    }
     setRecordingId(id)
     setPage("workspace")
     setQuery("")
     setSpeakerFilter("all")
+    setFrameLimit(20)
     setTime(at)
     pendingSeek.current = at
     if (current?.id === id && audio.current) audio.current.currentTime = at
@@ -854,7 +861,7 @@ function App() {
                         </div>
                         <div className="frame-strip">
                           {frames.length ? (
-                            frames.slice(0, 20).map((f) => (
+                            frames.slice(0, frameLimit).map((f) => (
                               <button
                                 key={f.name}
                                 onClick={() => seek(f.time ?? 0)}
@@ -870,6 +877,26 @@ function App() {
                             <p>No frames</p>
                           )}
                         </div>
+                        {frames.length > frameLimit && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setFrameLimit(frameLimit + 20)}
+                          >
+                            More frames
+                          </Button>
+                        )}
+                        {!preview && (
+                          <VisualEvidence
+                            key={current.id + "-visual"}
+                            recording={current}
+                            canEdit={canEdit}
+                            time={time}
+                            playing={playing}
+                            speed={speed}
+                            seek={seek}
+                          />
+                        )}
                         {!preview && (
                           <VisualMarks
                             key={current.id}

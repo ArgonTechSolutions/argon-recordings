@@ -4029,6 +4029,640 @@
           }
         }
       }
+    },
+    "/api/recordings/{rid}/visual-jobs": {
+      "post": {
+        "summary": "Schedule",
+        "operationId": "schedule_api_recordings__rid__visual_jobs_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisualRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Jobs",
+        "operationId": "jobs_api_recordings__rid__visual_jobs_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VisualJob"
+                  },
+                  "title": "Response Jobs Api Recordings  Rid  Visual Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/visual-jobs/{jid}/cancel": {
+      "post": {
+        "summary": "Cancel",
+        "operationId": "cancel_api_recordings__rid__visual_jobs__jid__cancel_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/visual-evidence": {
+      "get": {
+        "summary": "Assets",
+        "operationId": "assets_api_recordings__rid__visual_evidence_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VisualAsset"
+                  },
+                  "title": "Response Assets Api Recordings  Rid  Visual Evidence Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/visual-evidence/{aid}/media": {
+      "get": {
+        "summary": "Media",
+        "operationId": "media_api_recordings__rid__visual_evidence__aid__media_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "aid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Aid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/visual/claim": {
+      "post": {
+        "summary": "Claim",
+        "operationId": "claim_api_worker_visual_claim_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/visual/{jid}/heartbeat": {
+      "post": {
+        "summary": "Heartbeat",
+        "operationId": "heartbeat_api_worker_visual__jid__heartbeat_post",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Heartbeat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/visual/{jid}/source": {
+      "get": {
+        "summary": "Source",
+        "operationId": "source_api_worker_visual__jid__source_get",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/visual/{jid}/media": {
+      "put": {
+        "summary": "Upload",
+        "operationId": "upload_api_worker_visual__jid__media_put",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/visual/{jid}/complete": {
+      "post": {
+        "summary": "Complete",
+        "operationId": "complete_api_worker_visual__jid__complete_post",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisualManifest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/visual/{jid}/fail": {
+      "post": {
+        "summary": "Fail",
+        "operationId": "fail_api_worker_visual__jid__fail_post",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Failure"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4497,6 +5131,43 @@
         ],
         "title": "Credential"
       },
+      "Crop": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "minimum": 0.0,
+            "title": "Y"
+          },
+          "width": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Height"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "Crop"
+      },
       "DiarizationCompletion": {
         "properties": {
           "model": {
@@ -4698,7 +5369,14 @@
           },
           "visual_extraction": {
             "type": "string",
-            "const": "not_requested",
+            "enum": [
+              "not_requested",
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
             "title": "Visual Extraction",
             "default": "not_requested"
           }
@@ -5432,6 +6110,16 @@
               }
             ]
           },
+          "visual_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnrichmentJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "evidence_versions": {
             "anyOf": [
               {
@@ -6017,6 +6705,450 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VisualAsset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id"
+          },
+          "source_sha256": {
+            "type": "string",
+            "title": "Source Sha256"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/VisualRecipe"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/VisualManifest"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "recording_id",
+          "source_sha256",
+          "recipe",
+          "manifest",
+          "url"
+        ],
+        "title": "VisualAsset"
+      },
+      "VisualJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "progress": {
+            "type": "number",
+            "title": "Progress"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "recording_id",
+          "state",
+          "progress",
+          "error"
+        ],
+        "title": "VisualJob"
+      },
+      "VisualManifest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "enum": [
+              "image.jpg",
+              "clip.mp4"
+            ],
+            "title": "Filename"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "clip"
+            ],
+            "title": "Kind"
+          },
+          "requested_start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Requested Start"
+          },
+          "requested_end": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Requested End"
+          },
+          "actual_start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Actual Start"
+          },
+          "actual_end": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Actual End"
+          },
+          "width": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Height"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 30.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "source_width": {
+            "type": "integer",
+            "maximum": 16384.0,
+            "minimum": 1.0,
+            "title": "Source Width"
+          },
+          "source_height": {
+            "type": "integer",
+            "maximum": 16384.0,
+            "minimum": 1.0,
+            "title": "Source Height"
+          },
+          "source_fps": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Fps"
+          },
+          "rotation": {
+            "type": "number",
+            "title": "Rotation",
+            "default": 0
+          },
+          "output_frame_count": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Output Frame Count",
+            "default": 1
+          },
+          "source_avg_frame_rate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Avg Frame Rate"
+          },
+          "source_nominal_frame_rate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Nominal Frame Rate"
+          },
+          "source_variable_frame_rate": {
+            "type": "boolean",
+            "title": "Source Variable Frame Rate",
+            "default": false
+          },
+          "source_rotation_degrees": {
+            "type": "integer",
+            "maximum": 360.0,
+            "minimum": -360.0,
+            "title": "Source Rotation Degrees",
+            "default": 0
+          },
+          "rotation_applied": {
+            "type": "boolean",
+            "title": "Rotation Applied",
+            "default": false
+          },
+          "source_sample_aspect_ratio": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^[0-9]+:[0-9]+$",
+            "title": "Source Sample Aspect Ratio",
+            "default": "1:1"
+          },
+          "source_display_sample_aspect_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Source Display Sample Aspect Ratio",
+            "default": 1
+          },
+          "source_display_aspect_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Source Display Aspect Ratio",
+            "default": 1
+          },
+          "source_coded_width": {
+            "type": "integer",
+            "maximum": 16384.0,
+            "minimum": 1.0,
+            "title": "Source Coded Width",
+            "default": 1
+          },
+          "source_coded_height": {
+            "type": "integer",
+            "maximum": 16384.0,
+            "minimum": 1.0,
+            "title": "Source Coded Height",
+            "default": 1
+          },
+          "source_pts_start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Source Pts Start",
+            "default": 0
+          },
+          "source_pts_end": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Source Pts End",
+            "default": 0
+          },
+          "crop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Crop"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256"
+          },
+          "bytes": {
+            "type": "integer",
+            "maximum": 134217728.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Bytes"
+          },
+          "recipe_version": {
+            "type": "string",
+            "const": "visual-v1",
+            "title": "Recipe Version"
+          },
+          "output_sample_aspect_ratio": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^[0-9]+:[0-9]+$",
+            "title": "Output Sample Aspect Ratio",
+            "default": "1:1"
+          },
+          "output_display_aspect_ratio": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Output Display Aspect Ratio",
+            "default": 1
+          },
+          "requested_fps": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 30.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Fps"
+          },
+          "sampling_fps_ceiling": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 30.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampling Fps Ceiling"
+          },
+          "source_origin_time": {
+            "type": "number",
+            "title": "Source Origin Time",
+            "default": 0
+          },
+          "source_video_start_time": {
+            "type": "number",
+            "title": "Source Video Start Time",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "filename",
+          "kind",
+          "requested_start",
+          "requested_end",
+          "actual_start",
+          "actual_end",
+          "width",
+          "height",
+          "source_width",
+          "source_height",
+          "sha256",
+          "bytes",
+          "recipe_version"
+        ],
+        "title": "VisualManifest"
+      },
+      "VisualRecipe": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "clip"
+            ],
+            "title": "Kind",
+            "default": "image"
+          },
+          "start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "End"
+          },
+          "max_width": {
+            "type": "integer",
+            "maximum": 3840.0,
+            "minimum": 64.0,
+            "title": "Max Width",
+            "default": 1920
+          },
+          "source_resolution": {
+            "type": "boolean",
+            "title": "Source Resolution",
+            "default": false
+          },
+          "fps": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Fps",
+            "default": 15
+          },
+          "crop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Crop"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "VisualRecipe"
+      },
+      "VisualRequest": {
+        "properties": {
+          "reference": {
+            "$ref": "#/components/schemas/SourceReference"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/VisualRecipe"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reference",
+          "recipe"
+        ],
+        "title": "VisualRequest"
       },
       "Word": {
         "properties": {

@@ -283,7 +283,7 @@ class AccountRequestBudget:
         path = scope.get('path', '')
         limited = scope['type'] == 'http' and scope['method'] not in {'GET', 'HEAD', 'OPTIONS'} and (
             path.startswith('/api/auth/') or path.startswith('/api/admin/') or '/members' in path or
-            re.match(r'^/api/recordings/[^/]+/(marks|diarization|speakers|speaker-overrides)(?:/|$)', path))
+            re.match(r'^/api/recordings/[^/]+/(marks|diarization|speakers|speaker-overrides|visual-jobs)(?:/|$)', path))
         worker_json = scope['type'] == 'http' and scope['method'] == 'POST' and path.startswith('/api/worker/')
         if not limited and not worker_json:
             return await self.app(scope, receive, send)

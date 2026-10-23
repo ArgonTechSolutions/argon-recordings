@@ -78,7 +78,8 @@ def test_disjoint_project_access_and_role_changes(team):
         assert guest.get('/api/projects').json() == []
         paths = [f'/api/projects/{pid}/recordings', f'/api/recordings/{rid}', f'/api/recordings/{rid}/transcript',
                  f'/api/recordings/{rid}/media/audio.wav', f'/api/recordings/{rid}/corrections', f'/api/projects/{pid}/events',
-                 f'/api/search?project_id={pid}&q=secret&mode=keyword']
+                 f'/api/search?project_id={pid}&q=secret&mode=keyword', f'/api/recordings/{rid}/visual-jobs',
+                 f'/api/recordings/{rid}/visual-evidence', f'/api/recordings/{rid}/visual-evidence/unknown/media']
         for path in paths:
             assert guest.get(path).status_code == 404, path
         assert guest.put(f'/api/recordings/{rid}/source', content=b'forbidden', headers=guest_headers).status_code == 404
@@ -86,6 +87,8 @@ def test_disjoint_project_access_and_role_changes(team):
         assert guest.get('/api/projects').json()[0]['role'] == 'viewer'
         assert guest.post(f'/api/projects/{pid}/recordings', json={'title':'Blocked','filename':'x.wav'}, headers=guest_headers).status_code == 403
         assert guest.post(f'/api/recordings/{rid}/corrections', json={}, headers=guest_headers).status_code == 403
+        assert guest.post(f'/api/recordings/{rid}/visual-jobs', json={}, headers=guest_headers).status_code == 403
+        assert guest.post(f'/api/recordings/{rid}/visual-jobs/unknown/cancel', headers=guest_headers).status_code == 403
         assert guest.get(f'/api/projects/{pid}/members').status_code == 403
         assert owner.put(f'/api/projects/{pid}/members', json={'email':'guest@example.com','role':'editor'}, headers=headers).status_code == 200
         assert guest.put(f'/api/recordings/{rid}/source', content=b'authorized', headers=guest_headers).status_code == 200

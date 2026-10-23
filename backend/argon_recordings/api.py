@@ -11,6 +11,7 @@ import time
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.exceptions import RequestValidationError
 
 from fastapi.staticfiles import StaticFiles
 
@@ -88,6 +89,13 @@ def create_app(settings=None):
             from fastapi.responses import RedirectResponse
             return RedirectResponse('/?auth_error=oidc', status_code=303)
         return JSONResponse({'detail': exc.detail}, status_code=exc.status_code)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request, exc):
+        # Non-finite JSON numbers and validator contexts are not serializable.
+        # Return field diagnostics without reflecting credentials or raw input.
+        return JSONResponse({'detail': [{k: e[k] for k in ('loc','msg','type')}
+                                       for e in exc.errors()]}, status_code=422)
 
 
     @app.middleware('http')
@@ -187,8 +195,10 @@ def create_app(settings=None):
             job = db.execute('SELECT j.id,j.state,j.progress,j.stage,p.payload,p.updated FROM jobs j LEFT JOIN job_progress p ON p.job_id=j.id WHERE j.recording_id=?', (row['id'],)).fetchone()
             artifacts = db.execute('SELECT name,time,kind FROM artifacts WHERE recording_id=? ORDER BY time', (row['id'],)).fetchall()
             speaker_job = db.execute('SELECT id,state,progress,error FROM diarization_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
+            visual_job = db.execute('SELECT id,state,progress,error FROM visual_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
             versions = db.execute('SELECT transcript,speakers,annotations,extraction FROM evidence_versions WHERE recording_id=?', (row['id'],)).fetchone()
         row['speaker_job'] = dict(speaker_job) if speaker_job else None
+        row['visual_job'] = dict(visual_job) if visual_job else None
         row['evidence_versions'] = dict(versions) if versions else None
         row['job'] = dict(job) if job else None
         if row['job']:
@@ -485,6 +495,8 @@ def create_app(settings=None):
     install_diarization(app, store, worker_auth)
     from .speaker_review import install as install_speaker_review
     install_speaker_review(app, store)
+    from .visual_jobs import install as install_visual_jobs
+    install_visual_jobs(app, store, worker_auth, receive, settings.reserve)
 
     static = os.environ.get('RECORDINGS_STATIC')
     if static:

@@ -119,6 +119,9 @@ def run_once(client, transcriber, work_root=None):
     if not job:
         if run_correction(client, transcriber, work_root):
             return True
+        from .visual_worker import run as run_visual
+        if run_visual(client, transcriber, work_root):
+            return True
         from .diarization_worker import run as run_diarization
         return run_diarization(client, transcriber, work_root)
     if job.get('kind') == 'chunk':
