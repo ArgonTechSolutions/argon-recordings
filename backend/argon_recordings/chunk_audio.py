@@ -67,13 +67,64 @@ def token(word):
     return re.sub(r'\W+', '', word['word'].casefold())
 
 
+def reliable_boundaries(rows):
+    boundaries = sorted((r for r in rows if r['boundary']),key=lambda r:r['core_start'])
+    core_words = [w for r in rows if not r['boundary'] for s in r['segments'] for w in s['words']
+                  if r['core_start'] <= (w['start']+w['end'])/2 < r['core_end']]
+    # Use wider context only where it covers the core-owned words.
+    # Sorted intervals and a monotone cursor avoid originals x replacements.
+    accepted = []
+    core_words.sort(key=lambda w:(w['start']+w['end'])/2)
+    cursor=0
+    for boundary in boundaries:
+        a,b=boundary['core_start'],boundary['core_end']
+        replacements=sorted((w for s in boundary['segments'] for w in s['words'] if a <= (w['start']+w['end'])/2 < b),key=lambda w:w['start'])
+        while cursor < len(core_words) and (core_words[cursor]['start']+core_words[cursor]['end'])/2 < a:
+            cursor+=1
+        reliable=True
+        position=0
+        scan=cursor
+        while scan < len(core_words):
+            original=core_words[scan]; midpoint=(original['start']+original['end'])/2
+            if midpoint >= b:
+                break
+            if midpoint >= a:
+                if not replacements:
+                    reliable=False
+                    scan+=1
+                    continue
+                while position < len(replacements) and replacements[position]['end'] < original['start']-.7:
+                    position+=1
+                covered=False
+                for replacement_index in range(position,len(replacements)):
+                    replacement=replacements[replacement_index]
+                    if replacement['start'] > original['end']+.7:
+                        break
+                    if min(original['end'],replacement['end']) > max(original['start'],replacement['start']) or abs(midpoint-(replacement['start']+replacement['end'])/2) <= .35:
+                        covered=True
+                        break
+                if not covered:
+                    reliable=False
+            scan+=1
+        cursor=scan
+        if reliable:
+            accepted.append(boundary)
+    return accepted
+
+
 def reconcile(rows):
     """Sort once; compare only concurrent words belonging to different chunks."""
-    boundaries = sorted((r for r in rows if r['boundary']),key=lambda r:r['core_start'])
-    duration = max(r['end'] for r in rows)
-    candidates, groups, core_words = [], {}, []
-    for index,row in enumerate(rows):
+    for row in rows:
         validate_words(row['segments'],row['start'],row['end'])
+        if any(s['text'].strip() and not s['words'] for s in row['segments']):
+            raise ValueError('Chunk transcript needs word timestamps for safe boundary reconciliation')
+    boundaries = reliable_boundaries(rows)
+    accepted = {id(row) for row in boundaries}
+    duration = max(r['end'] for r in rows)
+    candidates, groups = [], {}
+    for index,row in enumerate(rows):
+        if row['boundary'] and id(row) not in accepted:
+            continue
         owned = []
         for number,segment in enumerate(row['segments']):
             if not segment['words']:
@@ -84,8 +135,6 @@ def reconcile(rows):
             groups[key] = []
             for word in segment['words']:
                 midpoint = (word['start']+word['end'])/2
-                if not row['boundary']:
-                    core_words.append(word)
                 if not (row['core_start'] <= midpoint < row['core_end'] or midpoint == row['core_end'] == duration):
                     continue
                 owned.append((word,key))
@@ -121,38 +170,6 @@ def reconcile(rows):
         if not duplicate:
             groups[key].append(word)
             active.append((word,row))
-    # Verify every original boundary word is covered by the wider-context retry.
-    # Sorted intervals and a monotone cursor avoid originals x replacements.
-    core_words.sort(key=lambda w:(w['start']+w['end'])/2)
-    cursor=0
-    for boundary in boundaries:
-        a,b=boundary['core_start'],boundary['core_end']
-        replacements=sorted((w for s in boundary['segments'] for w in s['words'] if a <= (w['start']+w['end'])/2 < b),key=lambda w:w['start'])
-        while cursor < len(core_words) and (core_words[cursor]['start']+core_words[cursor]['end'])/2 < a:
-            cursor+=1
-        position=0
-        scan=cursor
-        while scan < len(core_words):
-            original=core_words[scan]; midpoint=(original['start']+original['end'])/2
-            if midpoint >= b:
-                break
-            if midpoint >= a:
-                if not replacements:
-                    raise ValueError('Boundary retry returned no words; transcript requires review')
-                while position < len(replacements) and replacements[position]['end'] < original['start']-.7:
-                    position+=1
-                covered=False
-                for replacement_index in range(position,len(replacements)):
-                    replacement=replacements[replacement_index]
-                    if replacement['start'] > original['end']+.7:
-                        break
-                    if min(original['end'],replacement['end']) > max(original['start'],replacement['start']) or abs(midpoint-(replacement['start']+replacement['end'])/2) <= .35:
-                        covered=True
-                        break
-                if not covered:
-                    raise ValueError('Boundary retry left an uncovered original word; transcript requires review')
-            scan+=1
-        cursor=scan
     output=[]
     for words in groups.values():
         if words:

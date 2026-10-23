@@ -299,7 +299,7 @@ def create_app(settings=None):
         return view(recording_or_404(rid))
 
     @app.post('/api/recordings/{rid}/retry', response_model=Recording)
-    def retry(rid: str):
+    def retry(rid: str, background_tasks: BackgroundTasks):
         recording_or_404(rid)
         with store().db() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -310,14 +310,17 @@ def create_app(settings=None):
                 raise HTTPException(409, 'Retained source is unavailable; upload a new recording')
             job_id = db.execute('SELECT id FROM jobs WHERE recording_id=?', (rid,)).fetchone()[0]
             if db.execute('SELECT 1 FROM preparations WHERE job_id=?', (job_id,)).fetchone():
-                db.execute("UPDATE chunks SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL WHERE job_id=? AND state!='completed'", (job_id,))
-                if not db.execute("SELECT 1 FROM chunks WHERE job_id=? AND state='queued'", (job_id,)).fetchone():
-                    # Reconciliation can fail after every inference task completed.
-                    # Preserve core results and repeat the wider boundary reviews.
-                    boundaries = db.execute('SELECT 1 FROM chunks WHERE job_id=? AND boundary=1', (job_id,)).fetchone()
-                    db.execute("UPDATE chunks SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL,result=NULL,result_sha=NULL,error=NULL WHERE job_id=?" + (' AND boundary=1' if boundaries else ''), (job_id,))
-                db.execute("UPDATE jobs SET state='prepared',stage='Resuming unfinished chunks',result_sha=NULL WHERE id=?", (job_id,))
-                db.execute("UPDATE recordings SET status='running',error=NULL WHERE id=?", (rid,))
+                try:
+                    published = app.state.finish_prepared(db, job_id)
+                except ValueError as exc:
+                    raise HTTPException(409, 'Saved chunk results failed validation; original results are preserved') from exc
+                if published:
+                    if settings.embeddings.configured:
+                        background_tasks.add_task(settings.embeddings.refresh, store(), published)
+                else:
+                    db.execute("UPDATE chunks SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL WHERE job_id=? AND state!='completed'", (job_id,))
+                    db.execute("UPDATE jobs SET state='prepared',stage='Resuming unfinished chunks',result_sha=NULL WHERE id=?", (job_id,))
+                    db.execute("UPDATE recordings SET status='running',error=NULL WHERE id=?", (rid,))
             else:
                 db.execute("UPDATE recordings SET status='queued',error=NULL WHERE id=?", (rid,))
                 db.execute("UPDATE jobs SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,worker=NULL,progress=0,stage='Waiting for worker',result_sha=NULL,created=? WHERE recording_id=?", (time.time(), rid))

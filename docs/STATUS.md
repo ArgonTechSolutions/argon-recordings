@@ -73,3 +73,9 @@ Validation for this slice:
 - Independent GPT-6.1 security review found no remaining concrete blocker after bounding malicious word timelines/cut density and disabling legacy whole-job publication in isolated mode.
 
 No Philemon deployment or public exposure occurred. Real-host resource/recording acceptance, public upload quotas and ingress qualification remain pending. Smart visual retention and automatic worker scaling remain future work.
+
+## Boundary coverage recovery
+
+Wider-context results no longer fail an otherwise valid recording merely because word timestamps shift or a boundary result omits speech. Each cut uses its context result only when it covers the core-owned words; otherwise the original core text remains, with overlap duplicate detection. Malformed timelines still fail validation. Failed jobs whose tasks all completed can reconcile and publish saved results on Retry without new inference or changes to those results.
+
+Validation: 139 backend tests passed, 1 opt-in embedding test skipped; OpenAPI contract unchanged. The actual installer image built successfully. A synthetic packaged-backend check reproduced the old boundary failure, then recovered via Retry while preserving the original word and all saved chunk hashes/attempt counts. No real recording or Philemon state was modified. Missing worker heartbeats remain a separate operational diagnosis.

@@ -238,6 +238,38 @@ def install(app, store, worker_auth, receive, embeddings):
                 db.execute("UPDATE recordings SET status='failed',error=? WHERE id=(SELECT recording_id FROM jobs WHERE id=?)", (body.message,row['job_id']))
         return {'status': 'failed'}
 
+    def finish_prepared(db, jid):
+        counts = db.execute("SELECT count(*),sum(state='completed') FROM chunks WHERE job_id=?", (jid,)).fetchone()
+        if not counts[0] or counts[0] != counts[1]:
+            return None
+        rows = db.execute('SELECT * FROM chunks WHERE job_id=? ORDER BY ordinal', (jid,)).fetchall()
+        values = []
+        for item in rows:
+            segments = json.loads(item['result'])['segments']
+            for segment in segments:
+                segment['start'] += item['start']; segment['end'] += item['start']
+                for word in segment['words']:
+                    word['start'] += item['start']; word['end'] += item['start']
+            values.append({**dict(item),'segments':segments})
+        segments = reconcile(values)
+        preparation = db.execute('SELECT * FROM preparations WHERE job_id=?', (jid,)).fetchone()
+        job = db.execute('SELECT * FROM jobs WHERE id=?', (jid,)).fetchone()
+        published = job['recording_id']
+        artifacts = json.loads(preparation['artifacts'])
+        final = Completion(duration=preparation['duration'],segments=segments,artifacts=artifacts)
+        for segment in final.segments:
+            sid = identity()
+            db.execute('INSERT INTO segments VALUES(?,?,?,?,?,?)', (sid,published,segment.start,segment.end,segment.text,json.dumps([w.model_dump() for w in segment.words])))
+            db.execute('INSERT INTO segment_search VALUES(?,?,?)', (segment.text,sid,published))
+        directory = store().root/'results'/jid/preparation['lease_id']
+        for artifact in artifacts:
+            db.execute('INSERT INTO artifacts VALUES(?,?,?,?,?)', (published,artifact['name'],artifact['time'],artifact['kind'],str(directory/artifact['name'])))
+        db.execute("UPDATE jobs SET state='completed',progress=1,stage='Ready',result_sha=? WHERE id=?", (hashlib.sha256(final.model_dump_json().encode()).hexdigest(),jid))
+        db.execute("UPDATE recordings SET status='ready',error=NULL,duration=? WHERE id=?", (preparation['duration'],published))
+        return published
+
+    app.state.finish_prepared = finish_prepared
+
     @app.post('/api/worker/chunks/{cid}/complete', dependencies=[Depends(worker_auth)])
     def complete(cid: str, body: ChunkResult, request: Request, background_tasks: BackgroundTasks, x_lease_id: str = Header()):
         payload = body.model_dump_json()
@@ -266,35 +298,12 @@ def install(app, store, worker_auth, receive, embeddings):
             aggregate(db,row['job_id'])
             db.execute("UPDATE jobs SET progress=?,stage=? WHERE id=?", (.1+.85*completed/total,f'Chunks {completed}/{total}',row['job_id']))
             if completed == total:
-                rows = db.execute('SELECT * FROM chunks WHERE job_id=? ORDER BY ordinal', (row['job_id'],)).fetchall()
-                values = []
-                for item in rows:
-                    segments = json.loads(item['result'])['segments']
-                    for segment in segments:
-                        segment['start'] += item['start']; segment['end'] += item['start']
-                        for word in segment['words']:
-                            word['start'] += item['start']; word['end'] += item['start']
-                    values.append({**dict(item),'segments':segments})
                 try:
-                    segments = reconcile(values)
+                    published = finish_prepared(db, row['job_id'])
                 except ValueError as exc:
                     db.execute("UPDATE jobs SET state='failed',stage='Boundary review required' WHERE id=?", (row['job_id'],))
                     db.execute("UPDATE recordings SET status='failed',error=? WHERE id=(SELECT recording_id FROM jobs WHERE id=?)", (str(exc),row['job_id']))
                     return {'status': 'boundary_review_required'}
-                preparation = db.execute('SELECT * FROM preparations WHERE job_id=?', (row['job_id'],)).fetchone()
-                job = db.execute('SELECT * FROM jobs WHERE id=?', (row['job_id'],)).fetchone()
-                published = job['recording_id']
-                artifacts = json.loads(preparation['artifacts'])
-                final = Completion(duration=preparation['duration'],segments=segments,artifacts=artifacts)
-                for segment in final.segments:
-                    sid = identity()
-                    db.execute('INSERT INTO segments VALUES(?,?,?,?,?,?)', (sid,published,segment.start,segment.end,segment.text,json.dumps([w.model_dump() for w in segment.words])))
-                    db.execute('INSERT INTO segment_search VALUES(?,?,?)', (segment.text,sid,published))
-                directory = store().root/'results'/row['job_id']/preparation['lease_id']
-                for artifact in artifacts:
-                    db.execute('INSERT INTO artifacts VALUES(?,?,?,?,?)', (published,artifact['name'],artifact['time'],artifact['kind'],str(directory/artifact['name'])))
-                db.execute("UPDATE jobs SET state='completed',progress=1,stage='Ready',result_sha=? WHERE id=?", (hashlib.sha256(final.model_dump_json().encode()).hexdigest(),row['job_id']))
-                db.execute("UPDATE recordings SET status='ready',duration=? WHERE id=?", (preparation['duration'],published))
         if published and embeddings.configured:
             background_tasks.add_task(embeddings.refresh,store(),published)
         return {'status': 'completed'}

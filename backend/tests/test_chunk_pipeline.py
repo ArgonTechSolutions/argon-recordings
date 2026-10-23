@@ -131,8 +131,7 @@ def test_overlap_preserves_intentional_repeat_and_removes_shifted_duplicate():
 def test_empty_boundary_cannot_drop_original_words():
     rows=[dict(start=0,end=182,core_start=0,core_end=180,boundary=False,segments=result(179,179.3,' keep')['segments']),
           dict(start=168,end=192,core_start=178,core_end=182,boundary=True,segments=[])]
-    with pytest.raises(ValueError,match='no words'):
-        reconcile(rows)
+    assert [w.word for s in reconcile(rows) for w in s.words] == [' keep']
 
 
 def test_pause_aware_cut_near_quiet_window(tmp_path):
@@ -179,25 +178,39 @@ def test_preparation_rejects_audio_mismatch_and_coverage_gaps(prepared):
         assert db.execute('SELECT count(*) FROM chunks WHERE job_id=?',(jid,)).fetchone()[0]==1
 
 
-def test_boundary_omission_blocks_publication_and_retry_reuses_cores(prepared):
+@pytest.mark.parametrize('legacy_failure', [False, True])
+def test_boundary_omission_preserves_cores_and_recovers_saved_results(prepared, legacy_failure):
+    from contextlib import nullcontext
+    from unittest.mock import patch
     client,rid,jid,headers,body=prepared
-    while job:=claim(client,'one'):
-        if job['boundary']:
-            payload={'segments':[]}
-        elif job['ordinal']==0:
-            payload=result(179,179.3,' keep')
-        else:
-            payload={'segments':[]}
-        response=client.post(f"/api/worker/chunks/{job['id']}/complete",headers=auth('one',job['lease_id']),json=payload)
+    failure = patch('argon_recordings.chunk_tasks.reconcile', side_effect=ValueError('Boundary retry left an uncovered original word')) if legacy_failure else nullcontext()
+    with failure:
+        while job:=claim(client,'one'):
+            payload=result(179,179.3,' keep') if not job['boundary'] and job['ordinal']==0 else {'segments':[]}
+            response=client.post(f"/api/worker/chunks/{job['id']}/complete",headers=auth('one',job['lease_id']),json=payload)
+            assert response.status_code==200,response.text
+    if legacy_failure:
+        assert client.get(f'/api/recordings/{rid}').json()['status']=='failed'
+        with client.app.state.store.db() as db:
+            before=[tuple(r) for r in db.execute('SELECT id,attempts,result_sha FROM chunks WHERE job_id=? ORDER BY ordinal',(jid,))]
+        response=client.post(f'/api/recordings/{rid}/retry')
         assert response.status_code==200,response.text
-    recording=client.get(f'/api/recordings/{rid}').json()
-    assert recording['status']=='failed' and 'no words' in recording['error']
-    assert client.get(f'/api/recordings/{rid}/transcript').json()['segments']==[]
-    assert client.post(f'/api/recordings/{rid}/retry').status_code==200
-    retry=claim(client,'one')
-    assert retry['boundary'] and retry['attempts']==0
-    with client.app.state.store.db() as db:
-        assert db.execute("SELECT count(*) FROM chunks WHERE job_id=? AND boundary=0 AND state='completed'",(jid,)).fetchone()[0]==3
+        with client.app.state.store.db() as db:
+            after=[tuple(r) for r in db.execute('SELECT id,attempts,result_sha FROM chunks WHERE job_id=? ORDER BY ordinal',(jid,))]
+        assert before==after  # No new inference or result mutation needed.
+        assert client.post(f'/api/recordings/{rid}/retry').status_code==409
+    assert client.get(f'/api/recordings/{rid}').json()['status']=='ready'
+    transcript=client.get(f'/api/recordings/{rid}/transcript').json()
+    assert [w['word'] for s in transcript['segments'] for w in s['words']]==[' keep']
+    assert claim(client,'one') is None
+
+
+def test_shifted_boundary_falls_back_only_for_affected_cut():
+    rows=[dict(start=0,end=182,core_start=0,core_end=180,boundary=False,segments=result(179,179.3,' keep')['segments']),
+          dict(start=178,end=362,core_start=180,core_end=360,boundary=False,segments=result(359,359.3,' core')['segments']),
+          dict(start=168,end=192,core_start=178,core_end=182,boundary=True,segments=result(181,181.3,' shifted')['segments']),
+          dict(start=348,end=372,core_start=358,core_end=362,boundary=True,segments=result(359,359.3,' improved')['segments'])]
+    assert [w.word for s in reconcile(rows) for w in s.words]==[' keep',' improved']
 
 
 @pytest.mark.parametrize('words',[
