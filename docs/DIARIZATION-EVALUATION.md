@@ -86,7 +86,8 @@ The earlier draft reported 21.07% plan DER and 28.50% zero-collar DER with a 500
 Weights and sample are stored under ignored `models/diarization-evaluation/`; they must not be committed. Recreate the runtime with a disposable container, overriding the worker entrypoint:
 
 ```sh
-docker run --rm --cpus=2 --memory=2g --entrypoint /bin/sh \
+python3 scripts/dev_container.py --timeout 7200 diarization-eval -- \
+  --cpus=2 --memory=2g --entrypoint /bin/sh \
   -v "$PWD:/repo" argon-recordings-worker:local -lc '
   cd /repo/models/diarization-evaluation
   python -m pip install sherpa-onnx==1.13.8 soundfile librosa
