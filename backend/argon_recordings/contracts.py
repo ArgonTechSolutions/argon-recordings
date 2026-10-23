@@ -55,6 +55,20 @@ class Artifact(Strict):
     url: str
 
 
+class EnrichmentJob(Strict):
+    id: str
+    state: Literal['queued', 'running', 'completed', 'failed', 'cancelled']
+    progress: float = Field(ge=0, le=1)
+    error: str | None
+
+
+class EvidenceVersions(Strict):
+    transcript: int = Field(default=0, ge=0)
+    speakers: int = Field(default=0, ge=0)
+    annotations: int = Field(default=0, ge=0)
+    extraction: int = Field(default=0, ge=0)
+
+
 class Recording(Strict):
     id: str
     project_id: str
@@ -69,6 +83,8 @@ class Recording(Strict):
     created: float
     job: Job | None = None
     artifacts: list[Artifact] = []
+    speaker_job: EnrichmentJob | None = None
+    evidence_versions: EvidenceVersions | None = None
 
 
 class Word(Strict):

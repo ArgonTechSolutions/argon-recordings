@@ -106,6 +106,8 @@ def install(app, store, recording_or_404, worker_auth, embeddings):
                 db.execute('INSERT INTO segment_search VALUES(?,?,?)', (text, row['segment_id'], rid))
                 db.execute('DELETE FROM embedding_versions WHERE recording_id=?', (rid,))
                 db.execute('DELETE FROM embeddings WHERE recording_id=?', (rid,))
+                from .evidence import snapshot as evidence_snapshot
+                evidence_snapshot(db,store(),rid)
             db.execute('UPDATE corrections SET state=? WHERE id=?', ('accepted' if action == 'accept' else 'dismissed', cid))
         if action == 'accept' and embeddings.configured:
             background_tasks.add_task(embeddings.refresh, store(), rid)

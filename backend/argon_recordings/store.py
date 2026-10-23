@@ -64,6 +64,10 @@ CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES 
             db.executescript(evidence_schema)
             from .diarization import SCHEMA as diarization_schema
             db.executescript(diarization_schema)
+            if 'model' not in {r[1] for r in db.execute('PRAGMA table_info(diarization_jobs)')}:
+                db.execute("ALTER TABLE diarization_jobs ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+            from .speaker_review import SCHEMA as speaker_review_schema
+            db.executescript(speaker_review_schema)
 
     @contextmanager
     def db(self):

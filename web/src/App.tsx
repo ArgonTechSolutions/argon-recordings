@@ -32,6 +32,7 @@ import {
 import { useProjectEvents } from "@/lib/use-project-events"
 import { TranscriptionProgress } from "@/components/transcription-progress"
 import { VisualMarks } from "@/components/visual-marks"
+import { SpeakerReview, type Speakers } from "@/components/speaker-review"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -104,6 +105,7 @@ function App() {
   const [projectOpen, setProjectOpen] = useState(false)
   const [projectName, setProjectName] = useState("")
   const [searchMode, setSearchMode] = useState("hybrid")
+  const [speakerFilter, setSpeakerFilter] = useState("all")
   const [query, setQuery] = useState("")
   const [debounced, setDebounced] = useState("")
   const [time, setTime] = useState(preview ? 43 : sourceLink.at)
@@ -121,6 +123,7 @@ function App() {
   const health = useQuery({
     queryKey: ["health"],
     queryFn: () => request<Health>("/api/health"),
+    refetchInterval: preview ? false : 30000,
   })
   const activeProject = projectId
     ? projects.data?.find((p) => p.id === projectId)
@@ -143,6 +146,22 @@ function App() {
     queryFn: () =>
       request<Transcript>(`/api/recordings/${current!.id}/transcript`),
   })
+  const speakers = useQuery({
+    queryKey: ["speakers", current?.id],
+    enabled: !preview && current?.status === "ready",
+    queryFn: () => request<Speakers>(`/api/recordings/${current!.id}/speakers`),
+  })
+  useEffect(() => {
+    if (current?.speaker_job?.state === "completed") {
+      void cache.invalidateQueries({ queryKey: ["speakers", current.id] })
+      void cache.invalidateQueries({ queryKey: ["evidence", current.id] })
+    }
+  }, [
+    cache,
+    current?.id,
+    current?.speaker_job?.id,
+    current?.speaker_job?.state,
+  ])
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(query), 250)
     return () => clearTimeout(timer)
@@ -188,6 +207,31 @@ function App() {
   )
   const duration = current?.duration ?? 0
   const segments = transcript.data?.segments ?? []
+  const speakerPassages = new Map(
+    speakers.data?.passages.map((p) => [p.segment_id, p])
+  )
+  const speakerLabel = (segmentId: string) => {
+    const passage = speakerPassages.get(segmentId)
+    if (!passage) return "Speaker data not loaded"
+    const labels = passage.speaker_ids.map(
+      (id) =>
+        speakers.data?.speakers.find((n) => n.id === id)?.label ?? "Unknown"
+    )
+    if (passage.has_unknown) labels.push("Unknown")
+    return labels.join(" / ") || "Unknown"
+  }
+  const visibleSegments =
+    preview || speakerFilter === "all"
+      ? segments
+      : segments.filter((s) => {
+          const passage = speakerPassages.get(s.id)
+          return (
+            passage &&
+            (speakerFilter === "unknown"
+              ? passage.has_unknown
+              : passage.speaker_ids.includes(speakerFilter))
+          )
+        })
   const activeSegment = segments.findIndex(
     (s) => time >= s.start && time < s.end
   )
@@ -195,6 +239,7 @@ function App() {
     setRecordingId(id)
     setPage("workspace")
     setQuery("")
+    setSpeakerFilter("all")
     setTime(at)
     pendingSeek.current = at
     if (current?.id === id && audio.current) audio.current.currentTime = at
@@ -706,6 +751,19 @@ function App() {
                             segments={segments}
                           />
                         )}
+                        {!preview && (
+                          <SpeakerReview
+                            key={current.id}
+                            recording={current}
+                            state={speakers.data}
+                            canEdit={canEdit}
+                            time={time}
+                            seek={seek}
+                            filter={speakerFilter}
+                            setFilter={setSpeakerFilter}
+                            health={health.data}
+                          />
+                        )}
                         <div className="transcript-scroll">
                           {transcript.isLoading ? (
                             <div className="loading-state">
@@ -716,17 +774,24 @@ function App() {
                               The transcript could not be loaded.
                             </p>
                           ) : segments.length ? (
-                            segments.map((s, i) => (
+                            visibleSegments.map((s) => (
                               <button
-                                key={`${s.start}-${i}`}
-                                className={`passage ${activeSegment === i ? "is-current" : ""}`}
+                                key={s.id}
+                                className={`passage ${segments[activeSegment]?.id === s.id ? "is-current" : ""}`}
                                 onClick={() => seek(s.start)}
                               >
                                 <span className="passage-time">
                                   {stamp(s.start)}
                                 </span>
-                                <span>{s.text}</span>
-                                {activeSegment === i && (
+                                <span>
+                                  {!preview && speakers.data?.model && (
+                                    <small className="speaker-badge">
+                                      {speakerLabel(s.id)}
+                                    </small>
+                                  )}
+                                  {s.text}
+                                </span>
+                                {segments[activeSegment]?.id === s.id && (
                                   <span className="passage-marker" />
                                 )}
                               </button>
@@ -737,6 +802,9 @@ function App() {
                             </div>
                           )}
                         </div>
+                        {!!segments.length && !visibleSegments.length && (
+                          <p>No passages match this speaker.</p>
+                        )}
                       </section>
                       <section
                         className="reference-panel"

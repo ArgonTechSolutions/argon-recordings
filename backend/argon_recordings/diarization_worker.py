@@ -9,6 +9,30 @@ import sys
 import tempfile
 import threading
 import time
+from functools import lru_cache
+
+
+def capability(directory):
+    if not directory:
+        return None
+    from .diarization_runtime import FILES
+    try:
+        signature = tuple((p.stat().st_size,p.stat().st_mtime_ns) for p in (Path(directory)/name for name in FILES))
+        return verified_capability(str(directory),signature)
+    except OSError:
+        return None
+
+
+@lru_cache(maxsize=2)
+def verified_capability(directory, signature):
+    from .diarization_runtime import MODEL, verify
+    import importlib.metadata
+    try:
+        if importlib.metadata.version('sherpa-onnx') != '1.13.8': return None
+        verify(directory)
+        return MODEL
+    except (OSError, ValueError, importlib.metadata.PackageNotFoundError):
+        return None
 
 
 def run(client, transcriber, work_root, directory=None):
@@ -40,6 +64,9 @@ def run(client, transcriber, work_root, directory=None):
     thread.start()
     process = None
     try:
+        from .diarization_runtime import MODEL
+        if task.get('model') != MODEL:
+            raise RuntimeError('Speaker task requires a different model configuration')
         with tempfile.TemporaryDirectory(prefix='recordings-speakers-', dir=work_root) as temporary:
             root = Path(temporary)
             duration = task['reference']['interval']['end']

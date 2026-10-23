@@ -28,6 +28,8 @@ def worker_loop():
                 watchdog.daemon = True
                 watchdog.start()
             try:
+                from .diarization_worker import capability
+                client.post('/api/worker/ready', json={'diarization_model': capability(os.environ.get('RECORDINGS_DIARIZATION_DIR'))}).raise_for_status()
                 space = os.statvfs('/work')
                 if space.f_bavail * space.f_frsize < 1024**3:
                     raise RuntimeError('Worker requires at least 1 GiB free work space')

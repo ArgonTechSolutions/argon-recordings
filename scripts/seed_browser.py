@@ -27,3 +27,14 @@ with TestClient(create_app(Settings(root, worker_token='synthetic-browser-only')
             {'start': 20, 'end': 31, 'text': 'Search the transcript and return to the relevant moment.'},
         ], 'artifacts': [{'name': 'audio.wav', 'kind': 'audio', 'time': None}]})
     assert response.status_code == 200, response.text
+    # Synthetic speaker turns exercise review UX only, never model quality.
+    from argon_recordings.diarization_runtime import MODEL
+    state = c.get(f'/api/recordings/{rid}/evidence').json()
+    response = c.post(f'/api/recordings/{rid}/diarization', json={'reference': {
+        'recording_id': rid, 'source_sha256': state['source_sha256'],
+        'interval': {'start': 0, 'end': 31}, 'versions': state['versions']}})
+    assert response.status_code == 200, response.text
+    task = c.post('/api/worker/diarization/claim', headers=auth).json()
+    response = c.post(f'/api/worker/diarization/{task["id"]}/complete', headers={**auth,'X-Lease-Id':task['lease_id']},
+                      json={'model':MODEL,'turns':[{'start':0,'end':10,'speaker':'speaker-0'}, {'start':10,'end':31,'speaker':'speaker-1'}]})
+    assert response.status_code == 200, response.text

@@ -19,10 +19,14 @@ from .accounts import Accounts, AccountRequestBudget
 from .account_routes import install as install_accounts
 
 from .contracts import (ClaimRequest, Completion, Failure, Heartbeat, Project, ProjectCreate,
-                        Recording, RecordingCreate, SearchHit, Transcript)
+                        Recording, RecordingCreate, SearchHit, Transcript, Strict)
 from .embeddings import Embeddings
 from .corrections import install as install_corrections
 from .store import Store, identity, lease_row
+
+
+class WorkerCapabilities(Strict):
+    diarization_model: str | None = None
 
 
 class Settings:
@@ -62,6 +66,7 @@ def create_app(settings=None):
         app.state.store.chunk_seconds = settings.chunk_seconds
         app.state.store.overlap_seconds = settings.overlap_seconds
         app.state.worker_seen = {}
+        app.state.worker_capabilities = {}
         app.state.accounts = Accounts(app.state.store, settings.auth_mode, settings.public_url, settings.allow_totp)
         if app.state.accounts.enabled:
             app.state.accounts.oidc_config()
@@ -158,7 +163,11 @@ def create_app(settings=None):
                 raise HTTPException(401, 'Worker credentials required')
 
     @app.post('/api/worker/ready', dependencies=[Depends(worker_auth)])
-    def worker_ready():
+    def worker_ready(request: Request, body: WorkerCapabilities | None = None):
+        from .diarization_runtime import MODEL
+        worker = getattr(request.state, 'worker_id', None) or 'legacy'
+        app.state.worker_seen[worker] = time.monotonic()
+        app.state.worker_capabilities[worker] = body.diarization_model if body and body.diarization_model == MODEL else None
         return {'ok': True}
 
 
@@ -177,6 +186,10 @@ def create_app(settings=None):
         with store().db() as db:
             job = db.execute('SELECT j.id,j.state,j.progress,j.stage,p.payload,p.updated FROM jobs j LEFT JOIN job_progress p ON p.job_id=j.id WHERE j.recording_id=?', (row['id'],)).fetchone()
             artifacts = db.execute('SELECT name,time,kind FROM artifacts WHERE recording_id=? ORDER BY time', (row['id'],)).fetchall()
+            speaker_job = db.execute('SELECT id,state,progress,error FROM diarization_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
+            versions = db.execute('SELECT transcript,speakers,annotations,extraction FROM evidence_versions WHERE recording_id=?', (row['id'],)).fetchone()
+        row['speaker_job'] = dict(speaker_job) if speaker_job else None
+        row['evidence_versions'] = dict(versions) if versions else None
         row['job'] = dict(job) if job else None
         if row['job']:
             payload = row['job'].pop('payload')
@@ -222,7 +235,8 @@ def create_app(settings=None):
         return {'status': 'ok', 'profile': settings.auth_mode, 'model': 'large-v3-turbo', 'search': 'hybrid' if settings.embeddings.configured else 'keyword',
                 'embedding_profile': getattr(settings.embeddings, 'profile', None) if settings.embeddings.configured else 'off',
                 'worker_configured': bool(settings.worker_token or settings.worker_tokens), 'worker_count': settings.worker_limit, 'workers_online': sum(time.monotonic() - seen < 130 for seen in app.state.worker_seen.values()), 'max_upload_bytes': settings.max_upload,
-                'max_duration_seconds': None, 'accounts_setup_required': bool(needs_admin)}
+                'max_duration_seconds': None, 'accounts_setup_required': bool(needs_admin),
+                'diarization_available': any(model and time.monotonic()-app.state.worker_seen.get(worker,0)<130 for worker,model in app.state.worker_capabilities.items())}
 
     @app.get('/api/projects', response_model=list[Project])
     def projects(request: Request):
@@ -469,6 +483,8 @@ def create_app(settings=None):
     install_evidence(app, store)
     from .diarization import install as install_diarization
     install_diarization(app, store, worker_auth)
+    from .speaker_review import install as install_speaker_review
+    install_speaker_review(app, store)
 
     static = os.environ.get('RECORDINGS_STATIC')
     if static:

@@ -10,6 +10,7 @@ export type Health = {
   worker_configured: boolean
   max_upload_bytes: number
   search: string
+  diarization_available?: boolean
 }
 export const preview = new URLSearchParams(window.location.search).has(
   "preview"

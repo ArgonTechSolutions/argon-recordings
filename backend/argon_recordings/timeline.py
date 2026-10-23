@@ -8,7 +8,7 @@ import json
 
 from pydantic import Field, model_validator
 
-from .contracts import Strict
+from .contracts import Strict, EvidenceVersions
 
 
 class TimelineRange(Strict):
@@ -27,14 +27,6 @@ class TimelineRange(Strict):
         if self.end > boundary.end:
             raise ValueError('Timeline range exceeds recording duration')
         return self
-
-
-class EvidenceVersions(Strict):
-    """Independent revisions: speaker edits do not rewrite recognized words."""
-    transcript: int = Field(default=0, ge=0)
-    speakers: int = Field(default=0, ge=0)
-    annotations: int = Field(default=0, ge=0)
-    extraction: int = Field(default=0, ge=0)
 
 
 class SourceReference(Strict):

@@ -1,6 +1,13 @@
 :root {
   color-scheme: light;
 }
+.speaker-review { border-bottom: 1px solid var(--border); padding: 16px; }
+.speaker-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.speaker-actions label { flex: 1; min-width: 80px; }
+.speaker-review h3 { font-size: 14px; margin: 0; }
+.speaker-review ul { list-style: none; padding: 0; max-height: 200px; overflow: auto; }
+.speaker-review li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.speaker-badge { display: block; font-size: 10px; color: var(--muted-foreground); margin-bottom: 4px; }
 .visual-marks { border-top: 1px solid var(--border); padding: 16px; }
 .visual-marks h3 { font-size: 14px; margin: 0; }
 .visual-marks ul { padding: 0; list-style: none; max-height: 240px; overflow: auto; }

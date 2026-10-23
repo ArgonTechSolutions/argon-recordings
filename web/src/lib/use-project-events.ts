@@ -36,7 +36,26 @@ export function useProjectEvents(projectId: string | undefined) {
         const received = ++generation
         // A slower initial REST read must not overwrite a newer event snapshot.
         void cache.cancelQueries({ queryKey: key, exact: true }).then(() => {
-          if (!closed && received === generation) cache.setQueryData(key, rows)
+          if (!closed && received === generation) {
+            const previous = cache.getQueryData<Recording[]>(key) ?? []
+            cache.setQueryData(key, rows)
+            for (const row of rows) {
+              const old = previous.find((r) => r.id === row.id)
+              if (
+                old &&
+                JSON.stringify(old.evidence_versions) !==
+                  JSON.stringify(row.evidence_versions)
+              ) {
+                for (const kind of [
+                  "transcript",
+                  "speakers",
+                  "evidence",
+                  "marks",
+                ])
+                  void cache.invalidateQueries({ queryKey: [kind, row.id] })
+              }
+            }
+          }
         })
       })
     }

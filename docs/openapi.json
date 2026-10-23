@@ -27,6 +27,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/WorkerCapabilities"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3253,6 +3270,74 @@
               "type": "string",
               "title": "Rid"
             }
+          },
+          {
+            "name": "passage_offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Passage Offset"
+            }
+          },
+          {
+            "name": "turn_offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Turn Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Revision"
+            }
+          },
+          {
+            "name": "expected_transcript_revision",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Transcript Revision"
+            }
           }
         ],
         "responses": {
@@ -3738,6 +3823,212 @@
           }
         }
       }
+    },
+    "/api/recordings/{rid}/speakers/{sid}": {
+      "put": {
+        "summary": "Rename",
+        "operationId": "rename_api_recordings__rid__speakers__sid__put",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameSpeaker"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/speaker-overrides": {
+      "post": {
+        "summary": "Override",
+        "operationId": "override_api_recordings__rid__speaker_overrides_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignSpeaker"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/speaker-overrides/{oid}/reset": {
+      "post": {
+        "summary": "Reset",
+        "operationId": "reset_api_recordings__rid__speaker_overrides__oid__reset_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "oid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Oid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/speakers/undo": {
+      "post": {
+        "summary": "Undo",
+        "operationId": "undo_api_recordings__rid__speakers_undo_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkMutation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3846,6 +4137,31 @@
           "kind"
         ],
         "title": "ArtifactInput"
+      },
+      "AssignSpeaker": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "expected_source_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Expected Source Sha256"
+          },
+          "override": {
+            "$ref": "#/components/schemas/OverrideInput"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "expected_source_sha256",
+          "override"
+        ],
+        "title": "AssignSpeaker"
       },
       "ChunkInput": {
         "properties": {
@@ -4274,6 +4590,51 @@
         ],
         "title": "DiarizationRequest"
       },
+      "EnrichmentJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Progress"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "progress",
+          "error"
+        ],
+        "title": "EnrichmentJob"
+      },
       "Enrollment": {
         "properties": {
           "code": {
@@ -4382,8 +4743,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "EvidenceVersions",
-        "description": "Independent revisions: speaker edits do not rewrite recognized words."
+        "title": "EvidenceVersions"
       },
       "Failure": {
         "properties": {
@@ -4756,6 +5116,96 @@
         ],
         "title": "OTP"
       },
+      "OverrideInput": {
+        "properties": {
+          "interval": {
+            "$ref": "#/components/schemas/TimelineRange"
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^speaker-[0-9]{1,4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "interval"
+        ],
+        "title": "OverrideInput"
+      },
+      "OverrideView": {
+        "properties": {
+          "interval": {
+            "$ref": "#/components/schemas/TimelineRange"
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^speaker-[0-9]{1,4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "interval",
+          "id"
+        ],
+        "title": "OverrideView"
+      },
+      "PassageSpeakers": {
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "title": "Segment Id"
+          },
+          "speaker_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Speaker Ids"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/WordSpeaker"
+            },
+            "type": "array",
+            "title": "Words"
+          },
+          "has_unknown": {
+            "type": "boolean",
+            "title": "Has Unknown"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "segment_id",
+          "speaker_ids",
+          "words",
+          "has_unknown"
+        ],
+        "title": "PassageSpeakers"
+      },
       "Password": {
         "properties": {
           "current": {
@@ -4971,6 +5421,26 @@
             "type": "array",
             "title": "Artifacts",
             "default": []
+          },
+          "speaker_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnrichmentJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_versions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceVersions"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -5048,6 +5518,35 @@
           "code"
         ],
         "title": "Recovery"
+      },
+      "RenameSpeaker": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "expected_source_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Expected Source Sha256"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "expected_source_sha256",
+          "label"
+        ],
+        "title": "RenameSpeaker"
       },
       "Reset": {
         "properties": {
@@ -5172,6 +5671,25 @@
         ],
         "title": "SourceReference"
       },
+      "SpeakerName": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "SpeakerName"
+      },
       "SpeakerOptions": {
         "properties": {
           "min_speakers": {
@@ -5207,7 +5725,7 @@
           },
           "speaker": {
             "type": "string",
-            "pattern": "^speaker-[0-9]{1,3}$",
+            "pattern": "^speaker-[0-9]{1,4}$",
             "title": "Speaker"
           }
         },
@@ -5225,6 +5743,10 @@
           "revision": {
             "type": "integer",
             "title": "Revision"
+          },
+          "transcript_revision": {
+            "type": "integer",
+            "title": "Transcript Revision"
           },
           "model": {
             "anyOf": [
@@ -5247,15 +5769,64 @@
             },
             "type": "array",
             "title": "Turns"
+          },
+          "speakers": {
+            "items": {
+              "$ref": "#/components/schemas/SpeakerName"
+            },
+            "type": "array",
+            "title": "Speakers"
+          },
+          "overrides": {
+            "items": {
+              "$ref": "#/components/schemas/OverrideView"
+            },
+            "type": "array",
+            "title": "Overrides"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/components/schemas/PassageSpeakers"
+            },
+            "type": "array",
+            "title": "Passages"
+          },
+          "next_passage_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Passage Offset"
+          },
+          "next_turn_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Turn Offset"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "revision",
+          "transcript_revision",
           "model",
           "stale",
-          "turns"
+          "turns",
+          "speakers",
+          "overrides",
+          "passages",
+          "next_passage_offset",
+          "next_turn_offset"
         ],
         "title": "SpeakersSnapshot"
       },
@@ -5480,6 +6051,68 @@
           "probability"
         ],
         "title": "Word"
+      },
+      "WordSpeaker": {
+        "properties": {
+          "start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "End"
+          },
+          "word": {
+            "type": "string",
+            "title": "Word"
+          },
+          "speaker_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Speaker Ids"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "manual",
+              "unknown"
+            ],
+            "title": "Origin"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "word",
+          "speaker_ids",
+          "origin"
+        ],
+        "title": "WordSpeaker"
+      },
+      "WorkerCapabilities": {
+        "properties": {
+          "diarization_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diarization Model"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WorkerCapabilities"
       }
     }
   }

@@ -77,6 +77,8 @@ export function Corrections({
     onSuccess: () => {
       void cache.invalidateQueries({ queryKey: ["corrections", recordingId] })
       void cache.invalidateQueries({ queryKey: ["transcript", recordingId] })
+      void cache.invalidateQueries({ queryKey: ["speakers", recordingId] })
+      void cache.invalidateQueries({ queryKey: ["evidence", recordingId] })
       void cache.invalidateQueries({ queryKey: ["search"] })
     },
   })

@@ -107,7 +107,8 @@ def worker():
                 raise ValueError('Invalid private worker credential')
             with httpx.Client(base_url='http://api:8001', headers={'Authorization': 'Bearer ' + credential['token']},
                               timeout=60, trust_env=False) as client:
-                client.post('/api/worker/ready').raise_for_status()
+                from .diarization_worker import capability
+                client.post('/api/worker/ready', json={'diarization_model': capability(os.environ.get('RECORDINGS_DIARIZATION_DIR'))}).raise_for_status()
                 timeout = int(os.environ.get('RECORDINGS_JOB_TIMEOUT_SECONDS', '0'))
                 watchdog = threading.Timer(timeout, lambda: os._exit(124)) if timeout else None
                 if watchdog:

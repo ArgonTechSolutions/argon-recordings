@@ -7,7 +7,7 @@ import json
 import time
 from typing import Literal
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import Field, model_validator
 
@@ -16,6 +16,7 @@ from .evidence import snapshot
 from .store import identity
 from .timeline import SourceReference, TimelineRange
 from .diarization_runtime import MODEL
+from .speaker_review import SpeakerName, OverrideView, PassageSpeakers, review_projection, stable_turns
 
 
 SCHEMA = '''
@@ -24,7 +25,7 @@ CREATE TABLE IF NOT EXISTS diarization_jobs(
  reference TEXT NOT NULL,options TEXT NOT NULL,cache_key TEXT NOT NULL UNIQUE,
  state TEXT NOT NULL,worker TEXT,lease_id TEXT,lease_until REAL,
  attempts INTEGER NOT NULL DEFAULT 0,progress REAL NOT NULL DEFAULT 0,
- result TEXT,result_sha TEXT,error TEXT,created REAL NOT NULL);
+ result TEXT,result_sha TEXT,error TEXT,created REAL NOT NULL,model TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS diarization_results(
  recording_id TEXT PRIMARY KEY REFERENCES recordings(id),job_id TEXT NOT NULL,
  source_sha256 TEXT NOT NULL,transcript_version INTEGER NOT NULL,model TEXT NOT NULL,
@@ -49,7 +50,7 @@ class DiarizationRequest(Strict):
 
 
 class SpeakerTurn(TimelineRange):
-    speaker: str = Field(pattern=r'^speaker-[0-9]{1,3}$')
+    speaker: str = Field(pattern=r'^speaker-[0-9]{1,4}$')
 
 
 class DiarizationCompletion(Strict):
@@ -67,9 +68,15 @@ class DiarizationJob(Strict):
 
 class SpeakersSnapshot(Strict):
     revision: int
+    transcript_revision: int
     model: str | None
     stale: bool
     turns: list[SpeakerTurn]
+    speakers: list[SpeakerName]
+    overrides: list[OverrideView]
+    passages: list[PassageSpeakers]
+    next_passage_offset: int | None
+    next_turn_offset: int | None
 
 
 def current_reference(db, store, rid):
@@ -106,15 +113,24 @@ def install(app, get_store, worker_auth):
         return row
 
     @app.get('/api/recordings/{rid}/speakers', response_model=SpeakersSnapshot)
-    def speakers(rid: str):
+    def speakers(rid: str, passage_offset: int = Query(default=0, ge=0), turn_offset: int = Query(default=0, ge=0),
+                 limit: int = Query(default=500, ge=1, le=1000), expected_revision: int | None = Query(default=None, ge=0),
+                 expected_transcript_revision: int | None = Query(default=None, ge=0)):
         store = get_store()
         with store.db() as db:
             db.execute('BEGIN IMMEDIATE')
             state = snapshot(db, store, rid)
+            if expected_revision is not None and expected_revision != state.versions.speakers:
+                raise HTTPException(409, 'Speaker annotations changed; restart pagination')
+            if expected_transcript_revision is not None and expected_transcript_revision != state.versions.transcript:
+                raise HTTPException(409, 'Transcript changed; restart pagination')
             result = db.execute('SELECT * FROM diarization_results WHERE recording_id=?', (rid,)).fetchone()
             stale = bool(result and (result['source_sha256'] != state.source_sha256 or result['transcript_version'] != state.versions.transcript))
-            return SpeakersSnapshot(revision=state.versions.speakers, model=result['model'] if result else None,
-                                    stale=stale, turns=json.loads(result['turns']) if result and not stale else [])
+            turns = json.loads(result['turns']) if result and not stale else []
+            names, overrides, passages, next_passage = review_projection(db, rid, turns, passage_offset, limit)
+            return SpeakersSnapshot(revision=state.versions.speakers, transcript_revision=state.versions.transcript, model=result['model'] if result else None,
+                                    stale=stale, turns=turns[turn_offset:turn_offset+limit], speakers=names, overrides=overrides, passages=passages,
+                                    next_passage_offset=next_passage, next_turn_offset=turn_offset+limit if turn_offset+limit<len(turns) else None)
 
     @app.post('/api/recordings/{rid}/diarization', response_model=DiarizationJob)
     def schedule(rid: str, body: DiarizationRequest):
@@ -131,20 +147,20 @@ def install(app, get_store, worker_auth):
                            recording=rid, model=MODEL, options=body.options.model_dump())
             key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
             previous = db.execute('SELECT * FROM diarization_jobs WHERE cache_key=?', (key,)).fetchone()
-            if previous and previous['state'] in {'queued', 'running', 'completed'}:
+            if previous and previous['model'] == MODEL and previous['state'] in {'queued', 'running', 'completed'}:
                 return job_view(previous)
             if db.execute("SELECT count(*) FROM diarization_jobs WHERE state IN ('queued','running')").fetchone()[0] >= 32:
                 raise HTTPException(429, 'Speaker task queue is full')
             db.execute("UPDATE diarization_jobs SET state='cancelled',lease_id=NULL,lease_until=NULL WHERE recording_id=? AND state IN ('queued','running')", (rid,))
             if previous:
-                db.execute("UPDATE diarization_jobs SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,error=NULL WHERE id=?", (previous['id'],))
+                db.execute("UPDATE diarization_jobs SET state='queued',attempts=0,lease_id=NULL,lease_until=NULL,error=NULL,model=?,reference=?,progress=0,worker=NULL,result_sha=NULL WHERE id=?", (MODEL,actual.model_dump_json(),previous['id']))
                 jid = previous['id']
             else:
                 if db.execute('SELECT count(*) FROM diarization_jobs WHERE recording_id=?', (rid,)).fetchone()[0] >= 100:
                     raise HTTPException(409, 'Speaker task history limit reached')
                 jid = identity()
-                db.execute('INSERT INTO diarization_jobs(id,recording_id,reference,options,cache_key,state,created) VALUES(?,?,?,?,?,?,?)',
-                           (jid, rid, actual.model_dump_json(), body.options.model_dump_json(), key, 'queued', time.time()))
+                db.execute('INSERT INTO diarization_jobs(id,recording_id,reference,options,cache_key,state,created,model) VALUES(?,?,?,?,?,?,?,?)',
+                           (jid, rid, actual.model_dump_json(), body.options.model_dump_json(), key, 'queued', time.time(), MODEL))
             return job_view(db.execute('SELECT * FROM diarization_jobs WHERE id=?', (jid,)).fetchone())
 
     @app.get('/api/recordings/{rid}/diarization', response_model=list[DiarizationJob])
@@ -173,6 +189,7 @@ def install(app, get_store, worker_auth):
         with store.db() as db:
             db.execute('BEGIN IMMEDIATE')
             now = time.time()
+            db.execute("UPDATE diarization_jobs SET state='failed',error='Speaker model configuration changed; request analysis again',lease_id=NULL,lease_until=NULL WHERE state IN ('queued','running') AND model!=?", (MODEL,))
             db.execute("UPDATE diarization_jobs SET state='failed',error='Speaker lease retries exhausted' WHERE state='running' AND lease_until<=? AND attempts>=3", (now,))
             if not store.capacity_available(db, worker):
                 return None
@@ -181,7 +198,7 @@ def install(app, get_store, worker_auth):
                 return None
             token = identity()
             db.execute("UPDATE diarization_jobs SET state='running',worker=?,lease_id=?,lease_until=?,attempts=attempts+1 WHERE id=?", (worker, token, now+120, row['id']))
-            return {'id': row['id'], 'lease_id': token, 'reference': json.loads(row['reference']), 'options': json.loads(row['options'])}
+            return {'id': row['id'], 'lease_id': token, 'reference': json.loads(row['reference']), 'options': json.loads(row['options']), 'model': row['model']}
 
     @app.post('/api/worker/diarization/{jid}/heartbeat', dependencies=[Depends(worker_auth)])
     def heartbeat(jid: str, body: Heartbeat, request: Request, x_lease_id: str = Header()):
@@ -211,7 +228,7 @@ def install(app, get_store, worker_auth):
                 if row['result_sha'] != digest:
                     raise HTTPException(409, 'Speaker publication already differs')
                 return {'ok': True}
-            if body.model != MODEL:
+            if body.model != MODEL or body.model != row['model']:
                 raise HTTPException(422, 'Unrecognized speaker model/configuration identity')
             expected = SourceReference.model_validate_json(row['reference'])
             actual = current_reference(db, store, row['recording_id'])
@@ -226,8 +243,9 @@ def install(app, get_store, worker_auth):
                 if turn.start < last or turn.end <= turn.start or turn.end > actual.interval.end:
                     raise HTTPException(422, 'Invalid speaker timeline')
                 last = turn.start
+            turns = stable_turns(db, row['recording_id'], [t.model_dump() for t in body.turns])
             db.execute('INSERT INTO diarization_results VALUES(?,?,?,?,?,?) ON CONFLICT(recording_id) DO UPDATE SET job_id=excluded.job_id,source_sha256=excluded.source_sha256,transcript_version=excluded.transcript_version,model=excluded.model,turns=excluded.turns',
-                       (row['recording_id'], jid, actual.source_sha256, actual.versions.transcript, body.model, json.dumps([t.model_dump() for t in body.turns])))
+                       (row['recording_id'], jid, actual.source_sha256, actual.versions.transcript, body.model, json.dumps(turns)))
             db.execute('UPDATE evidence_versions SET speakers=speakers+1 WHERE recording_id=?', (row['recording_id'],))
             db.execute("UPDATE diarization_jobs SET state='completed',progress=1,result_sha=? WHERE id=?", (digest, jid))
         return {'ok': True}

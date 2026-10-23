@@ -1256,6 +1256,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/speakers/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename */
+        put: operations["rename_api_recordings__rid__speakers__sid__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/speaker-overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Override */
+        post: operations["override_api_recordings__rid__speaker_overrides_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/speaker-overrides/{oid}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset */
+        post: operations["reset_api_recordings__rid__speaker_overrides__oid__reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/speakers/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo */
+        post: operations["undo_api_recordings__rid__speakers_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1294,6 +1362,14 @@ export interface components {
             kind: "audio" | "frame";
             /** Time */
             time?: number | null;
+        };
+        /** AssignSpeaker */
+        AssignSpeaker: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+            override: components["schemas"]["OverrideInput"];
         };
         /** ChunkInput */
         ChunkInput: {
@@ -1439,6 +1515,20 @@ export interface components {
              */
             options: components["schemas"]["SpeakerOptions"];
         };
+        /** EnrichmentJob */
+        EnrichmentJob: {
+            /** Id */
+            id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Progress */
+            progress: number;
+            /** Error */
+            error: string | null;
+        };
         /** Enrollment */
         Enrollment: {
             /**
@@ -1471,10 +1561,7 @@ export interface components {
              */
             visual_extraction: "not_requested";
         };
-        /**
-         * EvidenceVersions
-         * @description Independent revisions: speaker edits do not rewrite recognized words.
-         */
+        /** EvidenceVersions */
         EvidenceVersions: {
             /**
              * Transcript
@@ -1642,6 +1729,31 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** OverrideInput */
+        OverrideInput: {
+            interval: components["schemas"]["TimelineRange"];
+            /** Speaker */
+            speaker?: string | null;
+        };
+        /** OverrideView */
+        OverrideView: {
+            interval: components["schemas"]["TimelineRange"];
+            /** Speaker */
+            speaker?: string | null;
+            /** Id */
+            id: string;
+        };
+        /** PassageSpeakers */
+        PassageSpeakers: {
+            /** Segment Id */
+            segment_id: string;
+            /** Speaker Ids */
+            speaker_ids: string[];
+            /** Words */
+            words: components["schemas"]["WordSpeaker"][];
+            /** Has Unknown */
+            has_unknown: boolean;
+        };
         /** Password */
         Password: {
             /** Current */
@@ -1721,6 +1833,8 @@ export interface components {
              * @default []
              */
             artifacts: components["schemas"]["Artifact"][];
+            speaker_job?: components["schemas"]["EnrichmentJob"] | null;
+            evidence_versions?: components["schemas"]["EvidenceVersions"] | null;
         };
         /** RecordingCreate */
         RecordingCreate: {
@@ -1745,6 +1859,15 @@ export interface components {
         Recovery: {
             /** Code */
             code: string;
+        };
+        /** RenameSpeaker */
+        RenameSpeaker: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+            /** Label */
+            label: string;
         };
         /** Reset */
         Reset: {
@@ -1786,6 +1909,13 @@ export interface components {
             interval: components["schemas"]["TimelineRange"];
             versions: components["schemas"]["EvidenceVersions"];
         };
+        /** SpeakerName */
+        SpeakerName: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
         /** SpeakerOptions */
         SpeakerOptions: {
             /**
@@ -1812,12 +1942,24 @@ export interface components {
         SpeakersSnapshot: {
             /** Revision */
             revision: number;
+            /** Transcript Revision */
+            transcript_revision: number;
             /** Model */
             model: string | null;
             /** Stale */
             stale: boolean;
             /** Turns */
             turns: components["schemas"]["SpeakerTurn"][];
+            /** Speakers */
+            speakers: components["schemas"]["SpeakerName"][];
+            /** Overrides */
+            overrides: components["schemas"]["OverrideView"][];
+            /** Passages */
+            passages: components["schemas"]["PassageSpeakers"][];
+            /** Next Passage Offset */
+            next_passage_offset: number | null;
+            /** Next Turn Offset */
+            next_turn_offset: number | null;
         };
         /** TimelineRange */
         TimelineRange: {
@@ -1890,6 +2032,27 @@ export interface components {
             /** Probability */
             probability: number;
         };
+        /** WordSpeaker */
+        WordSpeaker: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /** Word */
+            word: string;
+            /** Speaker Ids */
+            speaker_ids: string[];
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "automatic" | "manual" | "unknown";
+        };
+        /** WorkerCapabilities */
+        WorkerCapabilities: {
+            /** Diarization Model */
+            diarization_model?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1908,7 +2071,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WorkerCapabilities"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -4254,7 +4421,13 @@ export interface operations {
     };
     speakers_api_recordings__rid__speakers_get: {
         parameters: {
-            query?: never;
+            query?: {
+                passage_offset?: number;
+                turn_offset?: number;
+                limit?: number;
+                expected_revision?: number | null;
+                expected_transcript_revision?: number | null;
+            };
             header?: never;
             path: {
                 rid: string;
@@ -4537,6 +4710,148 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["Failure"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_api_recordings__rid__speakers__sid__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameSpeaker"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    override_api_recordings__rid__speaker_overrides_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignSpeaker"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_api_recordings__rid__speaker_overrides__oid__reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                oid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkMutation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_api_recordings__rid__speakers_undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkMutation"];
             };
         };
         responses: {

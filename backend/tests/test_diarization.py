@@ -109,6 +109,32 @@ def test_annotation_payload_is_bounded_before_json_decode(client):
     assert client.post('/api/recordings/missing/marks', content=b' ' * 65537).status_code == 413
 
 
+def test_old_model_task_requires_explicit_reschedule(client):
+    rid,body=setup(client)
+    job=client.post(f'/api/recordings/{rid}/diarization',json=body).json()
+    with client.app.state.store.db() as db:
+        db.execute("UPDATE diarization_jobs SET model='obsolete-model' WHERE id=?",(job['id'],))
+    assert worker_claim(client) is None
+    assert client.get(f'/api/recordings/{rid}/diarization').json()[0]['state']=='failed'
+    assert client.post(f'/api/recordings/{rid}/diarization',json=body).json()['state']=='queued'
+    assert worker_claim(client)['model']==MODEL
+
+
+def test_worker_capability_cache_rechecks_changed_artifacts(tmp_path,monkeypatch):
+    import hashlib
+    import importlib.metadata
+    from argon_recordings import diarization_runtime,diarization_worker
+    path=tmp_path/'model.onnx';path.write_bytes(b'valid fixture')
+    monkeypatch.setattr(diarization_runtime,'FILES',{'model.onnx':hashlib.sha256(path.read_bytes()).hexdigest()})
+    monkeypatch.setattr(importlib.metadata,'version',lambda _: '1.13.8')
+    diarization_worker.verified_capability.cache_clear()
+    assert diarization_worker.capability(tmp_path)==MODEL
+    path.write_bytes(b'corrupt fixture contents')
+    assert diarization_worker.capability(tmp_path) is None
+    path.unlink()
+    assert diarization_worker.capability(tmp_path) is None
+
+
 def test_registered_workers_cannot_read_or_publish_each_others_audio(tmp_path):
     from argon_recordings.api import Settings, create_app
     from fastapi.testclient import TestClient
