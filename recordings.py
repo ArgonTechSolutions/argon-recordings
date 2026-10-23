@@ -13,6 +13,7 @@ import sys
 import time
 import tomllib
 import urllib.request
+import uuid
 
 ROOT = Path(__file__).resolve().parent
 LABEL = 'com.argon.recordings.installation'
@@ -86,8 +87,31 @@ def load_config(path):
 
 
 def docker(config, *args, **kwargs):
-    command = (['sudo', '-n'] if config['sudo'] else []) + ['docker', *map(str, args)]
-    return subprocess.run(command, check=True, **kwargs)
+    base = (['sudo', '-n'] if config['sudo'] else []) + ['docker']
+    arguments = list(map(str, args))
+    temporary = None
+    if arguments[:1] == ['run'] and '--rm' in arguments and not any(
+            value == '--name' or value.startswith('--name=') for value in arguments):
+        roles = {'scripts/prepare_turbo.py': 'prepare-turbo',
+                 'scripts/prepare_embeddings.py': 'prepare-search',
+                 'scripts/evaluate_embeddings.py': 'evaluate-search'}
+        role = next((role for script, role in roles.items() if script in arguments), 'utility')
+        temporary = 'argon-recordings-' + role + '-' + uuid.uuid4().hex[:12]
+        # Separate project labels from installation ownership: utility containers
+        # must not be mistaken for persistent API/worker stack members.
+        arguments[1:1] = ['--name', temporary, '--label', 'com.argon.recordings.project=argon-recordings',
+                          '--label', 'com.argon.recordings.function=' + role]
+    try:
+        return subprocess.run([*base, *arguments], check=True, **kwargs)
+    finally:
+        if temporary:
+            # Killing/interruption of the attached Docker client can otherwise
+            # leave its container running despite --rm. Target only this UUID.
+            try:
+                subprocess.run([*base, 'rm', '-f', temporary], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+            except (OSError, subprocess.TimeoutExpired):
+                print('Temporary container cleanup could not be confirmed: ' + temporary, file=sys.stderr)
 
 
 def source_id():

@@ -36,7 +36,7 @@ Prerequisites: Docker on Linux x86-64. No host Node/Python inference packages ar
 ```bash
 # Explicit, checksum-verified embedding model download (~579 MB).
 docker build -f backend/Dockerfile -t argon-recordings-api:local .
-docker run --rm --cpus=2 --memory=1g --memory-swap=1g \
+docker run --rm --name argon-recordings-prepare-search --cpus=2 --memory=1g --memory-swap=1g \
   -v "$PWD":/workspace -w /workspace -e PYTHONPATH=/workspace/backend \
   argon-recordings-api:local python scripts/prepare_embeddings.py models/e5-large large
 
@@ -93,7 +93,7 @@ Backend tests use temporary data and synthetic speech inference. The real embedd
 
 ```bash
 docker build -f backend/Dockerfile -t argon-recordings-api:local .
-docker run --rm --cpus=2 --memory=1g --memory-swap=1g \
+docker run --rm --name argon-recordings-backend-tests --cpus=2 --memory=1g --memory-swap=1g \
   -v "$PWD":/workspace -w /workspace -e PYTHONPATH=/workspace/backend \
   argon-recordings-api:local \
   sh -lc 'python -m pytest -q backend/tests && python scripts/export_contract.py --check'
