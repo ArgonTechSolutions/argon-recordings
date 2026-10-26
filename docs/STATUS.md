@@ -8,6 +8,8 @@ Automatic diarization quality remains blocked (both evaluated candidates counted
 
 ## Implemented and verified locally
 
+Disposable upgrade checkpoint (2026-10-26): old application `3d4eda7` → current application → restart passes with synthetic accounts/MFA, historical jobs/transcripts/media and new marks/speaker attribution/grants/reports. All 34 historical tables and retained file hashes survive startup; updated state survives restart. Installer identities/model mounts/single-worker arguments match. This is source/database qualification only, not an installed or Philemon upgrade. See [UPGRADE-VALIDATION.md](UPGRADE-VALIDATION.md). P13/P14 remain incomplete and quality blocked.
+
 Source-timeline follow-up (2026-10-26): shifted MP4/Matroska durations and automatic-analysis trimming are corrected. Actual FFmpeg fixtures verify identical JPEGs/proposals after a timestamp shift, delayed tracks and audio tails. A bounded prefix fallback now recovers the single-GOP MPEG-TS fixture with identical JPEGs and decoded clip pixels/timestamps. VFR sampling validates actual cadence rather than container average rate. Backend regression: 253 passed; OpenAPI and affected visual/report Chromium passed. Long/unseekable sources beyond fallback budgets still fail explicitly. See [VISUAL-EVALUATION.md](VISUAL-EVALUATION.md).
 
 - Dedicated Git repository, conventional commits, owner-supplied shadcn preset applied successfully.
