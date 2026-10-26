@@ -8,6 +8,8 @@ Automatic diarization quality remains blocked (both evaluated candidates counted
 
 ## Implemented and verified locally
 
+Repeated memory follow-up (2026-10-26): twelve real ASR → video cycles completed across swap-enabled and disabled environments. The no-swap six-cycle run stayed inside four GiB, produced identical repeated transcripts, and had a 2.806-GiB aggregate peak; post-video RSS did not keep increasing. It retains memory above baseline and does not prove indefinite leak freedom or installed-worker limits. See [WORKER-MEMORY-VALIDATION.md](WORKER-MEMORY-VALIDATION.md). No product/configuration tuning was introduced.
+
 Real worker lifecycle (2026-10-26): interruption during native ASR, API/worker restart, natural lease recovery and stale-operation rejection pass. Single-worker admission and queued visual cancellation work during inference; resumed API publication matches the frozen 407-word direct reference, then real FFmpeg publishes only the uncancelled image. Model reference clearing leaves about 1.20 GB resident in this cycle, so long-running memory remains unqualified. See [WORKER-LIFECYCLE-VALIDATION.md](WORKER-LIFECYCLE-VALIDATION.md). No installed/deployment acceptance is implied.
 
 Real Turbo regression (2026-10-26): six actual CPU INT8/two-thread inference calls passed on a frozen 240-second public English input and its overlapping chunks. Old/current/loaded-repeat full outputs match exactly (61 segments/407 words); omitted context preserves the real core-only result and saved replay needs no inference. Hash-locked dependencies and actual cgroup limits were verified. This is stability/fallback evidence, not WER, cancellation/contention or Philemon acceptance. See [ASR-REGRESSION.md](ASR-REGRESSION.md).

@@ -25,6 +25,8 @@ The process interruption is a crash test. ASR has no public cancellation endpoin
 
 Clearing the model reference is not equivalent to returning the process to its initial RSS. Worker resident memory was 1,284,034,560 bytes before the visual task and 1,202,675,712 afterward. The remaining resident heap is material; this single cycle does not establish a long-running memory plateau or the cause of retained allocations. No full-memory-reclamation claim is made.
 
+A subsequent [six-cycle measurement with and without swap](WORKER-MEMORY-VALIDATION.md) fits the tested four-GiB budget and shows no continuing growth in that bounded window. It preserves this distinction between clearing the reference and returning RSS to baseline; no speculative allocator change was applied.
+
 ## Runtime and evidence
 
 API, worker and controller are separate processes inside one disposable validation container. Its actual cgroup values were `cpu.max = 250000 100000`, `memory.max = 6442450944`, `memory.swap.max = 6442450944`. This is a shared aggregate quota; it does not verify installed per-role CPU/memory allocation. The exact inference lock installs with hashes and `pip check` passes. No model weights are downloaded or modified.
