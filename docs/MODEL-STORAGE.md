@@ -2,6 +2,8 @@
 
 Storage audit: 2026-10-23. This describes the development checkout on Vulcan; it does not verify or change the installed Philemon configuration.
 
+Reverified on 2026-10-26 at application commit `370d184`: all 19,701 protected files and all nine retained model files still match the saved SHA-256 manifest. All 23 successfully removed targets remain absent. No additional files were deleted during this verification. The prior cleanup recovered 6,107,062,272 allocated file bytes (5.69 GiB); current allocated directory sizes are 2,937,065,472 bytes for `models` and 344,625,152 bytes for `.recordings`. The small model-tree increase since cleanup is retained development material. The reference still selects E5-large, no main `recordings.toml` or runtime model/data environment overrides were present, and the redundant float segmentation file remains permission-blocked as described below. The root filesystem currently reports 119 GiB used and 95 GiB available; its changes also include other projects and are not attributable to this cleanup.
+
 ## Models to retain
 
 | Location | Purpose | Keep |
