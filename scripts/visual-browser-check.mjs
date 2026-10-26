@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import {createHash} from 'node:crypto'
+import {pathToFileURL} from 'node:url'
 import {spawn,execFileSync} from 'node:child_process'
 import {chromium} from '/opt/browser/node_modules/playwright-core/index.mjs'
 
@@ -122,6 +124,64 @@ try {
  await analysis.getByRole('button',{name:'Cancel analysis',exact:true}).waitFor({state:'detached'})
  await peer.close()
  result.checks.push('real adaptive worker results, cross-tab acceptance/rejection/undo, mobile suggestions, cancellation')
+ const state=await(await page.request.get(base+`/api/recordings/${rid}/evidence`)).json()
+ const transcript=await(await page.request.get(base+`/api/recordings/${rid}/transcript`)).json()
+ const first=transcript.segments[0]
+ const imageBytes=await(await page.request.get(base+`/api/recordings/${rid}/media/frame-0000.jpg`)).body()
+ const title='Report <script>window.reportPwned=1</script>'
+ const reportDraft={title,generator:{name:'Browser fixture',version:'1.0'},report:{
+  reference:{recording_id:rid,source_sha256:state.source_sha256,interval:{start:0,end:state.duration},versions:state.versions},
+  scope:{start:0,end:state.duration},language:'en',coverage:'complete',limitations:[],
+  citations:[{id:'source',kind:'transcript',evidence_id:first.id,interval:{start:first.start,end:first.end}},
+   {id:'screen',kind:'image',evidence_id:'frame:frame-0000.jpg',interval:{start:0,end:0}}],
+  items:[{id:'claim',kind:'summary',basis:'explicit',text:'<img src="https://evil.invalid/x" onerror="window.reportPwned=1"> [unsafe](https://evil.invalid)',citation_ids:['source','screen']}]},
+  inspected_images:[{id:'frame:frame-0000.jpg',sha256:createHash('sha256').update(imageBytes).digest('hex'),inspected:true}]}
+ const reports=page.locator('.recording-reports');await reports.locator('summary').click()
+ const reportPeer=await context.newPage();reportPeer.on('pageerror',e=>result.console_errors.push(e.message))
+ await reportPeer.goto(base+`/?project=${projects[0].id}&recording=${rid}`)
+ const peerReports=reportPeer.locator('.recording-reports');await peerReports.locator('summary').click()
+ await reports.getByLabel('Import report draft',{exact:true}).setInputFiles({name:'report-draft.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(reportDraft))})
+ await reports.getByRole('button',{name:'Save draft',exact:true}).click()
+ await reports.locator('article').getByText('Draft',{exact:true}).waitFor()
+ await peerReports.getByRole('button',{name:title+' · Draft',exact:true}).waitFor()
+ await reports.getByRole('button',{name:'Mark reviewed',exact:true}).click()
+ await reports.locator('article').getByText('Reviewed',{exact:true}).waitFor()
+ await peerReports.getByRole('button',{name:title+' · Reviewed',exact:true}).waitFor()
+ assert.equal(await page.evaluate(()=>window.reportPwned??null),null)
+ const downloadReady=page.waitForEvent('download')
+ await reports.getByRole('link',{name:'Export ZIP',exact:true}).click()
+ const download=await downloadReady,zipPath=path.join(evidence,'report.zip'),unpacked=path.join(evidence,'unpacked-report')
+ await download.saveAs(zipPath)
+ execFileSync('python',['-c',
+  "import hashlib,json,pathlib,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); names=z.namelist(); assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in names); m=json.loads(z.read('manifest.json')); assert m['report']['status']=='reviewed'; assert {e['path'] for e in m['files']}==set(names)-{'manifest.json'}; assert all(hashlib.sha256(z.read(e['path'])).hexdigest()==e['sha256'] for e in m['files']); z.extractall(sys.argv[2])",zipPath,unpacked],{env,timeout:15000})
+ const offline=await browser.newPage(),unexpected=[]
+ offline.on('pageerror',e=>result.console_errors.push(e.message))
+ offline.on('request',request=>{if(/^https?:/.test(request.url()))unexpected.push(request.url())})
+ await offline.goto(pathToFileURL(path.join(unpacked,'report.html')).href)
+ await offline.locator('img').waitFor()
+ assert.ok(await offline.locator('img').evaluate(img=>img.complete&&img.naturalWidth>0))
+ assert.equal(await offline.evaluate(()=>window.reportPwned??null),null)
+ assert.deepEqual(unexpected,[])
+ await offline.screenshot({path:path.join(evidence,'offline-report.png'),fullPage:true})
+ await offline.locator('a[href="transcript.html#s0"]').click()
+ assert.ok(await offline.locator('#s0').textContent())
+ await offline.close()
+ for(const width of [768,390,320]) {
+  await page.setViewportSize({width,height:900})
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth))
+ }
+ await page.screenshot({path:path.join(evidence,'reports-mobile.png'),fullPage:true})
+ const latest=await(await page.request.get(base+`/api/recordings/${rid}/evidence`)).json()
+ assert.equal((await page.request.post(base+`/api/recordings/${rid}/marks`,{data:{expected_revision:latest.versions.annotations,
+  expected_source_sha256:latest.source_sha256,mark:{interval:{start:0,end:0},label:'Manual after report'}}})).status(),201)
+ await reports.getByText('Reviewed · Source evidence changed',{exact:true}).waitFor()
+ await peerReports.getByRole('button',{name:title+' · Reviewed · Stale',exact:true}).waitFor()
+ await reports.getByLabel('Import report draft',{exact:true}).setInputFiles({name:'report-draft.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(reportDraft))})
+ await reports.getByRole('button',{name:'Save draft',exact:true}).click()
+ await reports.getByRole('alert').filter({hasText:'Recording evidence changed'}).waitFor()
+ assert.equal((await(await page.request.get(base+`/api/recordings/${rid}/reports`)).json()).reports.length,1)
+ await reportPeer.close()
+ result.checks.push('explicit report import/review, two-tab status/staleness, bounded ZIP/checksums, offline HTML/images/citations, hostile text, mobile report controls')
  assert.deepEqual(result.console_errors,[]);result.passed=true
 }catch(error){result.passed=false;result.error=error.stack;throw error}
 finally{fs.writeFileSync(path.join(evidence,'result.json'),JSON.stringify(result,null,2));await browser?.close();server.kill('SIGTERM');await new Promise(resolve=>{server.once('exit',resolve);setTimeout(()=>{server.kill('SIGKILL');resolve()},6000)});log.end()}

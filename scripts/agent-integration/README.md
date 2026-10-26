@@ -70,6 +70,8 @@ For a client using an explicit MCP server configuration, adapt this credential-f
 
 The report checker also requires the prepared interpreter: use `/chosen/venv/bin/python …/summary_contract.py`, rather than assuming the system Python has Pydantic. The pinned MCP SDK supplies that dependency.
 
+The package now includes the canonical backend `report_contract.py` next to the skill's CLI wrapper, so source, packaged and API validation share one implementation. For a requested importable draft, use its `draft` command with the report, inspected-evidence ledger, final reference and truthful generator identity; see the skill's output contract. The app's **Reports** controls explicitly save/review the file and export the selected evidence ZIP. Agent grants do not gain report-write permissions. See [REPORTS.md](../../docs/REPORTS.md) for bounds, contents and freshness semantics.
+
 Run package startup, report-schema and adversarial structural checks:
 
 ```sh

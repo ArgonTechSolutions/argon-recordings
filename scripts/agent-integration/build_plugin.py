@@ -22,6 +22,10 @@ def build(output):
                 or source.resolve() == Path(output).resolve()):
             raise ValueError("Plugin source must be a contained regular file distinct from the output")
         sources.append((source, relative.removeprefix("plugin/")))
+    contract = ROOT.parents[1] / 'backend/argon_recordings/report_contract.py'
+    if contract.is_symlink() or not contract.is_file() or contract.resolve() != contract or contract == Path(output).resolve():
+        raise ValueError('Shared report contract must be a regular repository source file')
+    sources.append((contract, 'skills/recording-summary/scripts/report_contract.py'))
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for source, target in sources:
             archive.writestr(target, source.read_bytes())

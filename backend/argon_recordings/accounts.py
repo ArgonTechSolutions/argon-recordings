@@ -285,11 +285,12 @@ class AccountRequestBudget:
         path = scope.get('path', '')
         limited = scope['type'] == 'http' and scope['method'] not in {'GET', 'HEAD', 'OPTIONS'} and (
             path.startswith('/api/auth/') or path.startswith('/api/admin/') or path.startswith('/api/agent/') or '/members' in path or
-            re.match(r'^/api/recordings/[^/]+/(marks|diarization|speakers|speaker-overrides|visual-jobs|analysis-jobs)(?:/|$)', path))
+            re.match(r'^/api/recordings/[^/]+/(marks|diarization|speakers|speaker-overrides|visual-jobs|analysis-jobs|reports)(?:/|$)', path))
         worker_json = scope['type'] == 'http' and scope['method'] == 'POST' and path.startswith('/api/worker/')
         if not limited and not worker_json:
             return await self.app(scope, receive, send)
-        maximum = 8 * 1024**2 if worker_json else self.maximum
+        report_json = bool(re.match(r'^/api/recordings/[^/]+/reports(?:/|$)',path))
+        maximum = 8 * 1024**2 if worker_json else (1024**2 if report_json else self.maximum)
         content = bytearray()
         while True:
             message = await receive()

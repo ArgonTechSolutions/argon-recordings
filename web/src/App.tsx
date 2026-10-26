@@ -33,6 +33,7 @@ import { useProjectEvents } from "@/lib/use-project-events"
 import { TranscriptionProgress } from "@/components/transcription-progress"
 import { VisualMarks } from "@/components/visual-marks"
 import { VisualEvidence } from "@/components/visual-evidence"
+import { RecordingReports } from "@/components/recording-reports"
 import { SpeakerReview, type Speakers } from "@/components/speaker-review"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -904,6 +905,14 @@ function App() {
                             projectId={current.project_id}
                             time={time}
                             duration={duration}
+                            canEdit={canEdit}
+                            seek={seek}
+                          />
+                        )}
+                        {!preview && (
+                          <RecordingReports
+                            key={current.id + "-reports"}
+                            recording={current}
                             canEdit={canEdit}
                             seek={seek}
                           />

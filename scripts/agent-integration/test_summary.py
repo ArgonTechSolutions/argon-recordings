@@ -105,6 +105,17 @@ def test_cli_treats_injection_as_data_and_does_not_echo_private_inputs(data, tmp
     assert "rec_agent_" not in result.stdout + result.stderr
 
 
+def test_cli_prepares_only_selected_inspected_images_for_explicit_import(data,tmp_path):
+    paths=[tmp_path/name for name in ('report.json','evidence.json','current.json')]
+    for path,value in zip(paths,data): path.write_text(json.dumps(value))
+    result=subprocess.run([sys.executable,str(CONTRACT),'draft',*map(str,paths),'--title','A draft',
+        '--generator-name','Fixture','--generator-version','1.0','--model','synthetic'],capture_output=True,text=True,check=True,timeout=15)
+    draft=json.loads(result.stdout)
+    assert draft['generator']=={'name':'Fixture','version':'1.0','model':'synthetic'}
+    assert draft['inspected_images']==[{'id':'asset:'+'d'*32,'sha256':'e'*64,'inspected':True}]
+    assert 'expected_revision' not in draft and 'status' not in draft
+
+
 def test_built_package_runs_real_stdio_and_contains_only_declared_files(tmp_path, api_server):
     archive = tmp_path / "argon-recordings.zip"
     subprocess.run([sys.executable, str(ROOT / "build_plugin.py"), str(archive)], check=True, timeout=15)
@@ -112,7 +123,8 @@ def test_built_package_runs_real_stdio_and_contains_only_declared_files(tmp_path
     with zipfile.ZipFile(archive) as content:
         assert set(content.namelist()) == {"plugin.json", "mcp.json", "server.py", "requirements.txt",
             "skills/recording-summary/SKILL.md", "skills/recording-summary/agents/openai.yaml",
-            "skills/recording-summary/references/output-contract.md", "skills/recording-summary/scripts/summary_contract.py"}
+            "skills/recording-summary/references/output-contract.md", "skills/recording-summary/scripts/summary_contract.py",
+            "skills/recording-summary/scripts/report_contract.py"}
         content.extractall(package)
     manifest = json.loads((package / "plugin.json").read_text())
     assert manifest["name"] == "argon-recordings" and manifest["author"]["name"] == "Argon"
@@ -129,4 +141,4 @@ def test_built_package_runs_real_stdio_and_contains_only_declared_files(tmp_path
     asyncio.run(run())
     schemas = subprocess.run([sys.executable, str(package / "skills/recording-summary/scripts/summary_contract.py"),
                               "schema"], capture_output=True, text=True, check=True, timeout=15)
-    assert set(json.loads(schemas.stdout)) == {"report", "evidence", "current_reference"}
+    assert set(json.loads(schemas.stdout)) == {"report", "evidence", "current_reference", "draft"}

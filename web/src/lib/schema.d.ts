@@ -1649,6 +1649,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reports */
+        get: operations["reports_api_recordings__rid__reports_get"];
+        put?: never;
+        /** Save */
+        post: operations["save_api_recordings__rid__reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail */
+        get: operations["detail_api_recordings__rid__reports__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/reports/{report_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review */
+        post: operations["review_api_recordings__rid__reports__report_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/reports/{report_id}/export.zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export */
+        get: operations["export_api_recordings__rid__reports__report_id__export_zip_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/agent-grants": {
         parameters: {
             query?: never;
@@ -2082,6 +2151,19 @@ export interface components {
             /** Segments */
             segments: components["schemas"]["Segment"][];
         };
+        /** Citation */
+        Citation: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "transcript" | "image";
+            /** Evidence Id */
+            evidence_id: string;
+            interval: components["schemas"]["Interval"];
+        };
         /** ClaimRequest */
         ClaimRequest: {
             /** Worker */
@@ -2293,6 +2375,15 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** Generator */
+        Generator: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Model */
+            model?: string | null;
+        };
         /** GrantInput */
         GrantInput: {
             /** Label */
@@ -2329,6 +2420,15 @@ export interface components {
             /** Expired */
             expired: boolean;
         };
+        /** GroundedValue */
+        GroundedValue: {
+            /** Text */
+            text: string;
+            /** Quote */
+            quote: string;
+            /** Citation Ids */
+            citation_ids: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2342,6 +2442,25 @@ export interface components {
             stage: string;
             transcription?: components["schemas"]["TranscriptionProgress"] | null;
         };
+        /** ImageAcknowledgement */
+        ImageAcknowledgement: {
+            /** Id */
+            id: string;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Inspected
+             * @constant
+             */
+            inspected: true;
+        };
+        /** Interval */
+        Interval: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+        };
         /** Invitation */
         Invitation: {
             /** Email */
@@ -2352,6 +2471,32 @@ export interface components {
             grant: components["schemas"]["GrantView"];
             /** Token */
             token: string;
+        };
+        /** Item */
+        Item: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "summary" | "chapter" | "decision" | "action" | "question";
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "explicit" | "inference" | "unresolved";
+            /** Text */
+            text: string;
+            /** Citation Ids */
+            citation_ids?: string[];
+            /**
+             * Visual Observation
+             * @default false
+             */
+            visual_observation: boolean;
+            owner?: components["schemas"]["GroundedValue"] | null;
+            due?: components["schemas"]["GroundedValue"] | null;
         };
         /** Job */
         Job: {
@@ -2641,6 +2786,11 @@ export interface components {
             visual_job?: components["schemas"]["EnrichmentJob"] | null;
             analysis_job?: components["schemas"]["EnrichmentJob"] | null;
             evidence_versions?: components["schemas"]["EvidenceVersions"] | null;
+            /**
+             * Report Revision
+             * @default 0
+             */
+            report_revision: number;
         };
         /** RecordingCreate */
         RecordingCreate: {
@@ -2666,6 +2816,15 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** Reference */
+        Reference: {
+            /** Recording Id */
+            recording_id: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            interval: components["schemas"]["Interval"];
+            versions: components["schemas"]["Versions"];
+        };
         /** RenameSpeaker */
         RenameSpeaker: {
             /** Expected Revision */
@@ -2675,12 +2834,117 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** Report */
+        "Report-Input": {
+            /**
+             * Template Version
+             * @default argon-summary-v1
+             * @constant
+             */
+            template_version: "argon-summary-v1";
+            reference: components["schemas"]["Reference"];
+            scope: components["schemas"]["Interval"];
+            /** Language */
+            language: string;
+            /**
+             * Coverage
+             * @enum {string}
+             */
+            coverage: "complete" | "partial";
+            /** Limitations */
+            limitations?: string[];
+            /** Citations */
+            citations: components["schemas"]["Citation"][];
+            /** Items */
+            items: components["schemas"]["Item"][];
+        };
+        /** Report */
+        "Report-Output": {
+            /**
+             * Template Version
+             * @default argon-summary-v1
+             * @constant
+             */
+            template_version: "argon-summary-v1";
+            reference: components["schemas"]["Reference"];
+            scope: components["schemas"]["Interval"];
+            /** Language */
+            language: string;
+            /**
+             * Coverage
+             * @enum {string}
+             */
+            coverage: "complete" | "partial";
+            /** Limitations */
+            limitations?: string[];
+            /** Citations */
+            citations: components["schemas"]["Citation"][];
+            /** Items */
+            items: components["schemas"]["Item"][];
+        };
+        /** ReportDetail */
+        ReportDetail: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "reviewed";
+            /** Revision */
+            revision: number;
+            /** Stale */
+            stale: boolean;
+            /** Created */
+            created: number;
+            /** Reviewed */
+            reviewed: number | null;
+            generator: components["schemas"]["Generator"];
+            report: components["schemas"]["Report-Output"];
+            /** Selected Image Count */
+            selected_image_count: number;
+        };
+        /** ReportView */
+        ReportView: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "reviewed";
+            /** Revision */
+            revision: number;
+            /** Stale */
+            stale: boolean;
+            /** Created */
+            created: number;
+            /** Reviewed */
+            reviewed: number | null;
+            generator: components["schemas"]["Generator"];
+        };
+        /** ReportsList */
+        ReportsList: {
+            /** Revision */
+            revision: number;
+            /** Reports */
+            reports: components["schemas"]["ReportView"][];
+        };
         /** Reset */
         Reset: {
             /** Token */
             token: string;
             /** Password */
             password: string;
+        };
+        /** ReviewReport */
+        ReviewReport: {
+            /** Expected Revision */
+            expected_revision: number;
         };
         /** ReviewedProposal */
         ReviewedProposal: {
@@ -2728,6 +2992,17 @@ export interface components {
              * @default false
              */
             manual_conflict: boolean;
+        };
+        /** SaveReport */
+        SaveReport: {
+            /** Title */
+            title: string;
+            generator: components["schemas"]["Generator"];
+            report: components["schemas"]["Report-Input"];
+            /** Inspected Images */
+            inspected_images?: components["schemas"]["ImageAcknowledgement"][];
+            /** Expected Revision */
+            expected_revision: number;
         };
         /** SearchHit */
         SearchHit: {
@@ -2873,6 +3148,17 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** Versions */
+        Versions: {
+            /** Transcript */
+            transcript: number;
+            /** Speakers */
+            speakers: number;
+            /** Annotations */
+            annotations: number;
+            /** Extraction */
+            extraction: number;
         };
         /** VisualAsset */
         VisualAsset: {
@@ -6624,6 +6910,172 @@ export interface operations {
                 "application/json": components["schemas"]["Failure"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reports_api_recordings__rid__reports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportsList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_api_recordings__rid__reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detail_api_recordings__rid__reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_api_recordings__rid__reports__report_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_recordings__rid__reports__report_id__export_zip_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

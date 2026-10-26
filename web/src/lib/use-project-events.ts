@@ -55,6 +55,8 @@ export function useProjectEvents(projectId: string | undefined) {
                   "visual-jobs",
                   "analysis-jobs",
                   "analysis",
+                  "reports",
+                  "report",
                 ])
                   void cache.invalidateQueries({ queryKey: [kind, row.id] })
               }
@@ -63,6 +65,14 @@ export function useProjectEvents(projectId: string | undefined) {
                 JSON.stringify(row.analysis_job)
               ) {
                 for (const kind of ["analysis-jobs", "analysis"])
+                  void cache.invalidateQueries({ queryKey: [kind, row.id] })
+              }
+              if (
+                old?.report_revision !== row.report_revision ||
+                old?.job?.state !== row.job?.state ||
+                old?.sha256 !== row.sha256
+              ) {
+                for (const kind of ["reports", "report"])
                   void cache.invalidateQueries({ queryKey: [kind, row.id] })
               }
             }

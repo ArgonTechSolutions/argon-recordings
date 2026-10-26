@@ -1729,3 +1729,29 @@ h1 {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.recording-reports {
+  min-width: 0;
+  padding-top: 0.6rem;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+}
+.report-import {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.65rem 0;
+}
+.recording-reports img {
+  max-width: 100%;
+  height: auto;
+}
+.recording-reports figure {
+  margin: 1rem 0;
+}
+.recording-reports button {
+  max-width: 100%;
+  height: auto;
+  min-height: 2rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

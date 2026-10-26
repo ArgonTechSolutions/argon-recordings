@@ -87,6 +87,7 @@ class Recording(Strict):
     visual_job: EnrichmentJob | None = None
     analysis_job: EnrichmentJob | None = None
     evidence_versions: EvidenceVersions | None = None
+    report_revision: int = Field(default=0,ge=0)
 
 
 class Word(Strict):

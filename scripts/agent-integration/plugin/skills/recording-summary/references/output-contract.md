@@ -7,3 +7,14 @@ The optional machine-readable format is `argon-summary-v1`, implemented by [summ
 The report has `reference`, `scope`, `language`, `coverage` (`complete` or `partial`), `limitations`, `citations` and typed `items`. A citation identifies an exact segment or inspected image and its source interval. Items have `kind` (`summary`, `chapter`, `decision`, `action`, `question`), `basis` (`explicit`, `inference`, `unresolved`), `text`, citation IDs and optional action `owner`/`due`. Owner and due values each carry an exact source quote and citation IDs; the literal value must occur in that quote. This catches ungrounded strings, not misleading paraphrases or semantic misassignment. Semantic review must still verify that the cited words assign that person/date to that action. Do not populate a field merely to satisfy a schema.
 
 Partial coverage needs an explicit reason. A complete report requires the transcript cursor chain to terminate. The validator rejects stale versions, cross-recording/source references, broken cursor chains, duplicate IDs, out-of-range citations, uninspected image citations, unsupported owner/date literals and visual observations without inspected images. Empty or missing speaker/visual evidence is a limitation when the requested output depends on it. Prompt-injection resistance and semantic accuracy require actual agent evaluation; schema validation alone cannot establish either.
+
+For an explicitly requested app-import artifact, use the prepared Python interpreter:
+
+```sh
+python summary_contract.py draft report.json evidence.json current-reference.json \
+  --title "Recording summary" --generator-name "Connected agent" \
+  --generator-version "actual version or unspecified" --model "actual model or unspecified" \
+  > report-draft.json
+```
+
+Use truthful generator metadata. The command validates the full evidence ledger, selects only cited inspected images, and caps the resulting draft at 1 MiB. The editor imports the draft into the matching recording; the app checks current source/evidence and report revisions, canonical passage IDs, actual registered image times and SHA-256. Coverage and inspection remain importer assertions, not server proof of reading/viewing. Draft/reviewed state and staleness are explicit. Exported ZIPs contain static Markdown/HTML, cited transcript passages, scope-filtered speaker context, selected JPEGs and a versioned checksum manifest; no source recordings are included. Existing stale reports can be exported as historical snapshots when selected media still matches, but cannot be newly marked reviewed.

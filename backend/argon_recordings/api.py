@@ -205,10 +205,12 @@ def create_app(settings=None):
             visual_job = db.execute('SELECT id,state,progress,error FROM visual_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
             analysis_job = db.execute('SELECT id,state,progress,error FROM analysis_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
             versions = db.execute('SELECT transcript,speakers,annotations,extraction FROM evidence_versions WHERE recording_id=?', (row['id'],)).fetchone()
+            report_version = db.execute('SELECT revision FROM report_versions WHERE recording_id=?',(row['id'],)).fetchone()
         row['speaker_job'] = dict(speaker_job) if speaker_job else None
         row['visual_job'] = dict(visual_job) if visual_job else None
         row['analysis_job'] = dict(analysis_job) if analysis_job else None
         row['evidence_versions'] = dict(versions) if versions else None
+        row['report_revision'] = report_version['revision'] if report_version else 0
         row['job'] = dict(job) if job else None
         if row['job']:
             payload = row['job'].pop('payload')
@@ -508,6 +510,8 @@ def create_app(settings=None):
     visual_actions = install_visual_jobs(app, store, worker_auth, receive, settings.reserve)
     from .analysis_jobs import install as install_analysis_jobs
     install_analysis_jobs(app, store, worker_auth, settings.reserve)
+    from .reports import install as install_reports
+    install_reports(app, store, settings.reserve)
     from .agent_grants import install as install_agent_grants
     install_agent_grants(app, lambda: app.state.accounts)
     from .agent_api import install as install_agent_api

@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
 
 import httpx
 from mcp import Client
@@ -123,6 +125,27 @@ async def exercise(origin,token,pid,rid,image,browser,headers,grant_id):
             (directory/'evidence.json').write_text(json.dumps(evidence,indent=2))
             (directory/'current-reference.json').write_text(json.dumps(reference,indent=2))
             (directory/'source-link.txt').write_text(final.structured_content['source_link'])
+        # SDK evidence -> explicit browser report save -> portable evidence ZIP.
+        final=await client.call_tool('get_recording',{'recording_id':rid})
+        reference=dict(first.structured_content['reference'],versions=final.structured_content['evidence']['versions'])
+        report={'reference':reference,'scope':reference['interval'],'language':'en','coverage':'complete',
+            'citations':[{'id':'proposal','kind':'transcript','evidence_id':'sdk-0','interval':{'start':0,'end':2}},
+                         {'id':'image','kind':'image','evidence_id':'asset:'+jid,'interval':{'start':extracted['manifest']['actual_start'],'end':extracted['manifest']['actual_start']}}],
+            'items':[{'id':'proposal','kind':'summary','basis':'explicit','text':'Dark mode is proposed, not shipped.','citation_ids':['proposal','image']}]}
+        saved=browser.post(f'/api/recordings/{rid}/reports',headers=headers,json={'expected_revision':0,
+            'title':'SDK cited report','generator':{'name':'SDK fixture','version':'1.0'},'report':report,
+            'inspected_images':[{'id':'asset:'+jid,'sha256':hashlib.sha256(base64.b64decode(content.data)).hexdigest(),'inspected':True}]})
+        assert saved.status_code==201,saved.text
+        report_id=saved.json()['id']
+        assert browser.post(f'/api/recordings/{rid}/reports/{report_id}/review',headers=headers,json={'expected_revision':1}).status_code==200
+        exported=browser.get(f'/api/recordings/{rid}/reports/{report_id}/export.zip')
+        assert exported.status_code==200
+        with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+            manifest=json.loads(archive.read('manifest.json'))
+            assert manifest['reference']==reference and manifest['report']['status']=='reviewed'
+            assert archive.read('images/asset-'+jid+'.jpg')==base64.b64decode(content.data)
+            for item in manifest['files']:
+                assert hashlib.sha256(archive.read(item['path'])).hexdigest()==item['sha256']
         denied=await client.call_tool('get_recording',{'recording_id':'f'*32})
         assert denied.is_error
         assert browser.delete('/api/auth/agent-grants/'+grant_id,headers=headers).status_code==200
