@@ -1,0 +1,26 @@
+{
+  "fixture": "wikimedia-screencast-2014",
+  "source_url": "https://upload.wikimedia.org/wikipedia/commons/8/8f/Wikimedia_Screencast.webm",
+  "page_url": "https://commons.wikimedia.org/wiki/File:Wikimedia_Screencast.webm",
+  "author": "Toolboxx8",
+  "license": "CC-BY-SA-4.0",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "source_sha256": "0cabfba7f372013acc1050fb98c4454d89cd88dc88214f092baae54f299270f3",
+  "source_bytes": 3060157,
+  "reference_policy": "Agent visually inspected original frames before the first analysis run. These are coarse state checkpoints, not exact event onsets or human-adjudicated semantic labels. A candidate within five seconds is temporal coverage only.",
+  "checkpoint_tolerance_seconds": 5,
+  "checkpoints": [
+    {"time": 0, "state": "Initial task overview"},
+    {"time": 20, "state": "Edit form with changed title and Open status"},
+    {"time": 30, "state": "Resolved status and CC completion menu"},
+    {"time": 40, "state": "Selected additional CC and Normal priority"},
+    {"time": 50, "state": "Two selected project tags"},
+    {"time": 60, "state": "One project tag and Save Task control after scrolling"},
+    {"time": 70, "state": "Saved-task change history"},
+    {"time": 80, "state": "Final resolved task overview"}
+  ],
+  "readability": [
+    {"time": 0, "phrases": ["Screencast Example", "Assigned To", "Priority", "Projects", "Description"]},
+    {"time": 20, "phrases": ["Screencast Test New", "Assigned To", "Priority", "Projects", "Description"]}
+  ]
+}

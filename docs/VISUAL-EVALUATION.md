@@ -82,7 +82,7 @@ Validation: **253 backend tests passed**, zero skipped, with actual FFmpeg and p
 
 ## Remaining evidence gaps
 
-- No openly licensed real screen demo/slides fixture was selected for this bounded slice. Real-footage generalization is unverified; no production-quality claim is made.
-- Known-text readability is not measured because this heuristic runtime performs no OCR.
+- One CC BY-SA real desktop screencast has now been evaluated: 11/11 derivatives rendered, coarse temporal coverage 6/8 versus sparse 2/8, measured encoded bytes and OCR phrase recovery 2/10 at native size versus 0/10 at 480 px. These results do not establish semantic event recall, representative generalization or human readability. See [PUBLIC-VISUAL-EVALUATION.md](PUBLIC-VISUAL-EVALUATION.md).
+- A validated readability evaluator and representative human acceptance remain missing; OCR is a separate evaluation tool and is not part of the application.
 - Acceptance/rejection, pin precedence and durable restart now pass integration tests; representative recording acceptance remains pending.
-- The seven generated proposals are not rendered screenshots/clips, so actual encoded size, playback quality, and storage impact remain unmeasured.
+- Real-fixture encoded costs are now measured; matched-coverage storage savings, deployment egress and broader playback/readability quality remain unqualified.
