@@ -81,6 +81,8 @@ class Accounts:
                 db.execute('ALTER TABLE sessions ADD COLUMN mfa_method TEXT')
             from .passkeys import SCHEMA as PASSKEY_SCHEMA
             db.executescript(PASSKEY_SCHEMA)
+            from .agent_grants import SCHEMA as AGENT_SCHEMA
+            db.executescript(AGENT_SCHEMA)
             db.execute("INSERT OR REPLACE INTO account_settings VALUES('schema','3')")
             active = db.execute("SELECT value FROM account_settings WHERE key='enabled'").fetchone()
             if active and active[0] == 'true' and not self.enabled:
@@ -282,7 +284,7 @@ class AccountRequestBudget:
     async def __call__(self, scope, receive, send):
         path = scope.get('path', '')
         limited = scope['type'] == 'http' and scope['method'] not in {'GET', 'HEAD', 'OPTIONS'} and (
-            path.startswith('/api/auth/') or path.startswith('/api/admin/') or '/members' in path or
+            path.startswith('/api/auth/') or path.startswith('/api/admin/') or path.startswith('/api/agent/') or '/members' in path or
             re.match(r'^/api/recordings/[^/]+/(marks|diarization|speakers|speaker-overrides|visual-jobs)(?:/|$)', path))
         worker_json = scope['type'] == 'http' and scope['method'] == 'POST' and path.startswith('/api/worker/')
         if not limited and not worker_json:

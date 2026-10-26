@@ -20,3 +20,11 @@
 .admin-security-toggle { cursor: pointer; padding: 12px 0; }
 
 .authenticator-qr { display: block; width: min(260px, 100%); height: auto; }
+
+.account-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; grid-template-columns: minmax(0, 1fr); }
+.account-dialog > *, .account-dialog .account-form, .account-dialog label { min-width: 0; }
+.account-dialog button { white-space: normal; }
+.agent-access summary { cursor: pointer; }
+.agent-access ul { list-style: none; padding: 0; display: grid; gap: 8px; }
+.agent-access li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.agent-access li span { overflow-wrap: anywhere; min-width: 0; }

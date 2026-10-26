@@ -308,3 +308,5 @@ def install(app, get_store, worker_auth, receive, reserve):
             db.execute('BEGIN IMMEDIATE'); leased(db,jid,x_lease_id,request)
             db.execute("UPDATE visual_jobs SET state='failed',error=? WHERE id=?",(body.message,jid))
         return {'ok':True}
+
+    return {'schedule': schedule, 'assets': assets, 'media': media, 'cancel': cancel}

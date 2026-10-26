@@ -1,0 +1,11 @@
+FROM node@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS node-runtime
+FROM python@sha256:86adf8dbadc3d6e82ee5dd2c74bec2e1c2467cdad47886280501df722372d2e1
+LABEL com.argon.recordings.project="argon-recordings" com.argon.recordings.purpose="validation"+ENV TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+RUN apt-get update && apt-get install -y --no-install-recommends chromium nodejs npm ffmpeg git ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN npm install --prefix /opt/browser playwright-core@1.56.1
+WORKDIR /workspace
+COPY backend/requirements.txt backend/requirements-test.txt backend/requirements-embeddings.txt /opt/validation/
+RUN pip install --no-cache-dir -r /opt/validation/requirements-test.txt -r /opt/validation/requirements-embeddings.txt && pip check
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm

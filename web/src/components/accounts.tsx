@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { ValueSelect } from "@/components/value-select"
 import { AdminSecurity } from "./admin-security"
+import { AgentAccess } from "./agent-access"
 import "./accounts.css"
 
 const Session = createContext<AccountSession | null>(null)
@@ -264,7 +265,7 @@ export function AccountControls() {
         Sign out
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="account-dialog">
           <DialogHeader>
             <DialogTitle>Account</DialogTitle>
           </DialogHeader>
@@ -331,6 +332,7 @@ export function AccountControls() {
           <Button variant="outline" onClick={() => logout(true)}>
             Sign out all devices
           </Button>
+          <AgentAccess />
           {error && <p role="alert">{error}</p>}
         </DialogContent>
       </Dialog>

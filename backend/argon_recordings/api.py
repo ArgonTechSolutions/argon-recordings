@@ -132,7 +132,14 @@ def create_app(settings=None):
         public = {'/api/health', '/api/auth/session', '/api/auth/login', '/api/auth/accept-invitation',
                   '/api/auth/reset-password', '/api/auth/oidc/start', '/api/auth/oidc/callback'}
         path = request.scope['path']
-        if manager.enabled and path.startswith('/api/') and not path.startswith('/api/worker/') and path not in public:
+        if path.startswith('/api/agent/'):
+            try:
+                from .agent_grants import authenticate
+                await asyncio.to_thread(authenticate, manager, request)
+            except HTTPException as exc:
+                return JSONResponse({'detail': exc.detail}, status_code=exc.status_code,
+                                    headers={'Cache-Control':'no-store'})
+        elif manager.enabled and path.startswith('/api/') and not path.startswith('/api/worker/') and path not in public:
             try:
                 await asyncio.to_thread(manager.authorize, request)
             except HTTPException as exc:
@@ -492,11 +499,15 @@ def create_app(settings=None):
     from .evidence import install as install_evidence
     install_evidence(app, store)
     from .diarization import install as install_diarization
-    install_diarization(app, store, worker_auth)
+    speaker_readers = install_diarization(app, store, worker_auth)
     from .speaker_review import install as install_speaker_review
     install_speaker_review(app, store)
     from .visual_jobs import install as install_visual_jobs
-    install_visual_jobs(app, store, worker_auth, receive, settings.reserve)
+    visual_actions = install_visual_jobs(app, store, worker_auth, receive, settings.reserve)
+    from .agent_grants import install as install_agent_grants
+    install_agent_grants(app, lambda: app.state.accounts)
+    from .agent_api import install as install_agent_api
+    install_agent_api(app, lambda: app.state.accounts, view, search, speaker_readers, visual_actions)
 
     static = os.environ.get('RECORDINGS_STATIC')
     if static:

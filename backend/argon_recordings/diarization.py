@@ -257,3 +257,5 @@ def install(app, get_store, worker_auth):
             leased(db, jid, x_lease_id, request)
             db.execute("UPDATE diarization_jobs SET state='failed',error=? WHERE id=?", (body.message, jid))
         return {'ok': True}
+
+    return {'speakers': speakers}
