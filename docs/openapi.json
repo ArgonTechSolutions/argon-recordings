@@ -4664,6 +4664,581 @@
         }
       }
     },
+    "/api/recordings/{rid}/analysis-jobs": {
+      "post": {
+        "summary": "Schedule",
+        "operationId": "schedule_api_recordings__rid__analysis_jobs_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Jobs",
+        "operationId": "jobs_api_recordings__rid__analysis_jobs_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VisualJob"
+                  },
+                  "title": "Response Jobs Api Recordings  Rid  Analysis Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/analysis-jobs/{jid}": {
+      "get": {
+        "summary": "Get Job",
+        "operationId": "get_job_api_recordings__rid__analysis_jobs__jid__get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/analysis-jobs/{jid}/cancel": {
+      "post": {
+        "summary": "Cancel",
+        "operationId": "cancel_api_recordings__rid__analysis_jobs__jid__cancel_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/analysis-jobs/{jid}/proposals/{ordinal}": {
+      "post": {
+        "summary": "Decide",
+        "operationId": "decide_api_recordings__rid__analysis_jobs__jid__proposals__ordinal__post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "ordinal",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Ordinal"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/analysis/claim": {
+      "post": {
+        "summary": "Claim",
+        "operationId": "claim_api_worker_analysis_claim_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/analysis/{jid}/heartbeat": {
+      "post": {
+        "summary": "Heartbeat",
+        "operationId": "heartbeat_api_worker_analysis__jid__heartbeat_post",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Heartbeat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/analysis/{jid}/source": {
+      "get": {
+        "summary": "Source",
+        "operationId": "source_api_worker_analysis__jid__source_get",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/analysis/{jid}/complete": {
+      "post": {
+        "summary": "Complete",
+        "operationId": "complete_api_worker_analysis__jid__complete_post",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisResult-Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/analysis/{jid}/fail": {
+      "post": {
+        "summary": "Fail",
+        "operationId": "fail_api_worker_analysis__jid__fail_post",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Failure"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/agent-grants": {
       "get": {
         "summary": "List Grants",
@@ -5503,6 +6078,337 @@
         ],
         "title": "Accept"
       },
+      "AnalysisBudgets": {
+        "properties": {
+          "frames_decoded": {
+            "type": "integer",
+            "maximum": 602.0,
+            "minimum": 0.0,
+            "title": "Frames Decoded"
+          },
+          "frame_limit": {
+            "type": "integer",
+            "const": 602,
+            "title": "Frame Limit"
+          },
+          "analysis_bytes": {
+            "type": "integer",
+            "maximum": 22228992.0,
+            "minimum": 0.0,
+            "title": "Analysis Bytes"
+          },
+          "analysis_byte_limit": {
+            "type": "integer",
+            "const": 22228992,
+            "title": "Analysis Byte Limit"
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": 0.0,
+            "title": "Elapsed Seconds"
+          },
+          "wall_seconds_limit": {
+            "type": "integer",
+            "const": 45,
+            "title": "Wall Seconds Limit"
+          },
+          "analysis_width": {
+            "type": "integer",
+            "maximum": 256.0,
+            "minimum": 1.0,
+            "title": "Analysis Width"
+          },
+          "analysis_height": {
+            "type": "integer",
+            "maximum": 144.0,
+            "minimum": 1.0,
+            "title": "Analysis Height"
+          },
+          "sample_fps": {
+            "type": "integer",
+            "const": 2,
+            "title": "Sample Fps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "frames_decoded",
+          "frame_limit",
+          "analysis_bytes",
+          "analysis_byte_limit",
+          "elapsed_seconds",
+          "wall_seconds_limit",
+          "analysis_width",
+          "analysis_height",
+          "sample_fps"
+        ],
+        "title": "AnalysisBudgets"
+      },
+      "AnalysisCounts": {
+        "properties": {
+          "detected_events": {
+            "type": "integer",
+            "maximum": 602.0,
+            "minimum": 0.0,
+            "title": "Detected Events"
+          },
+          "cursor_suppressed": {
+            "type": "integer",
+            "maximum": 602.0,
+            "minimum": 0.0,
+            "title": "Cursor Suppressed"
+          },
+          "deduplicated_static": {
+            "type": "integer",
+            "maximum": 602.0,
+            "minimum": 0.0,
+            "title": "Deduplicated Static"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "detected_events",
+          "cursor_suppressed",
+          "deduplicated_static"
+        ],
+        "title": "AnalysisCounts"
+      },
+      "AnalysisDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "progress": {
+            "type": "number",
+            "title": "Progress"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "source_sha256": {
+            "type": "string",
+            "title": "Source Sha256"
+          },
+          "interval": {
+            "$ref": "#/components/schemas/TimelineRange"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisResult-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewedProposal"
+            },
+            "type": "array",
+            "title": "Proposals"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "recording_id",
+          "state",
+          "progress",
+          "error",
+          "source_sha256",
+          "interval",
+          "result",
+          "proposals"
+        ],
+        "title": "AnalysisDetail"
+      },
+      "AnalysisRequest": {
+        "properties": {
+          "reference": {
+            "$ref": "#/components/schemas/SourceReference"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reference"
+        ],
+        "title": "AnalysisRequest"
+      },
+      "AnalysisResult-Input": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status"
+          },
+          "partial_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Reason"
+          },
+          "analysis_recipe_version": {
+            "type": "string",
+            "const": "visual-analysis-v1",
+            "title": "Analysis Recipe Version"
+          },
+          "extraction_recipe_version": {
+            "type": "string",
+            "const": "visual-v1",
+            "title": "Extraction Recipe Version"
+          },
+          "requested_interval": {
+            "$ref": "#/components/schemas/TimelineRange"
+          },
+          "scanned_interval": {
+            "$ref": "#/components/schemas/TimelineRange"
+          },
+          "decoded_interval": {
+            "$ref": "#/components/schemas/DecodedInterval"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            },
+            "type": "array",
+            "maxItems": 48,
+            "title": "Proposals"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/AnalysisCounts"
+          },
+          "budgets": {
+            "$ref": "#/components/schemas/AnalysisBudgets"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "partial_reason",
+          "analysis_recipe_version",
+          "extraction_recipe_version",
+          "requested_interval",
+          "scanned_interval",
+          "decoded_interval",
+          "proposals",
+          "counts",
+          "budgets"
+        ],
+        "title": "AnalysisResult"
+      },
+      "AnalysisResult-Output": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status"
+          },
+          "partial_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial Reason"
+          },
+          "analysis_recipe_version": {
+            "type": "string",
+            "const": "visual-analysis-v1",
+            "title": "Analysis Recipe Version"
+          },
+          "extraction_recipe_version": {
+            "type": "string",
+            "const": "visual-v1",
+            "title": "Extraction Recipe Version"
+          },
+          "requested_interval": {
+            "$ref": "#/components/schemas/TimelineRange"
+          },
+          "scanned_interval": {
+            "$ref": "#/components/schemas/TimelineRange"
+          },
+          "decoded_interval": {
+            "$ref": "#/components/schemas/DecodedInterval"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            },
+            "type": "array",
+            "maxItems": 48,
+            "title": "Proposals"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/AnalysisCounts"
+          },
+          "budgets": {
+            "$ref": "#/components/schemas/AnalysisBudgets"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "partial_reason",
+          "analysis_recipe_version",
+          "extraction_recipe_version",
+          "requested_interval",
+          "scanned_interval",
+          "decoded_interval",
+          "proposals",
+          "counts",
+          "budgets"
+        ],
+        "title": "AnalysisResult"
+      },
       "Artifact": {
         "properties": {
           "name": {
@@ -5973,6 +6879,41 @@
           "height"
         ],
         "title": "Crop"
+      },
+      "DecodedInterval": {
+        "properties": {
+          "start": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "DecodedInterval"
       },
       "DiarizationCompletion": {
         "properties": {
@@ -6937,6 +7878,192 @@
         ],
         "title": "ProjectCreate"
       },
+      "Proposal": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image",
+              "clip"
+            ],
+            "title": "Type"
+          },
+          "source_start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Source Start"
+          },
+          "source_end": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Source End"
+          },
+          "timestamp": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Timestamp"
+          },
+          "score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ProposalMetrics"
+          },
+          "recipe_version": {
+            "type": "string",
+            "const": "visual-analysis-v1",
+            "title": "Recipe Version"
+          },
+          "extraction_recipe_version": {
+            "type": "string",
+            "const": "visual-v1",
+            "title": "Extraction Recipe Version"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "source_start",
+          "source_end",
+          "timestamp",
+          "score",
+          "reason",
+          "metrics",
+          "recipe_version",
+          "extraction_recipe_version",
+          "fallback"
+        ],
+        "title": "Proposal"
+      },
+      "ProposalDecision": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "expected_source_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Expected Source Sha256"
+          },
+          "choice": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Choice"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "expected_source_sha256",
+          "choice"
+        ],
+        "title": "ProposalDecision"
+      },
+      "ProposalMetrics": {
+        "properties": {
+          "global_change": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 255.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Global Change"
+          },
+          "changed_region_ratio": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed Region Ratio"
+          },
+          "rolling_changed_cells": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 336.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rolling Changed Cells"
+          },
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "scene",
+                  "localized-change"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Type"
+          },
+          "sustained_motion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sustained Motion"
+          },
+          "stability_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability Score"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProposalMetrics"
+      },
       "Recording": {
         "properties": {
           "id": {
@@ -7033,6 +8160,16 @@
             ]
           },
           "visual_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EnrichmentJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "analysis_job": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/EnrichmentJob"
@@ -7180,6 +8317,118 @@
           "password"
         ],
         "title": "Reset"
+      },
+      "ReviewedProposal": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "image",
+              "clip"
+            ],
+            "title": "Type"
+          },
+          "source_start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Source Start"
+          },
+          "source_end": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Source End"
+          },
+          "timestamp": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Timestamp"
+          },
+          "score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/ProposalMetrics"
+          },
+          "recipe_version": {
+            "type": "string",
+            "const": "visual-analysis-v1",
+            "title": "Recipe Version"
+          },
+          "extraction_recipe_version": {
+            "type": "string",
+            "const": "visual-v1",
+            "title": "Extraction Recipe Version"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback"
+          },
+          "ordinal": {
+            "type": "integer",
+            "title": "Ordinal"
+          },
+          "choice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "accept",
+                  "reject"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choice"
+          },
+          "mark_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mark Id"
+          },
+          "mark_active": {
+            "type": "boolean",
+            "title": "Mark Active",
+            "default": false
+          },
+          "manual_conflict": {
+            "type": "boolean",
+            "title": "Manual Conflict",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "source_start",
+          "source_end",
+          "timestamp",
+          "score",
+          "reason",
+          "metrics",
+          "recipe_version",
+          "extraction_recipe_version",
+          "fallback",
+          "ordinal"
+        ],
+        "title": "ReviewedProposal"
       },
       "SearchHit": {
         "properties": {

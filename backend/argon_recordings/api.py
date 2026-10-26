@@ -203,9 +203,11 @@ def create_app(settings=None):
             artifacts = db.execute('SELECT name,time,kind FROM artifacts WHERE recording_id=? ORDER BY time', (row['id'],)).fetchall()
             speaker_job = db.execute('SELECT id,state,progress,error FROM diarization_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
             visual_job = db.execute('SELECT id,state,progress,error FROM visual_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
+            analysis_job = db.execute('SELECT id,state,progress,error FROM analysis_jobs WHERE recording_id=? ORDER BY created DESC LIMIT 1', (row['id'],)).fetchone()
             versions = db.execute('SELECT transcript,speakers,annotations,extraction FROM evidence_versions WHERE recording_id=?', (row['id'],)).fetchone()
         row['speaker_job'] = dict(speaker_job) if speaker_job else None
         row['visual_job'] = dict(visual_job) if visual_job else None
+        row['analysis_job'] = dict(analysis_job) if analysis_job else None
         row['evidence_versions'] = dict(versions) if versions else None
         row['job'] = dict(job) if job else None
         if row['job']:
@@ -504,6 +506,8 @@ def create_app(settings=None):
     install_speaker_review(app, store)
     from .visual_jobs import install as install_visual_jobs
     visual_actions = install_visual_jobs(app, store, worker_auth, receive, settings.reserve)
+    from .analysis_jobs import install as install_analysis_jobs
+    install_analysis_jobs(app, store, worker_auth, settings.reserve)
     from .agent_grants import install as install_agent_grants
     install_agent_grants(app, lambda: app.state.accounts)
     from .agent_api import install as install_agent_api

@@ -53,7 +53,16 @@ export function useProjectEvents(projectId: string | undefined) {
                   "marks",
                   "visual-evidence",
                   "visual-jobs",
+                  "analysis-jobs",
+                  "analysis",
                 ])
+                  void cache.invalidateQueries({ queryKey: [kind, row.id] })
+              }
+              if (
+                JSON.stringify(old?.analysis_job) !==
+                JSON.stringify(row.analysis_job)
+              ) {
+                for (const kind of ["analysis-jobs", "analysis"])
                   void cache.invalidateQueries({ queryKey: [kind, row.id] })
               }
             }

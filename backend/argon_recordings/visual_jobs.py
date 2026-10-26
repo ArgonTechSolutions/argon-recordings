@@ -131,6 +131,19 @@ def job_view(row):
     return VisualJob(**{k: row[k] for k in ('id','recording_id','state','progress','error')})
 
 
+def admit_visual(db, store, rid, requester, reserve):
+    """Extraction and analysis share admission and disk reservation budgets."""
+    active = project_active = user_active = 0
+    for table in ('visual_jobs', 'analysis_jobs'):
+        active += db.execute(f"SELECT count(*) FROM {table} WHERE state IN ('queued','running')").fetchone()[0]
+        project_active += db.execute(f"SELECT count(*) FROM {table} v JOIN recordings r ON r.id=v.recording_id WHERE v.state IN ('queued','running') AND r.project_id=(SELECT project_id FROM recordings WHERE id=?)", (rid,)).fetchone()[0]
+        user_active += db.execute(f"SELECT count(*) FROM {table} WHERE state IN ('queued','running') AND requester=?", (requester,)).fetchone()[0]
+    if active >= 32 or project_active >= 8 or user_active >= 8:
+        raise HTTPException(429, 'Visual queue is full; wait for existing tasks')
+    if shutil.disk_usage(store.root).free < reserve+(active+1)*MAX_BYTES:
+        raise HTTPException(507, 'Insufficient reserved space for visual processing')
+
+
 def install(app, get_store, worker_auth, receive, reserve):
     def leased(db, jid, token, request, completed=False):
         row = db.execute('SELECT * FROM visual_jobs WHERE id=?', (jid,)).fetchone()
@@ -166,15 +179,9 @@ def install(app, get_store, worker_auth, receive, reserve):
                 raise HTTPException(422, 'Original source exceeds the eight GiB visual input limit')
             if not db.execute("SELECT 1 FROM artifacts WHERE recording_id=? AND kind='frame'", (rid,)).fetchone():
                 raise HTTPException(409, 'No video references are available for this recording')
-            active = db.execute("SELECT count(*) FROM visual_jobs WHERE state IN ('queued','running')").fetchone()[0]
-            project_active = db.execute("SELECT count(*) FROM visual_jobs v JOIN recordings r ON r.id=v.recording_id WHERE v.state IN ('queued','running') AND r.project_id=(SELECT project_id FROM recordings WHERE id=?)", (rid,)).fetchone()[0]
             account = getattr(request.state,'account',None)
             requester = account['id'] if account else 'local'
-            user_active = db.execute("SELECT count(*) FROM visual_jobs WHERE state IN ('queued','running') AND requester=?",(requester,)).fetchone()[0]
-            if active >= 32 or project_active >= 8 or user_active >= 8:
-                raise HTTPException(429, 'Visual queue is full; wait for existing tasks')
-            if shutil.disk_usage(store.root).free < reserve+(active+1)*MAX_BYTES:
-                raise HTTPException(507, 'Insufficient reserved space for visual extraction')
+            admit_visual(db,store,rid,requester,reserve)
             if previous:
                 jid = previous['id']
                 db.execute("UPDATE visual_jobs SET state='queued',attempts=0,progress=0,error=NULL,lease_id=NULL,lease_until=NULL,result_sha=NULL,worker=NULL,requester=? WHERE id=?", (requester,jid))

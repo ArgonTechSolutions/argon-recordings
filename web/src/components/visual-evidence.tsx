@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { ValueSelect } from "@/components/value-select"
 import { request, type Recording } from "@/lib/api"
 import type { components } from "@/lib/schema"
+import { VisualAnalysis } from "@/components/visual-analysis"
 
 type Asset = components["schemas"]["VisualAsset"]
 type Job = components["schemas"]["VisualJob"]
@@ -356,6 +357,7 @@ export function VisualEvidence({
         </Button>
       )}
       {assets.isError && <p role="alert">{assets.error.message}</p>}
+      <VisualAnalysis recording={recording} canEdit={canEdit} seek={seek} />
     </div>
   )
 }

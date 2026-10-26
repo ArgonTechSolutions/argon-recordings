@@ -22,3 +22,11 @@ Publication verifies media size/hash/type and bounded metadata before registerin
 Manifests distinguish requested time from actual source frame PTS, and retain source hash, dimensions, crop, sampling, rotation, sample/display aspect ratio, source origin and recipe version. Container-origin normalization aligns output with the original audio/player timeline, including a delayed video track. Output normalizes non-square pixels by shrinking an axis, preserving display shape without inventing spatial detail.
 
 The disposable FFmpeg suite exercises real extraction/publication, VFR, crop/rotation/aspect, nonzero origins, delayed tracks, corrupt input and budgets. Chromium checks real output media, source-offset synchronization, queue cancellation and mobile controls. These are functional checks; text readability, adaptive-event generalization, private recordings and installed-host performance require their own evaluation evidence. The agent summarization layer must inspect actual images before making visual claims.
+
+## Adaptive suggestions
+
+Expand **Visual suggestions**, select a source interval and choose **Analyze visuals**. The worker scans up to five minutes at low resolution and returns still/motion proposals with reasons and heuristic change scores. Longer or incomplete scans report their coverage and provide sparse fallback points. Analysis uses the same admission/free-space/worker budgets as extraction, with at most 100 analysis jobs per recording in addition to the extraction history.
+
+**Keep mark** creates a new normal timeline mark; then use **Extract evidence** to choose its rendering quality. **Reject** records the review decision. Existing pinned or non-auto-policy marks take priority over overlapping proposals. Neither action changes recognized speech or deletes media. Accepted marks remain editable and undoable using **Marks**; undo does not cause a cached proposal to silently recreate them. Both decisions refresh other clients through SSE.
+
+Viewers can inspect suggestions and retained evidence; analysis, cancellation and decisions require an editor/owner role. Completed source-bound proposals remain readable without the original, but a new interval needs source restoration. Read [VISUAL-EVALUATION.md](VISUAL-EVALUATION.md) for measured generated coverage, functional evidence and pending real-footage/readability gates.

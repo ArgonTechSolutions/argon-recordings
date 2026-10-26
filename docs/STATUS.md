@@ -1,5 +1,11 @@
 # Foundation status
 
+## Current intelligence checkpoint (local, 2026-10-26)
+
+The foundation counts below are historical. Current local intelligence includes editable speakers, revisioned marks, source-derived images/clips, reviewed adaptive visual proposals, account-scoped MCP grants and a cited-summary skill/private package. The latest combined backend suite passed 233 tests with prepared E5-large and real FFmpeg; OpenAPI, frontend production build/lint, the visual/adaptive Chromium workflow and the 24-test MCP/summary suite passed. No deployment or owner credential provisioning occurred.
+
+Automatic diarization quality remains blocked (both evaluated candidates counted speakers correctly in only 1/5 held-out clips). Real-footage visual/readability qualification, evidence exports and integrated release/upgrade gates remain incomplete. Host-loaded/live-client, Spanish/private-recording and installed Philemon acceptance have separate evidence requirements. Current scope and tickets: [INTELLIGENCE-PLAN.md](INTELLIGENCE-PLAN.md); visual evidence: [VISUAL-EVALUATION.md](VISUAL-EVALUATION.md); summary package: [SUMMARY-WORKFLOW.md](SUMMARY-WORKFLOW.md).
+
 ## Implemented and verified locally
 
 - Dedicated Git repository, conventional commits, owner-supplied shadcn preset applied successfully.

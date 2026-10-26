@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES 
             db.executescript(speaker_review_schema)
             from .visual_jobs import SCHEMA as visual_schema
             db.executescript(visual_schema)
+            from .analysis_jobs import SCHEMA as analysis_schema
+            db.executescript(analysis_schema)
 
     @contextmanager
     def db(self):
@@ -98,7 +100,7 @@ CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES 
 
     def capacity_available(self, db, worker=None):
         active = []
-        for table in ('jobs', 'corrections', 'chunks', 'diarization_jobs', 'visual_jobs'):
+        for table in ('jobs', 'corrections', 'chunks', 'diarization_jobs', 'visual_jobs', 'analysis_jobs'):
             active.extend(db.execute(f"SELECT worker FROM {table} WHERE state='running' AND lease_until>?", (time.time(),)).fetchall())
         return len(active) < self.worker_limit and (worker is None or not any(r['worker'] == worker for r in active))
 

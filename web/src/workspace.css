@@ -1714,3 +1714,18 @@ h1 {
   font-size: 0.75rem;
   color: var(--muted-foreground);
 }
+.visual-analysis {
+  min-width: 0;
+  padding-top: 0.6rem;
+}
+.proposal-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.proposal-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
