@@ -8,6 +8,8 @@ Automatic diarization quality remains blocked (both evaluated candidates counted
 
 ## Implemented and verified locally
 
+English diarization recalibration completed (2026-10-26): 19 real inference cases with existing pinned models; the fixed grid selected the unchanged 0.9 threshold. Both reserved and original regression sets scored only 1/5 exact counts, so quality remains blocked despite passing DER/runtime/memory limits. See [DIARIZATION-CALIBRATION.md](DIARIZATION-CALIBRATION.md). The owner requested pausing after this task; no further experiment or deployment is started.
+
 Repeated memory follow-up (2026-10-26): twelve real ASR → video cycles completed across swap-enabled and disabled environments. The no-swap six-cycle run stayed inside four GiB, produced identical repeated transcripts, and had a 2.806-GiB aggregate peak; post-video RSS did not keep increasing. It retains memory above baseline and does not prove indefinite leak freedom or installed-worker limits. See [WORKER-MEMORY-VALIDATION.md](WORKER-MEMORY-VALIDATION.md). No product/configuration tuning was introduced.
 
 Real worker lifecycle (2026-10-26): interruption during native ASR, API/worker restart, natural lease recovery and stale-operation rejection pass. Single-worker admission and queued visual cancellation work during inference; resumed API publication matches the frozen 407-word direct reference, then real FFmpeg publishes only the uncancelled image. Model reference clearing leaves about 1.20 GB resident in this cycle, so long-running memory remains unqualified. See [WORKER-LIFECYCLE-VALIDATION.md](WORKER-LIFECYCLE-VALIDATION.md). No installed/deployment acceptance is implied.

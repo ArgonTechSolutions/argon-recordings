@@ -1,6 +1,6 @@
 # Diarization feasibility evaluation
 
-Status: **two bounded public evaluations complete; the speaker-count gate fails for both candidates**. The initial candidate has low DER but overestimates counts on four of five clips. The English-trained alternative meets the aggregate DER, speed, and memory pilot gates on its separate set, but exact speaker count is correct on only one of five clips. Neither result qualifies automatic diarization for product use. Spanish and private-recording quality remain unverified.
+Status: **speaker-count quality remains blocked**. Both original candidates fail the count gate. A subsequent English threshold calibration also fails: 0/2 exact development counts across the fixed grid, then 1/5 on both reserved and original regression sets. See [DIARIZATION-CALIBRATION.md](DIARIZATION-CALIBRATION.md). No automatic quality acceptance is claimed. Spanish and private-recording quality remain unverified.
 
 ## Candidate
 

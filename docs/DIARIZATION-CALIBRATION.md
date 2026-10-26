@@ -1,6 +1,6 @@
-# English threshold calibration protocol
+# English threshold calibration and result
 
-This experiment addresses the current speaker-count failure using the existing pinned ERes2Net embedding and INT8 segmentation weights. Application default/model identity remain unchanged while the experiment runs. It does not download models or accept new model terms.
+This experiment addresses the current speaker-count failure using the existing pinned ERes2Net embedding and INT8 segmentation weights. All 19 native inference cases completed, but the quality gates failed. Application default/model identity remain unchanged. No models were downloaded or new model terms accepted.
 
 The pre-inference protocol ID is `ff36f0698e9ca560722b1df7b1f6613a8e6988bf064b98a2594d924e6edbf933`. Its machine-readable plan fixes input/reference hashes, split membership, thresholds, native configuration, selection and acceptance rules. The [official sherpa usage documentation](https://k2-fsa.github.io/sherpa/onnx/speaker-diarization/models.html) explains that larger clustering thresholds produce fewer speakers; its 0.9 example is for a particular Mandarin control, not an English calibration guarantee.
 
@@ -30,12 +30,25 @@ python scripts/diarization_eval/calibrate_english.py \
   --output /evidence
 ```
 
-The active run uses the existing validation image plus temporary sherpa-onnx/core 1.13.8, two effective CPUs, two GiB RAM, swap disabled and a 3,600-second outer deadline. Eight scorer tests and `pip check` passed before inference. Actual cgroup limits and plan identity are recorded in ignored `models/validation/diarization-english-grid/container.json`.
+The run used the existing validation image plus temporary sherpa-onnx/core 1.13.8, two effective CPUs, two GiB RAM, swap disabled and a 3,600-second outer deadline. Eight scorer tests and `pip check` passed before inference. Actual cgroup limits and plan identity are recorded in ignored `models/validation/diarization-english-grid/container.json`. The native evaluator source is commit `ccc9a2d`; a subsequent reporting fix preserves the cached native memory peak during scoring-only resume, checked against all 19 actual checkpoints without additional inference.
 
-Per-case JSON, `calibration.json`, `frozen-candidate.json` and final results reside in that ignored evidence directory as the run advances. Final gates are not yet claimed. Source/private recordings, installed Philemon behavior, Spanish quality and actual owner-agent acceptance remain separate; no application model default or production configuration is changed by this experiment.
+Per-case JSON, `calibration.json`, `frozen-candidate.json` and final results reside in that ignored evidence directory. Source/private recordings, installed Philemon behavior, Spanish quality and actual owner-agent acceptance remain separate; no application model default or production configuration is changed by this experiment.
 
 ## Completed development checkpoint
 
 All eight development inferences completed. Exact-count hits are 0/2 for every tested threshold; weighted plan DER is 20.71%, 23.00%, 34.92% and 62.18% respectively. Increasing the threshold improves the initially oversegmented four-speaker example before merging real speakers, while worsening undercount on the crowded thirteen-speaker example. This grid did not identify a count-quality improvement.
 
-The deterministic rule selected 0.9, with calibration SHA-256 `154d154cdb3a5e92bc7aa9be3982d14ea98c2ad9373487518ce073f33514831a`. The subsequent automatic single-speaker control returned one speaker. Reserved and known-failure regression inference is still running; its aggregate acceptance remains unclaimed. This checkpoint preserves the negative development result rather than changing the grid or acceptance bar after seeing it.
+The deterministic rule selected 0.9, with calibration SHA-256 `154d154cdb3a5e92bc7aa9be3982d14ea98c2ad9373487518ce073f33514831a`. The subsequent automatic single-speaker control returned one speaker (plan DER 5.87%). The grid and acceptance bar were preserved after the negative development result.
+
+## Completed evaluation
+
+| Set | Exact counts | Plan DER | Zero-collar overlap-inclusive DER | Processing RTF |
+| --- | ---: | ---: | ---: | ---: |
+| Candidate-specific reserved, 20 minutes | 1/5 | 22.69% | 29.96% | 0.339 |
+| Original failure regression, 20 minutes | 1/5 | 5.59% | 6.80% | 0.319 |
+
+Both sets fail the required 4/5 exact counts. DER, processing RTF and peak process RSS (440,116 KiB) pass their declared limits; they do not compensate for count failures. Processing RTF excludes model construction/scoring. The result explicitly records `gates_passed: false` despite normal evaluator completion.
+
+Failure examples include `bjruf` (2 reference speakers → 12 predicted, plan DER 63.34%) and `bmsyn` (5 → 14, DER 20.02%). The original regression reproduces the prior count failure. A larger single global threshold did not resolve the competing over/undercount cases in development, so no clustering change was promoted. Broader embedding/model work remains for a future resumed session.
+
+All owned temporary containers were removed. Runtime/source/model/result hashes and raw turns remain in the ignored evidence directory; original recordings, evaluation reports and model weights are intact. The owner requested pausing after this task; further experiments and implementation are deferred.

@@ -87,6 +87,11 @@ def aggregate(rows):
             'aggregate':result,'rtf':sum(r['inference_seconds'] for r in rows)/sum(r['seconds'] for r in rows)}
 
 
+def recorded_peak(output,rows,current):
+    """A scoring-only resume must retain the original native inference peak."""
+    return max([current]+[json.loads((output/row['raw_file']).read_text())['peak_rss_kib'] for row in rows])
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--models',type=Path,default=ROOT/'models/diarization-evaluation')
@@ -159,7 +164,9 @@ def main():
     save(args.output/'reserved-result.json',fresh)
     regression=aggregate([evaluate(item,chosen,'regression') for item in plan['known_failure_regression']])
     save(args.output/'regression-result.json',regression)
-    gates=plan['gates']; peak=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    gates=plan['gates']
+    measured=[row for candidate in calibration for row in candidate['clips']]+[control]+fresh['clips']+regression['clips']
+    peak=recorded_peak(args.output,measured,resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     accepted=(control['hypothesis_speakers']==1 and peak<=gates['max_peak_rss_kib'] and
         all(row['correct_counts']>=gates['exact_counts_each_five_clip_set'] and
             row['aggregate']['plan']['der']<=gates['max_plan_der'] and row['rtf']<=gates['max_rtf'] for row in (fresh,regression)))
