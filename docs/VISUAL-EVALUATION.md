@@ -60,17 +60,27 @@ Integration exposed a fractional-time coverage bug: calculating scan coverage fr
 
 These are functional/generated-fixture checks. Historical timings above are from the named original image; the current regression uses the reusable `scripts/Dockerfile.validation` image and does not requalify runtime performance under isolated host load. Local browser evidence is retained under ignored `models/validation/analysis-browser-final/`.
 
-## Remaining evidence gaps
+## Source timeline qualification
 
 ### Source timeline regression (2026-10-26)
 
 Actual FFmpeg fixtures exposed two errors for nonzero-origin media: a four-second MP4 starting at PTS 5 reported format duration 9, and analysis with accurate input seeking plus `copyts` discarded the beginning and truncated the end. The visual probe now uses the latest audio/video stream end minus the container origin when all timed streams have durations; Matroska's segment-end duration is normalized separately. Other fallback format spans are preserved. Analysis seeks without automatic accurate-seek trimming and explicitly trims on retained source PTS before sampling, without output `-t` interpreting a different clock.
 
-Regression fixtures compare original and copied MP4/Matroska media: identical extracted JPEG hashes, identical complete-scan intervals and proposals, and rejection past the real end. Longer audio tails and delayed video tracks retain their recording-relative offsets. The MPEG-TS fixture checks duration-span preservation only: seeking a late still in this single-GOP transport-stream fixture produced no decodable frames. Transport-stream random seeking remains an unresolved compatibility boundary; these checks do not qualify it or real-footage quality.
+Regression fixtures compare original and copied MP4/Matroska media: identical extracted JPEG hashes, identical complete-scan intervals and proposals, and rejection past the real end. Longer audio tails and delayed video tracks retain their recording-relative offsets. This checkpoint also identified a single-GOP MPEG-TS seek failure, addressed by the bounded recovery checkpoint below. These checks do not qualify real-footage quality.
 
 The Matroska behavior is supported by FFmpeg's [muxer duration calculation](https://ffmpeg.org/doxygen/5.1/matroskaenc_8c_source.html#l02820): it retains the maximum packet timestamp plus packet duration. No universal subtraction of `start_time` from every format is assumed. Historical cached analysis results retain their original status and are not rewritten by this correction.
 
 Validation: **245 backend tests passed**, including prepared E5-large and actual FFmpeg; OpenAPI remained unchanged and passed its check. The affected Chromium suite passed real analysis worker publication/review, two-tab decisions, mobile controls, report review/staleness and ZIP/offline evidence checks with no console errors. Browser artifacts are retained under ignored `models/validation/timeline-browser/`. This adds source-timeline fidelity evidence, not model-quality acceptance.
+
+### Bounded transport-stream recovery (2026-10-26)
+
+The reproduced single-GOP MPEG-TS fixture now extracts the exact original JPEG and a clip with identical decoded pixels, frame count and relative PTS after remuxing. When ordinary seeking yields no frames, a packet-capped prefix probe and PTS-trimmed decode retry from the beginning. Admission retains the 120-second prefix ceiling, 5,000-frame and 1.5-billion-pixel budgets, metadata readiness and subprocess timeouts. Over-budget prefixes fail before output creation, and insufficient clip coverage is not published. This qualifies this bounded fallback, not arbitrary seeking in every transport stream or long-GOP source.
+
+The comparison exposed two additional errors. Probe intervals now use an absolute end because a relative duration is measured from the actual seek landing, as specified in the [official ffprobe interval contract](https://ffmpeg.org/ffprobe.html#Main-options). Clip selection tolerates only nanosecond floating-point noise at cadence boundaries. Actual inter-frame PTS replace container average rate as the over-rate check; otherwise a valid five-frame 5-fps clip with a short final packet was rejected. Tests include one-frame output and rejection of repeated, reversed or excessively close output timestamps.
+
+Validation: **253 backend tests passed**, zero skipped, with actual FFmpeg and prepared E5-large; OpenAPI passed. The focused extraction suite passed 28 tests, and affected visual/adaptive/report Chromium passed with no console errors. Browser evidence is retained under ignored `models/validation/media-browser/`. The real-footage, readability, model-quality and installed-host gates below remain open.
+
+## Remaining evidence gaps
 
 - No openly licensed real screen demo/slides fixture was selected for this bounded slice. Real-footage generalization is unverified; no production-quality claim is made.
 - Known-text readability is not measured because this heuristic runtime performs no OCR.

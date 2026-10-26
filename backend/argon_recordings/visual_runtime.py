@@ -37,6 +37,7 @@ MAX_SOURCE_BYTES = 8 * 1024**3
 MAX_SOURCE_FRAME_PIXELS = 16_777_216
 MAX_DECODED_PIXELS = 1_500_000_000
 MAX_PROBE_FRAMES = 5000
+MAX_PREFIX_DECODE_SECONDS = 120.0
 MAX_IMAGE_BYTES = 20 * 1024**2
 MAX_CLIP_BYTES = 64 * 1024**2
 PROBE_TIMEOUT_SECONDS = 15
@@ -45,6 +46,10 @@ EXTRACTION_TIMEOUT_SECONDS = 120
 
 class VisualExtractionError(ValueError):
     """A safe, caller-presentable validation or bounded extraction failure."""
+
+
+class _NoSourceFrames(VisualExtractionError):
+    """A demuxer seek may have skipped the preceding decoding keyframe."""
 
 
 @dataclass(frozen=True)
@@ -266,16 +271,34 @@ def _validate_recipe(recipe: dict) -> dict:
             "source_resolution": source_resolution, "fps": fps, "crop": crop}
 
 
-def _frames_in_window(info: SourceInfo, start: float, end: float) -> list[tuple[float, float]]:
+def _frames_in_window(info: SourceInfo, start: float, end: float, *,
+                      from_start: bool = False) -> list[tuple[float, float]]:
     margin = 2.0
     read_start = max(0.0, start - margin)
     read_end = min(info.duration, end + margin)
     absolute_start = info.container_start_time + read_start
-    interval = f"{absolute_start:.6f}%+{max(0.1, read_end - read_start):.6f}"
+    if from_start:
+        # An omitted interval start avoids seeking even to the nominal origin:
+        # MPEG-TS can otherwise land after the only usable keyframe.
+        rate = max(info.avg_frame_rate, info.nominal_frame_rate)
+        if (not rate or read_end > MAX_PREFIX_DECODE_SECONDS
+                or math.ceil(read_end * rate) > MAX_PROBE_FRAMES
+                or math.ceil(read_end * rate) * info.coded_width * info.coded_height > MAX_DECODED_PIXELS):
+            raise VisualExtractionError("Source seeking failed and decoding from the beginning exceeds the safe prefix budget")
+        # Bound actual work even if source rate/duration metadata is dishonest.
+        # ffprobe applies the count to the selected video stream. Insufficient
+        # coverage fails closed instead of widening it or changing the frame.
+        packet_limit = min(MAX_PROBE_FRAMES,
+                           MAX_DECODED_PIXELS // (info.coded_width * info.coded_height))
+        interval = f"%+#{packet_limit}"
+    else:
+        # A relative end would be measured from the demuxer's actual seek
+        # landing, which may precede read_start by a whole GOP.
+        interval = f"{absolute_start:.6f}%{info.container_start_time + read_end:.6f}"
     data = _probe_json(
         ["-select_streams", "v:0", "-read_intervals", interval, "-show_frames",
          "-show_entries", "frame=best_effort_timestamp_time,pkt_duration_time", str(info.path)],
-        timeout=min(60, 10 + max(0, read_end - read_start) * 1.5),
+        timeout=min(60, 10 + max(0, read_end if from_start else read_end - read_start) * 1.5),
     )
     frames = []
     for frame in data.get("frames", []):
@@ -287,7 +310,7 @@ def _frames_in_window(info: SourceInfo, start: float, end: float) -> list[tuple[
         if start <= pts < end:
             frames.append((pts, max(0, duration)))
     if not frames:
-        raise VisualExtractionError("No decodable video frame exists in the requested time range")
+        raise _NoSourceFrames("No decodable video frame exists in the requested time range")
     if len(frames) > MAX_PROBE_FRAMES:
         raise VisualExtractionError("Requested range contains too many frames to process safely")
     if len(frames) * info.coded_width * info.coded_height > MAX_DECODED_PIXELS:
@@ -320,7 +343,8 @@ def _video_filter(info: SourceInfo, crop: dict | None, max_width: int, *, even: 
     else:
         width, height = info.display_width, info.display_height
     if fps is not None:
-        filters.append(f"select='if(isnan(prev_selected_t),1,gte(t-prev_selected_t,{1.0 / fps:.9f}))'")
+        # Ignore binary floating-point noise at an exact cadence boundary.
+        filters.append(f"select='if(isnan(prev_selected_t),1,gte(t-prev_selected_t,{1.0 / fps:.12f}-0.000000001))'")
     # Normalize non-square source pixels after display-space crop. Shrink only
     # the axis that needs correction, then apply the width/height budget.
     sar = info.display_sample_aspect_ratio
@@ -405,16 +429,25 @@ def extract(source: Path, output_dir: Path, recipe: dict) -> dict:
         raise VisualExtractionError("Source frame-rate metadata is unavailable; clip extraction cannot be bounded safely")
     sampling_fps = min(spec["fps"], source_rate_limit) if spec["kind"] == "clip" else None
 
+    decode_from_start = False
+    search_end = spec["end"]
     if spec["kind"] == "image":
         search_span = max(1.0, min(5.0, 2.0 / max(info.avg_frame_rate, 0.1)))
-        frames = _frames_in_window(info, spec["start"], min(info.duration, spec["start"] + search_span))
+        search_end = min(info.duration, spec["start"] + search_span)
+    try:
+        frames = _frames_in_window(info, spec["start"], search_end)
+    except _NoSourceFrames:
+        frames = _frames_in_window(info, spec["start"], search_end, from_start=True)
+        decode_from_start = True
+    if spec["kind"] == "image":
         actual_start = frames[0][0]
         actual_end = actual_start
     else:
-        frames = _frames_in_window(info, spec["start"], spec["end"])
         actual_start = frames[0][0]
         last_pts, last_duration = frames[-1]
         actual_end = min(spec["end"], last_pts + (last_duration or 0))
+        if decode_from_start and actual_end + 0.000001 < spec["end"]:
+            raise VisualExtractionError("Bounded prefix decoding did not cover the requested clip")
     if actual_start - spec["start"] > 1.0:
         raise VisualExtractionError("No frame is available within one second of the requested source time")
     output_dir = Path(output_dir)
@@ -426,21 +459,27 @@ def extract(source: Path, output_dir: Path, recipe: dict) -> dict:
         raise VisualExtractionError("Extraction output already exists")
     temporary = output_dir / f".{filename}.{uuid.uuid4().hex}.partial{Path(filename).suffix}"
     output_budget = MAX_IMAGE_BYTES if spec["kind"] == "image" else MAX_CLIP_BYTES
+    input_seek = (["-copyts", "-i", str(info.path)] if decode_from_start else
+                  ["-seek_timestamp", "1", "-ss", f"{info.container_start_time + actual_start:.9f}",
+                   "-i", str(info.path)])
+    prefix_trim = (f"trim=start={info.container_start_time + actual_start:.9f}:"
+                   f"end={info.container_start_time + search_end:.9f},setpts=PTS-STARTPTS,"
+                   if decode_from_start else "")
 
     if spec["kind"] == "image":
         video_filter = _video_filter(info, spec["crop"], spec["max_width"], even=False,
                                      source_resolution=spec["source_resolution"])
+        video_filter = prefix_trim + video_filter
         args = ["ffmpeg", "-nostdin", "-v", "error", "-threads", "2", "-protocol_whitelist", PROTOCOL_WHITELIST,
-                "-format_whitelist", FORMAT_WHITELIST, "-seek_timestamp", "1",
-                "-ss", f"{info.container_start_time + actual_start:.9f}",
-                "-i", str(info.path), "-map", "0:v:0", "-an", "-frames:v", "1", "-vf", video_filter,
+                "-format_whitelist", FORMAT_WHITELIST, *input_seek,
+                "-map", "0:v:0", "-an", "-frames:v", "1", "-vf", video_filter,
                 "-q:v", "2", "-fs", str(output_budget), "-y", str(temporary)]
     else:
         video_filter = _video_filter(info, spec["crop"], spec["max_width"], even=True, fps=sampling_fps)
+        video_filter = prefix_trim + video_filter
         args = ["ffmpeg", "-nostdin", "-v", "error", "-threads", "2", "-protocol_whitelist", PROTOCOL_WHITELIST,
-                "-format_whitelist", FORMAT_WHITELIST, "-seek_timestamp", "1",
-                "-ss", f"{info.container_start_time + actual_start:.9f}",
-                "-i", str(info.path), "-map", "0:v:0", "-an", "-t", f"{spec['end'] - actual_start:.9f}",
+                "-format_whitelist", FORMAT_WHITELIST, *input_seek,
+                "-map", "0:v:0", "-an", "-t", f"{spec['end'] - actual_start:.9f}",
                 "-vf", video_filter, "-fps_mode", "vfr", "-c:v", "libx264", "-preset", "veryfast",
                 "-crf", "23", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-fs", str(output_budget),
                 "-y", str(temporary)]
@@ -459,9 +498,18 @@ def extract(source: Path, output_dir: Path, recipe: dict) -> dict:
         final_path.unlink(missing_ok=True)
         raise VisualExtractionError("Extracted frame exceeds the decoded-pixel limit")
     output_fps = _rate(stream.get("avg_frame_rate"))
-    if spec["kind"] == "clip" and output_fps > spec["fps"] + 0.001:
-        final_path.unlink(missing_ok=True)
-        raise VisualExtractionError("Encoded frame rate exceeded the requested sampling ceiling")
+    if spec["kind"] == "clip":
+        # VFR average_frame_rate counts the final packet's short duration and
+        # can exceed the selected cadence. Validate actual inter-frame PTS.
+        gaps = [b - a for a, b in zip(output_pts, output_pts[1:])]
+        if any(gap <= 0 for gap in gaps):
+            final_path.unlink(missing_ok=True)
+            raise VisualExtractionError("Encoded clip contains duplicate or reversed frame timestamps")
+        cadence = 1 / min(gaps) if gaps else min(output_fps or sampling_fps, sampling_fps)
+        if cadence > sampling_fps + 0.001:
+            final_path.unlink(missing_ok=True)
+            raise VisualExtractionError("Encoded frame rate exceeded the requested sampling ceiling")
+        output_fps = min(sampling_fps, round(cadence, 6))
     bytes_written = final_path.stat().st_size
     return {
         "filename": filename,

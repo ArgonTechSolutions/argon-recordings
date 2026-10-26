@@ -40,6 +40,74 @@ def cfr_video(tmp_path):
     return make_video(tmp_path / "cfr.mp4")
 
 
+@pytest.fixture
+def single_gop_transport_stream(cfr_video, tmp_path):
+    source = tmp_path / "single-gop.ts"
+    subprocess.run([
+        "ffmpeg", "-nostdin", "-v", "error", "-i", str(cfr_video),
+        "-c", "copy", "-output_ts_offset", "5", "-y", str(source),
+    ], check=True, timeout=15, capture_output=True)
+    return source
+
+
+def test_transport_stream_fallback_retains_exact_pixels_and_clip_clock(cfr_video, single_gop_transport_stream, tmp_path):
+    info = visual.probe_source(single_gop_transport_stream)
+    with pytest.raises(visual._NoSourceFrames):
+        visual._frames_in_window(info, 2.5, 3.5)
+    original = visual.extract(cfr_video, tmp_path / "original", {"kind": "image", "start": 2.5})
+    recovered = visual.extract(single_gop_transport_stream, tmp_path / "recovered", {"kind": "image", "start": 2.5})
+    assert recovered["actual_start"] == pytest.approx(2.5)
+    assert recovered["sha256"] == original["sha256"]
+    recipe = {"kind": "clip", "start": 2.5, "end": 3.5, "fps": 5}
+    original_clip = visual.extract(cfr_video, tmp_path / "original-clip", recipe)
+    recovered_clip = visual.extract(single_gop_transport_stream, tmp_path / "recovered-clip", recipe)
+    assert recovered_clip["actual_start"] == pytest.approx(original_clip["actual_start"])
+    assert recovered_clip["actual_end"] == pytest.approx(original_clip["actual_end"])
+    assert recovered_clip["output_frame_count"] == original_clip["output_frame_count"]
+    original_path = tmp_path / "original-clip/clip.mp4"
+    recovered_path = tmp_path / "recovered-clip/clip.mp4"
+    _, original_pts = visual._output_probe(original_path)
+    _, recovered_pts = visual._output_probe(recovered_path)
+    assert recovered_pts == pytest.approx(original_pts, abs=0.00001)
+    def decoded_pixels(path):
+        return subprocess.run([
+            "ffmpeg", "-nostdin", "-v", "error", "-i", str(path),
+            "-an", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
+        ], check=True, timeout=15, capture_output=True).stdout
+    assert decoded_pixels(recovered_path) == decoded_pixels(original_path)
+
+
+@pytest.mark.parametrize("budget", ["MAX_PREFIX_DECODE_SECONDS", "MAX_PROBE_FRAMES", "MAX_DECODED_PIXELS"])
+def test_transport_stream_fallback_refuses_excessive_prefix(single_gop_transport_stream, tmp_path, monkeypatch, budget):
+    monkeypatch.setattr(visual, budget, 1)
+    with pytest.raises(visual.VisualExtractionError, match="safe prefix budget"):
+        visual.extract(single_gop_transport_stream, tmp_path / "no-output", {"kind": "image", "start": 2.5})
+    assert not (tmp_path / "no-output").exists()
+
+
+@pytest.mark.parametrize("pts", [[0, 0], [0.2, 0.1], [0, 0.01]])
+def test_clip_rejects_invalid_actual_cadence(cfr_video, tmp_path, monkeypatch, pts):
+    real_probe = visual._output_probe
+
+    def invalid_probe(path):
+        metadata, _ = real_probe(path)
+        return metadata, pts
+
+    monkeypatch.setattr(visual, "_output_probe", invalid_probe)
+    output = tmp_path / "invalid-cadence"
+    with pytest.raises(visual.VisualExtractionError, match="timestamps|sampling ceiling"):
+        visual.extract(cfr_video, output, {"kind": "clip", "start": 2.5, "end": 3.5, "fps": 5})
+    assert not (output / "clip.mp4").exists()
+
+
+def test_one_frame_clip_has_a_bounded_sampling_ceiling(cfr_video, tmp_path):
+    result = visual.extract(cfr_video, tmp_path / "single-frame", {
+        "kind": "clip", "start": 0.4, "end": 0.5, "fps": 5,
+    })
+    assert result["output_frame_count"] == 1
+    assert result["fps"] == 5
+
+
 def test_still_uses_next_actual_source_pts_and_never_upscales(cfr_video, tmp_path):
     result = visual.extract(cfr_video, tmp_path / "still", {"kind": "image", "start": 0.36})
     assert result["filename"] == "image.jpg"
@@ -128,9 +196,8 @@ def test_shifted_timeline_preserves_longer_audio_tail(cfr_video, tmp_path, exten
         assert 5.7 < info.duration < 6.1
     else:
         assert info.duration == pytest.approx(6, abs=0.05)
-    if extension != "ts":
-        result = visual.extract(source, tmp_path / "tail-still", {"kind": "image", "start": 3.5})
-        assert result["actual_start"] == pytest.approx(3.5, abs=0.15)
+    result = visual.extract(source, tmp_path / "tail-still", {"kind": "image", "start": 3.5})
+    assert result["actual_start"] == pytest.approx(3.5, abs=0.15)
     with pytest.raises(visual.VisualExtractionError, match="frame"):
         visual.extract(source, tmp_path / "audio-only-tail", {"kind": "image", "start": 5})
 

@@ -21,6 +21,10 @@ Publication verifies media size/hash/type and bounded metadata before registerin
 
 Manifests distinguish requested time from actual source frame PTS, and retain source hash, dimensions, crop, sampling, rotation, sample/display aspect ratio, source origin and recipe version. Container-origin normalization aligns output with the original audio/player timeline, including a delayed video track. Output normalizes non-square pixels by shrinking an axis, preserving display shape without inventing spatial detail.
 
+If demuxer seeking finds no source frames, extraction can retry from the beginning within a bounded prefix: at most 120 seconds to the probe end, 5,000 estimated frames and 1.5 billion decoded pixels. The retry probe also caps packets from the selected video stream by the frame/pixel budget. Missing rate metadata or insufficient coverage fails explicitly, without widening the limits. Retained PTS trimming precedes clip sampling, so recovering an unindexed transport stream does not shift its source clock. Requests outside this prefix still require working random seeking.
+
+For new clips, manifest `fps` reports the fastest observed inter-frame cadence (bounded by the selected ceiling); for one frame it reports a bounded ceiling. Validation rejects repeated/reversed PTS and actual over-rate gaps. Container `avg_frame_rate` can exceed the cadence when a final VFR packet has a shorter duration, so it is not used as the sampling-limit test.
+
 The disposable FFmpeg suite exercises real extraction/publication, VFR, crop/rotation/aspect, nonzero origins, delayed tracks, corrupt input and budgets. Chromium checks real output media, source-offset synchronization, queue cancellation and mobile controls. These are functional checks; text readability, adaptive-event generalization, private recordings and installed-host performance require their own evaluation evidence. The agent summarization layer must inspect actual images before making visual claims.
 
 ## Adaptive suggestions

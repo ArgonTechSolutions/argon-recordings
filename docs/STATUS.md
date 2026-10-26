@@ -8,7 +8,7 @@ Automatic diarization quality remains blocked (both evaluated candidates counted
 
 ## Implemented and verified locally
 
-Source-timeline follow-up (2026-10-26): shifted MP4/Matroska durations and automatic-analysis trimming are corrected. Actual FFmpeg fixtures verify identical JPEGs/proposals after a timestamp shift, delayed tracks and audio tails. Backend regression: 245 passed; OpenAPI and affected visual/report Chromium passed. MPEG-TS single-GOP late-frame seeking remains an identified compatibility gap. See [VISUAL-EVALUATION.md](VISUAL-EVALUATION.md).
+Source-timeline follow-up (2026-10-26): shifted MP4/Matroska durations and automatic-analysis trimming are corrected. Actual FFmpeg fixtures verify identical JPEGs/proposals after a timestamp shift, delayed tracks and audio tails. A bounded prefix fallback now recovers the single-GOP MPEG-TS fixture with identical JPEGs and decoded clip pixels/timestamps. VFR sampling validates actual cadence rather than container average rate. Backend regression: 253 passed; OpenAPI and affected visual/report Chromium passed. Long/unseekable sources beyond fallback budgets still fail explicitly. See [VISUAL-EVALUATION.md](VISUAL-EVALUATION.md).
 
 - Dedicated Git repository, conventional commits, owner-supplied shadcn preset applied successfully.
 - Projects, bounded streaming uploads, durable SQLite queue, priority aging, worker authentication, lease fencing and idempotent completion.
