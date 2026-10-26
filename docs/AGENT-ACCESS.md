@@ -20,3 +20,5 @@ Transcript pages preserve source/transcript identity and reject stale or mismatc
 - Independent GPT-6.1 review of the new backend authorization boundary found a first-segment context-budget bypass. It was fixed, regression-tested and re-reviewed without remaining findings in that fix.
 
 These establish local source/runtime behavior. They do not establish owner pairing, private-recording acceptance, installed Philemon behavior, public connectivity or semantic summary quality. The summary skill, report workflow and final release qualification remain separate milestones.
+
+The optional summary skill/private package now has a local implementation and bounded forward-test; see [SUMMARY-WORKFLOW.md](SUMMARY-WORKFLOW.md). Project and search tools expose their API cursors, and search returns the paginated object rather than an incorrectly declared list. The combined adapter/backend/summary package regression passed 24 tests. Host installation, live pairing, report export and integrated semantic qualification remain separate gates.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Recording summary"
+  short_description: "Cited summaries with inspected recording evidence"
+  default_prompt: "Use $recording-summary to summarize a recording with timestamps and inspected screenshots."

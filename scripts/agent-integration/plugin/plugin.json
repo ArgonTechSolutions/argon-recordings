@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "argon-recordings",
+  "version": "0.1.0",
+  "description": "Project-scoped recording evidence and cited summaries through the local Argon Recordings MCP adapter.",
+  "author": {"name": "Argon"},
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Argon Recordings",
+        "shortDescription": "Summaries with source evidence",
+        "developerName": "Argon",
+        "capabilities": []
+      }
+    }
+  }
+}

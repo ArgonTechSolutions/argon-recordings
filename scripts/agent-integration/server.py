@@ -224,9 +224,10 @@ def create_server() -> MCPServer:
         return params
 
     @mcp.tool(annotations=read_hint)
-    async def list_projects() -> dict[str, Any]:
+    async def list_projects(cursor: Annotated[str | None, Field(max_length=2048)] = None,
+                            limit: Annotated[int, Field(ge=1, le=40)] = 20) -> dict[str, Any]:
         """List projects available to this Argon agent grant."""
-        return await request_json("GET", "/api/agent/projects")
+        return await request_json("GET", "/api/agent/projects", params=page_params(cursor, limit))
 
     @mcp.tool(annotations=read_hint)
     async def list_recordings(project_id: Annotated[str, Field(pattern=ID_PATTERN)],
@@ -239,10 +240,13 @@ def create_server() -> MCPServer:
     @mcp.tool(annotations=read_hint)
     async def search_recordings(project_id: Annotated[str, Field(pattern=ID_PATTERN)],
                                 q: Annotated[str, Field(min_length=1, max_length=300)],
-                                mode: Literal["hybrid", "semantic", "keyword"] = "hybrid") -> list[Any]:
+                                mode: Literal["hybrid", "semantic", "keyword"] = "hybrid",
+                                cursor: Annotated[str | None, Field(max_length=2048)] = None,
+                                limit: Annotated[int, Field(ge=1, le=40)] = 10) -> dict[str, Any]:
         """Search authorized recordings and transcript passages."""
         return await request_json("GET", "/api/agent/search",
-                                  params={"project_id": project_id, "q": q, "mode": mode})
+                                  params={"project_id": project_id, "q": q, "mode": mode,
+                                          **page_params(cursor, limit)})
 
     @mcp.tool(annotations=read_hint)
     async def get_recording(recording_id: Annotated[str, Field(pattern=ID_PATTERN)]) -> dict[str, Any]:

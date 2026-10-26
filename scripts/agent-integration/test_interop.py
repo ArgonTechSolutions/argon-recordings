@@ -61,7 +61,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/agent/search" and query.get("q") == ["large"]:
             self._write(200, b"{" + b" " * (1024 * 1024), "application/json")
         elif parsed.path == "/api/agent/search":
-            self._write(200, b'[{"recording_id":"' + RECORDING.encode() + b'","text":"example"}]',
+            self._write(200, b'{"items":[{"recording_id":"' + RECORDING.encode() + b'","text_excerpt":"example"}],"next_cursor":"search-next"}',
                         "application/json")
         else:
             payload = {"items": [{"id": RECORDING}], "next_cursor": "next"}
@@ -136,14 +136,15 @@ async def _published_sdk_stdio_calls_annotations_pagination_and_image(api_server
         result = await client.call_tool("list_projects", {})
         assert result.is_error is not True
         assert result.structured_content == {"items": [{"id": RECORDING}], "next_cursor": "next"}
+        await client.call_tool("list_projects", {"cursor": "project-next", "limit": 1})
         page = await client.call_tool("list_recordings", {
             "project_id": PROJECT, "cursor": "opaque/with space", "limit": 40,
         })
         assert page.structured_content["next_cursor"] == "next"
         hits = await client.call_tool("search_recordings", {
-            "project_id": PROJECT, "q": "hello & code", "mode": "keyword",
+            "project_id": PROJECT, "q": "hello & code", "mode": "keyword", "cursor": "search-page", "limit": 1,
         })
-        assert hits.structured_content == {"result": [{"recording_id": RECORDING, "text": "example"}]}
+        assert hits.structured_content == {"items": [{"recording_id": RECORDING, "text_excerpt": "example"}], "next_cursor": "search-next"}
         await client.call_tool("get_recording", {"recording_id": RECORDING})
         transcript = await client.call_tool("get_transcript", {
             "recording_id": RECORDING, "cursor": "c+1", "include_words": True,
@@ -181,6 +182,8 @@ async def _published_sdk_stdio_calls_annotations_pagination_and_image(api_server
     assert recorded[("GET", f"/api/agent/projects/{PROJECT}/recordings")]["cursor"] == ["opaque/with space"]
     assert recorded[("GET", f"/api/agent/projects/{PROJECT}/recordings")]["limit"] == ["40"]
     assert recorded[("GET", "/api/agent/search")]["q"] == ["hello & code"]
+    assert recorded[("GET", "/api/agent/search")]["cursor"] == ["search-page"]
+    assert recorded[("GET", "/api/agent/projects")]["cursor"] == ["project-next"]
     assert recorded[("GET", f"/api/agent/recordings/{RECORDING}/transcript")]["include_words"] == ["true"]
     assert any(path.endswith("/images/asset%3A" + "d" * 32) for _, path, _ in requests)
     post_jobs = [body for method, path, body in requests

@@ -36,3 +36,44 @@ PYTHONPATH=backend python -m pytest -q scripts/agent-integration/test_live_backe
 ```
 
 This check also requires the backend test dependencies and FFmpeg. The repository's `scripts/Dockerfile.validation` provides them. It proves local protocol/backend integration; owner pairing, remote connectivity and semantic summary quality remain separate acceptance gates.
+
+## Summary skill and private local package
+
+The repository-owned `plugin/skills/recording-summary/SKILL.md` orchestrates scope/language selection, transcript pagination, manual speaker/mark review, actual image inspection, optional bounded media requests, citations and a final revision check. Its portable JSON report contract is under that skill's `scripts/summary_contract.py`; deterministic checks do not prove semantic truth. The skill returns a summary to the user by default.
+
+Build a self-contained private package with an explicit output path outside the source directory:
+
+```sh
+python scripts/agent-integration/build_plugin.py /tmp/argon-recordings.zip
+```
+
+The ZIP contains the portable `plugin.json`, `mcp.json`, skill, adapter and pinned requirements, using an explicit file allowlist. It contains no recordings, credentials, virtual environments or dependency downloads. The source `plugin/` directory is a build input; the builder adds the existing adapter rather than keeping a second copy in Git.
+
+For an owner-authorized local install, unpack the ZIP to a private chosen directory, install `requirements.txt` into a Python 3.11+ virtual environment and let the client start `server.py` with that interpreter. The portable manifest uses `python3` from the host's configured `PATH`; ensure it selects the prepared environment, or configure the client's interpreter explicitly. Supply only `ARGON_RECORDINGS_API_ORIGIN` and `ARGON_AGENT_TOKEN_FILE` through private host configuration as described above. `${PLUGIN_ROOT}` is resolved by the plugin host. No concrete API origin, token destination, global plugin registration, account upload or live connection is created by this build.
+
+For a client using an explicit MCP server configuration, adapt this credential-free example to the chosen private installation (paths and origin are placeholders, not provisioned locations):
+
+```json
+{
+  "mcpServers": {
+    "argon-recordings": {
+      "command": "/chosen/venv/bin/python",
+      "args": ["/chosen/argon-recordings-plugin/server.py"],
+      "env": {
+        "ARGON_RECORDINGS_API_ORIGIN": "https://recordings.example",
+        "ARGON_AGENT_TOKEN_FILE": "/chosen/private/agent-grant"
+      }
+    }
+  }
+}
+```
+
+The report checker also requires the prepared interpreter: use `/chosen/venv/bin/python …/summary_contract.py`, rather than assuming the system Python has Pydantic. The pinned MCP SDK supplies that dependency.
+
+Run package startup, report-schema and adversarial structural checks:
+
+```sh
+PYTHONPATH=backend python -m pytest -q scripts/agent-integration/test_interop.py scripts/agent-integration/test_live_backend.py scripts/agent-integration/test_summary.py
+```
+
+`test_live_backend.py` can additionally capture disposable SDK evidence when `SUMMARY_EVIDENCE_DIR` is set to a private local output directory. That capture includes source text and a screenshot, never its grant. Use it for a bounded agent forward-test; do not treat replay of captured responses as a live client connection, a fresh revision check or a representative recording-quality test.
