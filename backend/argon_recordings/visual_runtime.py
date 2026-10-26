@@ -166,6 +166,24 @@ def probe_source(source: Path) -> SourceInfo:
     else:
         container_start_time = _finite_number(container_start, "Container start time")
     video_start_time = _finite_number(stream.get("start_time", container_start_time), "Video start time")
+    # Container duration is not uniformly a span: MOV edit lists and Matroska
+    # can include a nonzero timestamp origin. Prefer actual A/V stream ends
+    # when every timed stream supplies them, preserving delayed tracks/tails.
+    timed_streams = [item for item in metadata.get("streams", [])
+                     if item.get("codec_type") in ("audio", "video")
+                     and not item.get("disposition", {}).get("attached_pic")]
+    if timed_streams and all(item.get("duration") is not None for item in timed_streams):
+        duration = max(
+            _finite_number(item.get("start_time", container_start_time), "Stream start time")
+            + _finite_number(item["duration"], "Stream duration")
+            for item in timed_streams
+        ) - container_start_time
+    elif set(metadata.get("format", {}).get("format_name", "").split(",")) & {"matroska", "webm"}:
+        # Matroska Segment Duration is the end timestamp on the segment clock;
+        # FFmpeg's muxer writes max(packet timestamp + packet duration).
+        duration -= container_start_time
+    if not math.isfinite(duration) or duration <= 0:
+        raise VisualExtractionError("Source timeline duration must be positive")
     if width * height > MAX_SOURCE_FRAME_PIXELS:
         raise VisualExtractionError("Source frame exceeds the decoded-pixel limit")
 

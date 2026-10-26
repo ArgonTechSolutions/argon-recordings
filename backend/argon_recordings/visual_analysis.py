@@ -252,12 +252,18 @@ def analyze(source: Path, *, start: float = 0.0, end: float | None = None) -> di
     scan_seconds = scanned_end - requested_start
     width, height = _dimensions(info.display_width, info.display_height)
     frame_size = width * height
+    # With copyts, accurate input seeking can apply the container origin twice,
+    # and output -t can truncate on the absolute clock. Seek to the preceding
+    # keyframe and trim explicitly on retained PTS instead.
     args = [
         "ffmpeg", "-nostdin", "-v", "info", "-threads", "2",
         "-protocol_whitelist", PROTOCOL_WHITELIST, "-format_whitelist", FORMAT_WHITELIST,
-        "-copyts", "-seek_timestamp", "1", "-ss", f"{info.container_start_time + requested_start:.6f}",
+        "-copyts", "-noaccurate_seek", "-seek_timestamp", "1",
+        "-ss", f"{info.container_start_time + requested_start:.6f}",
         "-i", str(info.path), "-map", "0:v:0", "-an",
-        "-t", f"{scan_seconds:.6f}", "-vf",
+        "-vf",
+        f"trim=start={info.container_start_time + requested_start:.6f}:"
+        f"end={info.container_start_time + scanned_end:.6f},"
         f"fps={SAMPLE_FPS},scale={width}:{height}:flags=area,setsar=1,format=gray,showinfo",
         "-frames:v", str(MAX_ANALYSIS_FRAMES), "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1",
     ]

@@ -238,6 +238,22 @@ def test_analysis_timestamps_include_delayed_video_track(screen_demo, tmp_path):
     assert result["decoded_interval"]["end"] >= 5.5
 
 
+@pytest.mark.parametrize("extension", ["mp4", "mkv"])
+def test_shifted_full_scan_has_no_phantom_tail(screen_demo, tmp_path, extension):
+    baseline = analysis.analyze(screen_demo)
+    shifted = tmp_path / f"shifted.{extension}"
+    subprocess.run([
+        "ffmpeg", "-nostdin", "-v", "error", "-i", str(screen_demo),
+        "-c", "copy", "-output_ts_offset", "5", "-y", str(shifted),
+    ], check=True, timeout=20, capture_output=True)
+    result = analysis.analyze(shifted)
+    assert result["requested_interval"] == baseline["requested_interval"]
+    assert result["status"] == baseline["status"] == "complete"
+    assert result["partial_reason"] is None
+    assert result["decoded_interval"] == baseline["decoded_interval"]
+    assert result["proposals"] == baseline["proposals"]
+
+
 def test_cli_emits_stable_json_result(screen_demo, tmp_path):
     output = tmp_path / "analysis.json"
     result = subprocess.run([

@@ -62,6 +62,16 @@ These are functional/generated-fixture checks. Historical timings above are from
 
 ## Remaining evidence gaps
 
+### Source timeline regression (2026-10-26)
+
+Actual FFmpeg fixtures exposed two errors for nonzero-origin media: a four-second MP4 starting at PTS 5 reported format duration 9, and analysis with accurate input seeking plus `copyts` discarded the beginning and truncated the end. The visual probe now uses the latest audio/video stream end minus the container origin when all timed streams have durations; Matroska's segment-end duration is normalized separately. Other fallback format spans are preserved. Analysis seeks without automatic accurate-seek trimming and explicitly trims on retained source PTS before sampling, without output `-t` interpreting a different clock.
+
+Regression fixtures compare original and copied MP4/Matroska media: identical extracted JPEG hashes, identical complete-scan intervals and proposals, and rejection past the real end. Longer audio tails and delayed video tracks retain their recording-relative offsets. The MPEG-TS fixture checks duration-span preservation only: seeking a late still in this single-GOP transport-stream fixture produced no decodable frames. Transport-stream random seeking remains an unresolved compatibility boundary; these checks do not qualify it or real-footage quality.
+
+The Matroska behavior is supported by FFmpeg's [muxer duration calculation](https://ffmpeg.org/doxygen/5.1/matroskaenc_8c_source.html#l02820): it retains the maximum packet timestamp plus packet duration. No universal subtraction of `start_time` from every format is assumed. Historical cached analysis results retain their original status and are not rewritten by this correction.
+
+Validation: **245 backend tests passed**, including prepared E5-large and actual FFmpeg; OpenAPI remained unchanged and passed its check. The affected Chromium suite passed real analysis worker publication/review, two-tab decisions, mobile controls, report review/staleness and ZIP/offline evidence checks with no console errors. Browser artifacts are retained under ignored `models/validation/timeline-browser/`. This adds source-timeline fidelity evidence, not model-quality acceptance.
+
 - No openly licensed real screen demo/slides fixture was selected for this bounded slice. Real-footage generalization is unverified; no production-quality claim is made.
 - Known-text readability is not measured because this heuristic runtime performs no OCR.
 - Acceptance/rejection, pin precedence and durable restart now pass integration tests; representative recording acceptance remains pending.

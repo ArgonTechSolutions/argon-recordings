@@ -80,15 +80,21 @@ def test_rotated_source_uses_display_space_for_crop(cfr_video, tmp_path):
     assert clip["output_display_aspect_ratio"] == pytest.approx(9 / 16, abs=0.01)
 
 
-def test_normalizes_container_origin_and_delayed_video_track(cfr_video, tmp_path):
-    shifted = tmp_path / "shifted.mp4"
+@pytest.mark.parametrize("extension", ["mp4", "mkv"])
+def test_normalizes_container_origin_and_delayed_video_track(cfr_video, tmp_path, extension):
+    original_result = visual.extract(cfr_video, tmp_path / "original-still", {"kind": "image", "start": 0.36})
+    shifted = tmp_path / f"shifted.{extension}"
     subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", str(cfr_video), "-map", "0:v:0",
                     "-c", "copy", "-output_ts_offset", "5", "-y", str(shifted)],
                    check=True, timeout=15, capture_output=True)
     shifted_info = visual.probe_source(shifted)
     assert shifted_info.container_start_time == pytest.approx(5, abs=0.05)
+    assert shifted_info.duration == pytest.approx(4, abs=0.05)
     shifted_result = visual.extract(shifted, tmp_path / "shifted-still", {"kind": "image", "start": 0.36})
     assert shifted_result["actual_start"] == pytest.approx(0.4, abs=0.03)
+    assert shifted_result["sha256"] == original_result["sha256"]
+    with pytest.raises(visual.VisualExtractionError, match="outside"):
+        visual.extract(shifted, tmp_path / "past-end", {"kind": "image", "start": 4.2})
 
     delayed = tmp_path / "delayed.mkv"
     subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-copyts", "-f", "lavfi", "-i",
@@ -97,8 +103,36 @@ def test_normalizes_container_origin_and_delayed_video_track(cfr_video, tmp_path
                    check=True, timeout=15, capture_output=True)
     delayed_info = visual.probe_source(delayed)
     assert delayed_info.video_start_time - delayed_info.container_start_time == pytest.approx(2, abs=0.05)
+    assert delayed_info.duration == pytest.approx(6, abs=0.05)
     delayed_result = visual.extract(delayed, tmp_path / "delayed-still", {"kind": "image", "start": 2.36})
     assert delayed_result["actual_start"] == pytest.approx(2.4, abs=0.05)
+    assert delayed_result["sha256"] == original_result["sha256"]
+
+
+@pytest.mark.parametrize("extension", ["mp4", "mkv", "ts"])
+def test_shifted_timeline_preserves_longer_audio_tail(cfr_video, tmp_path, extension):
+    source = tmp_path / f"audio-tail.{extension}"
+    subprocess.run([
+        "ffmpeg", "-nostdin", "-v", "error", "-i", str(cfr_video),
+        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=6",
+        "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
+        "-output_ts_offset", "5", "-y", str(source),
+    ], check=True, timeout=15, capture_output=True)
+    info = visual.probe_source(source)
+    # MPEG-TS reports a duration span, unlike the shifted MOV/Matroska ends.
+    # AAC priming and transport-stream packet estimates allow a small margin.
+    assert info.container_start_time >= 4.9
+    if extension == "ts":
+        metadata = visual._probe_json(["-show_format", str(source)], timeout=5)
+        assert info.duration == pytest.approx(float(metadata["format"]["duration"]), abs=0.03)
+        assert 5.7 < info.duration < 6.1
+    else:
+        assert info.duration == pytest.approx(6, abs=0.05)
+    if extension != "ts":
+        result = visual.extract(source, tmp_path / "tail-still", {"kind": "image", "start": 3.5})
+        assert result["actual_start"] == pytest.approx(3.5, abs=0.15)
+    with pytest.raises(visual.VisualExtractionError, match="frame"):
+        visual.extract(source, tmp_path / "audio-only-tail", {"kind": "image", "start": 5})
 
 
 def test_vfr_clip_samples_without_frame_duplication_and_is_muted(cfr_video, tmp_path):

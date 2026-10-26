@@ -8,6 +8,8 @@ Automatic diarization quality remains blocked (both evaluated candidates counted
 
 ## Implemented and verified locally
 
+Source-timeline follow-up (2026-10-26): shifted MP4/Matroska durations and automatic-analysis trimming are corrected. Actual FFmpeg fixtures verify identical JPEGs/proposals after a timestamp shift, delayed tracks and audio tails. Backend regression: 245 passed; OpenAPI and affected visual/report Chromium passed. MPEG-TS single-GOP late-frame seeking remains an identified compatibility gap. See [VISUAL-EVALUATION.md](VISUAL-EVALUATION.md).
+
 - Dedicated Git repository, conventional commits, owner-supplied shadcn preset applied successfully.
 - Projects, bounded streaming uploads, durable SQLite queue, priority aging, worker authentication, lease fencing and idempotent completion.
 - Turbo one-job adapter, source checksum verification, bounded decode, sparse frames, audio extraction and source-time alignment including leading audio gaps.
@@ -28,7 +30,7 @@ Automatic diarization quality remains blocked (both evaluated candidates counted
 
 No persistent app or worker service is running from this work; the disposable installer smoke starts and stops its own instance. No remote app deployment, public repository, code license, real-recording app speech inference, team authentication, or remote-worker installation has been accepted. The prior Turbo benchmark remains the model-selection evidence; it is not an app integration test.
 
-Project-wide glossary management, per-range retention/pruning, bounded media cache, source expiry/re-upload, report/ZIP export, MCP, and team authorization are not implemented yet. The coordinator currently retains original uploads and failed artifact remnants; storage lifecycle work is a later milestone. Uploads default to 256 MiB per file and are configurable through `app.max_upload_mb`; there is no fixed duration limit. Retained PCM audio must fit the work disk reserve and WAV format capacity. Docker run limits must be applied by the operator; an API lease cannot instantly terminate a disconnected remote process.
+Project-wide glossary management, per-range retention/pruning and source expiry/re-upload remain future work. The coordinator currently retains original uploads and failed artifact remnants; storage lifecycle work is a later milestone. Uploads default to 256 MiB per file and are configurable through `app.max_upload_mb`; there is no fixed duration limit. Retained PCM audio must fit the work disk reserve and WAV format capacity. Docker run limits must be applied by the operator; an API lease cannot instantly terminate a disconnected remote process.
 
 License selection and publishing remain pending.
 
