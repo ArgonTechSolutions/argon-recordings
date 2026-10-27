@@ -4,7 +4,17 @@ Planning baseline: 2026-10-23. Owner: Argon. Repository: ArgonTechSolutions/argo
 
 YouTrack project **REC / Argon Recordings** and its Kanban board have been created with owner authorization. Board: https://youtrack.argon.com.pe/agiles/196-10. Project ID: `0-14`. On 2026-10-23 the owner approved ticket creation and P01–P14 implementation. Epic: [REC-1](https://youtrack.argon.com.pe/issue/REC-1). P01–P22 map in order to REC-2–REC-23 (ticket number = P number + 1). Parent/dependency links are created; all 23 cards were verified in sprint `210-10`. P01/REC-2 and epic REC-1 are in Develop. No KB article has been created.
 
-## Confirmed product scope
+## Active delivery scope — functional first (owner approved 2026-10-26)
+
+This update supersedes the earlier model-quality prerequisites and overnight evaluation priorities below. Deliver the usable local workflow first: optional experimental speaker analysis; independent manual speaker creation/naming/range correction; marked video and screenshots/clips with reviewed proposals; account-scoped MCP and the cited-summary skill; explicit report import/review/export.
+
+REC-3/P02 and REC-14/P13 are deferred optimization backlog. Preserve their failed quality results and frozen targets; do not run additional comparisons, threshold searches, fine-tuning, readability studies or empirical model campaigns for this delivery. They no longer block functional integration. Automatic labels/proposals remain opt-in and require review. Spanish/private-recording quality and owner live pairing remain reported boundaries, not silently assumed passes.
+
+The parent owns implementation and focused verification directly. Complete manual fallback and practical setup guidance, then verify the combined manual speakers → marked video → actual SDK media retrieval → report/review/export path. Run the required backend/contract/build/lint and affected browser checks once for the combined change; reuse valid prior compatibility and ASR evidence. No new model downloads or persistent services. Deployment remains deferred.
+
+Current handoff: [FUNCTIONAL-WORKFLOW.md](FUNCTIONAL-WORKFLOW.md). Historical checkpoints and original quality targets below remain evidence, not the active delivery gate.
+
+## Historical implementation checkpoints
 
 Implementation checkpoint (local source; not installed/deployed): evidence snapshots, revision-checked marks/history/undo, exact source links and durable shared-capacity diarization are implemented. Speaker review supports recording-scoped names, range reassignment, unknown/overlap, filtering, reset/undo and revision-pinned pagination. Manual edits survive reruns; ambiguous model cluster changes do not inherit a person's name. SSE refreshes other open clients. Only verified online model workers enable analysis in the UI. Installer/model provisioning remains pending. Backend regression: 181 passed, 1 optional integration skipped; OpenAPI check, frontend production build/lint and disposable Chromium passed, including cross-tab edits and viewer denial. P01/P02/P03 remain in Develop; P04/REC-5 and P05/REC-6 are in Staging (local qualification awaiting integration, not deployment). Two real CPU model candidates both passed only 1/5 held-out speaker counts, below the 4/5 gate. Standard DER with overlap excluded and a 250 ms total collar was 5.59% for the frozen Mandarin embedding and 22.91% for the English alternative. See `docs/DIARIZATION-EVALUATION.md`; automatic diarization quality is not accepted.
 
@@ -98,7 +108,7 @@ Epic preview: logical type Epic; parent none; project REC; Priority Major; scope
 - Validation: contract tests for old/new payloads, invalid ranges/NaN, stale revisions and access denial; generated OpenAPI/frontend schema checked.
 - Rollback: feature disabled returns existing transcript/audio/frame behavior. Schema changes first run only against disposable copies; no installed-database migration is authorized.
 
-### P02 — Select and benchmark a local CPU diarization pipeline
+### P02 — Deferred: select and benchmark a local CPU diarization pipeline
 
 - Type: Research task. M0. Depends on: none. Priority: Major.
 - Scope: verify model/component licenses and access; pin ungated candidates; prepare a bounded public corpus with human reference labels, attribution and checksums; benchmark at two CPU threads under explicit CPU/RAM limits. Include a short single-speaker control and real multi-speaker/overlap examples. Separate tuning and held-out evaluation.
@@ -188,7 +198,7 @@ Epic preview: logical type Epic; parent none; project REC; Priority Major; scope
 - Validation: open HTML and unpack ZIP in an isolated directory; verify citations/assets/checksums, malicious text/filenames, permission changes, stale report behavior and size caps; no zip-slip or external asset dependence.
 - Rollback: disable report save/export; existing evidence and drafts remain readable.
 
-### P13 — Execute integrated model and visual quality evaluation
+### P13 — Deferred: integrated model and visual quality evaluation
 
 - Type: Validation task. M4. Depends on: P03/P04/P07/P08/P10/P11. Priority: Major.
 - Scope: freeze candidate/model/config identities; rerun affected held-out real inference corpus, baseline ASR regression, visual quality/budget suite, and agent summary workflow. Write machine-readable results plus an honest human-readable report and failure examples. Include cold/warm load, cancellation/restart and one-worker resource contention.
@@ -229,7 +239,7 @@ Proposed logical epic contains the objective, milestones, bounds and definition 
 
 Develop means active implementation; Review means diff/risk check; Test means executing required gates; Staging means locally qualified candidate awaiting remaining acceptance, not an actual deployed environment; Done means the ticket's declared acceptance/evidence passed. If no separate review is required, move directly to Test. Keep at most two independently owned implementation slices active when delegation is used.
 
-## Proposed overnight execution contract
+## Original overnight execution contract (superseded by functional-first scope)
 
 The owner approved this objective on 2026-10-23; the goal is active. P15–P22 remain future backlog only.
 

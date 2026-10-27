@@ -94,6 +94,11 @@ export function RecordingReports({
   return (
     <details className="recording-reports">
       <summary>Reports</summary>
+      {canEdit && !reports.data?.reports.length && (
+        <p>
+          Ask your agent to use recording-summary and return a report draft.
+        </p>
+      )}
       {canEdit && (
         <div className="report-import">
           <label>

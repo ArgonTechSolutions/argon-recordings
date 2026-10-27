@@ -74,6 +74,26 @@ export function AgentAccess() {
       }}
     >
       <summary>Agent access</summary>
+      <p>Connect your agent to read recordings and create cited summaries.</p>
+      <details>
+        <summary>Connection setup</summary>
+        <p>
+          Use the Argon Recordings MCP package and recording-summary skill in
+          your agent client. Create access below, then save the token in a
+          private credential file. Enable screenshot requests if the agent needs
+          new images.
+        </p>
+        <label>
+          API origin
+          <Input
+            aria-label="MCP API origin"
+            value={window.location.origin}
+            readOnly
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        </label>
+        <p>Import the generated report draft under Reports in the recording.</p>
+      </details>
       <form
         className="account-form"
         onSubmit={(e) => {

@@ -14,8 +14,13 @@ A self-hosted workspace for finding the useful moments in recordings. Built by A
 - Audio/transcript navigation, nearest retained frame with time offset, multilingual semantic/keyword search, and transcript text download.
 - Mark misheard text, find similar spelling variants in the recording, retry selected audio passages with a hint, and review proposals before acceptance. Prior text is retained in correction history.
 - Light/dark appearance and responsive layouts using the supplied shadcn preset.
+- Editable speaker names and manual range attribution, including speaker creation without an automatic result. Optional CPU diarization remains experimental.
+- Timeline marks, source-derived screenshots/clips, reviewed visual suggestions, and synchronized evidence playback.
+- Invitation-only accounts, project permissions, OIDC/admin MFA, account-scoped MCP access and a cited-summary skill; explicit report review and portable evidence ZIPs.
 
-Project-wide glossary management, range retention/pruning, original expiry, re-upload restoration, reports/ZIP exports, MCP, and team authorization are later milestones. Originals are retained in this version; nothing automatically deletes them. There is no idle-aware scheduler or general job-cancel endpoint yet. Failed recordings can be retried from their retained source without re-uploading. See [the plan](docs/PLAN.md) and [validation status](docs/STATUS.md).
+Start with the [speakers → video → agent summary workflow](docs/FUNCTIONAL-WORKFLOW.md). Model optimization is deferred while the functional workflow is prepared for owner use; local checks do not establish installed/private-recording acceptance.
+
+Project-wide glossary management, range retention/pruning, original expiry, re-upload restoration and remote MCP OAuth are later milestones. Originals are retained in this version; nothing automatically deletes them. There is no idle-aware scheduler or general job-cancel endpoint yet. Failed recordings can be retried from their retained source without re-uploading. See [the plan](docs/PLAN.md) and [validation status](docs/STATUS.md).
 
 ## Easy installation
 

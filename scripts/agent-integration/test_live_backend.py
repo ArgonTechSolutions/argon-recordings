@@ -65,6 +65,28 @@ def test_stdio_real_backend_grants_and_images(tmp_path):
 
 
 async def exercise(origin,token,pid,rid,image,browser,headers,grant_id):
+    # Manual fallback -> marked video -> agent evidence -> reviewed report.
+    # No diarization model or inference is required for this functional path.
+    base=f'/api/recordings/{rid}'
+    before=browser.get(base+'/transcript').json()
+    state=browser.get(base+'/evidence').json()
+    added=browser.post(base+'/speakers',headers=headers,json={
+        'expected_revision':state['versions']['speakers'],
+        'expected_source_sha256':state['source_sha256'],'label':'Alice'})
+    assert added.status_code==201,added.text
+    sid=added.json()['id']
+    state=browser.get(base+'/evidence').json()
+    assert browser.post(base+'/speaker-overrides',headers=headers,json={
+        'expected_revision':state['versions']['speakers'],
+        'expected_source_sha256':state['source_sha256'],
+        'override':{'interval':{'start':2,'end':4},'speaker':sid}}).status_code==200
+    state=browser.get(base+'/evidence').json()
+    marked=browser.post(base+'/marks',headers=headers,json={
+        'expected_revision':state['versions']['annotations'],
+        'expected_source_sha256':state['source_sha256'],
+        'mark':{'interval':{'start':.5,'end':.5},'label':'Review screen','pinned':True}})
+    assert marked.status_code==201,marked.text
+    assert browser.get(base+'/transcript').json()==before
     env={'PATH':os.environ.get('PATH',''),'ARGON_RECORDINGS_API_ORIGIN':origin,
          'ARGON_AGENT_TOKEN':token,'ARGON_AGENT_ALLOW_ENV_TOKEN':'1'}
     params=StdioServerParameters(command=sys.executable,args=[str(Path(__file__).with_name('server.py'))],env=env)
@@ -83,7 +105,13 @@ async def exercise(origin,token,pid,rid,image,browser,headers,grant_id):
         # Decode returned content, rather than merely checking a JPEG prefix.
         decoded=subprocess.run(['ffmpeg','-v','error','-i','pipe:0','-f','null','-'],input=base64.b64decode(block.data),capture_output=True,timeout=15)
         assert decoded.returncode==0
-        for name in ('get_speakers','list_marks','list_visual_evidence'):
+        speakers=await client.call_tool('get_speakers',{'recording_id':rid})
+        assert speakers.structured_content['model'] is None
+        assert {'id':sid,'label':'Alice'} in speakers.structured_content['items']['speakers']
+        assert next(p for p in speakers.structured_content['items']['passages'] if p['segment_id']=='sdk-1')['speaker_ids']==[sid]
+        marks=await client.call_tool('list_marks',{'recording_id':rid})
+        assert marks.structured_content['items'][0]['label']=='Review screen'
+        for name in ('list_visual_evidence',):
             assert not (await client.call_tool(name,{'recording_id':rid})).is_error
         job=await client.call_tool('request_visual_evidence',{
             'reference':first.structured_content['reference'],

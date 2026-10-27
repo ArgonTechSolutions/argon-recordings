@@ -1,5 +1,11 @@
 # Foundation status
 
+## Active delivery — functional first (2026-10-26)
+
+The owner resumed development with model optimization deferred. REC-3/P02 and REC-14/P13 are Backlog; failed speaker-count targets remain recorded and do not block the usable workflow. Automatic diarization remains optional/experimental. Independent manual speaker creation/correction now works without an automatic result, with source/revision fencing and undo. The speakers → marked video → MCP evidence → reviewed report/ZIP path is verified locally. No new model benchmark campaign or deployment. See [FUNCTIONAL-WORKFLOW.md](FUNCTIONAL-WORKFLOW.md) and the active scope in [INTELLIGENCE-PLAN.md](INTELLIGENCE-PLAN.md).
+
+Combined functional checks: **256 backend tests**, OpenAPI/schema regeneration/check, frontend production build/lint and **25 MCP/summary/package checks** pass. The real stdio SDK reads a manually created/assigned speaker and a pinned mark, requests an actual FFmpeg screenshot, receives native image content, and exports an explicitly reviewed report with checksum-verified evidence. Main/visual/accounts Chromium checks pass with no observed JavaScript errors, including mobile manual creation/assignment/undo, cross-tab refresh, clip synchronization, proposals, report review/export and connection guidance. This is functional integration with disposable fixtures; synthesis uses the existing summary skill, not a new model-quality claim. Owner pairing/private recordings/installed Philemon and deployment remain separate. No temporary containers remain.
+
 ## Current intelligence checkpoint (local, 2026-10-26)
 
 The foundation counts below are historical. Current local intelligence includes editable speakers, revisioned marks, source-derived images/clips, reviewed adaptive visual proposals, account-scoped MCP grants, a cited-summary skill/private package and explicit report import/review with portable evidence ZIPs. The latest combined backend suite passed 239 tests with prepared E5-large and real FFmpeg; OpenAPI, frontend production build/lint, visual/adaptive/report and accounts/MFA Chromium, and the 25-test MCP/summary/export suite passed. No deployment or owner credential provisioning occurred.
@@ -8,7 +14,7 @@ Automatic diarization quality remains blocked (both evaluated candidates counted
 
 ## Implemented and verified locally
 
-English diarization recalibration completed (2026-10-26): 19 real inference cases with existing pinned models; the fixed grid selected the unchanged 0.9 threshold. Both reserved and original regression sets scored only 1/5 exact counts, so quality remains blocked despite passing DER/runtime/memory limits. See [DIARIZATION-CALIBRATION.md](DIARIZATION-CALIBRATION.md). The owner requested pausing after this task; no further experiment or deployment is started.
+English diarization recalibration completed (2026-10-26): 19 real inference cases with existing pinned models; the fixed grid selected the unchanged 0.9 threshold. Both reserved and original regression sets scored only 1/5 exact counts, so quality remains blocked despite passing DER/runtime/memory limits. See [DIARIZATION-CALIBRATION.md](DIARIZATION-CALIBRATION.md). That experiment completed before the requested pause; development has since resumed under the functional-first scope above. No further model experiment or deployment is authorized by that resumption.
 
 Repeated memory follow-up (2026-10-26): twelve real ASR → video cycles completed across swap-enabled and disabled environments. The no-swap six-cycle run stayed inside four GiB, produced identical repeated transcripts, and had a 2.806-GiB aggregate peak; post-video RSS did not keep increasing. It retains memory above baseline and does not prove indefinite leak freedom or installed-worker limits. See [WORKER-MEMORY-VALIDATION.md](WORKER-MEMORY-VALIDATION.md). No product/configuration tuning was introduced.
 

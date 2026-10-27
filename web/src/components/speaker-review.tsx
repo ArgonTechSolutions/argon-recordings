@@ -42,13 +42,21 @@ export function SpeakerReview({
   const [min, setMin] = useState(1),
     [max, setMax] = useState(16)
   const [renames, setRenames] = useState<Record<string, string>>({})
+  const [newName, setNewName] = useState("")
   const change = useMutation({
     mutationFn: async ({
       action,
       id,
     }: {
       action:
-        "rename" | "assign" | "reset" | "undo" | "analyze" | "cancel" | "more"
+        | "create"
+        | "rename"
+        | "assign"
+        | "reset"
+        | "undo"
+        | "analyze"
+        | "cancel"
+        | "more"
       id?: string
     }) => {
       if (action === "more") {
@@ -71,6 +79,15 @@ export function SpeakerReview({
       const expected = {
         expected_revision: state?.revision ?? 0,
         expected_source_sha256: evidence.data?.source_sha256,
+      }
+      if (action === "create") {
+        const speaker = await request<{ id: string }>(base + "/speakers", {
+          method: "POST",
+          body: JSON.stringify({ ...expected, label: newName.trim() }),
+        })
+        setNewName("")
+        setTarget(speaker.id)
+        return
       }
       if (action === "analyze")
         return request(base + "/diarization", {
@@ -180,6 +197,29 @@ export function SpeakerReview({
       {canEdit && (
         <details>
           <summary>Review speakers</summary>
+          <p>
+            Automatic labels are experimental. Add or correct speakers manually.
+          </p>
+          <form
+            className="speaker-actions"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (newName.trim()) change.mutate({ action: "create" })
+            }}
+          >
+            <label>
+              New speaker
+              <Input
+                aria-label="New speaker name"
+                value={newName}
+                maxLength={80}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </label>
+            <Button type="submit" size="sm" disabled={busy || !newName.trim()}>
+              Add speaker
+            </Button>
+          </form>
           <div className="speaker-actions">
             <label>
               Min speakers
@@ -263,7 +303,7 @@ export function SpeakerReview({
               </Button>
             </form>
           ))}
-          {!!names.length && (
+          {
             <form
               onSubmit={(e) => {
                 e.preventDefault()
@@ -274,6 +314,7 @@ export function SpeakerReview({
                 <label>
                   From (s)
                   <Input
+                    aria-label="Speaker range start"
                     type="number"
                     min={0}
                     step=".1"
@@ -296,6 +337,7 @@ export function SpeakerReview({
                 <label>
                   To (s)
                   <Input
+                    aria-label="Speaker range end"
                     type="number"
                     min={start}
                     max={recording.duration ?? 0}
@@ -337,7 +379,7 @@ export function SpeakerReview({
                 </Button>
               </div>
             </form>
-          )}
+          }
         </details>
       )}
       {!!state?.overrides.length && (

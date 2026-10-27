@@ -200,6 +200,23 @@ def install(app, get_store):
         db.execute('INSERT INTO speaker_edit_history VALUES(?,?,?,?,?,?,0)', (identity(),rid,kind,target,previous,revision))
         db.execute('UPDATE evidence_versions SET speakers=? WHERE recording_id=?', (revision,rid))
 
+    @app.post('/api/recordings/{rid}/speakers', response_model=SpeakerName, status_code=201)
+    def create(rid: str, body: RenameSpeaker):
+        store = get_store()
+        with store.db() as db:
+            db.execute('BEGIN IMMEDIATE'); state = check(db,store,rid,body)
+            if state.duration is None:
+                raise HTTPException(409, 'Recording timeline is not ready')
+            used = {r[0] for r in db.execute('SELECT id FROM speaker_identities WHERE recording_id=?', (rid,))}
+            number = next((i for i in range(10000) if f'speaker-{i}' not in used), None)
+            if number is None:
+                raise HTTPException(409, 'Speaker identity history limit reached')
+            sid = f'speaker-{number}'
+            label = body.label.strip()
+            db.execute('INSERT INTO speaker_identities VALUES(?,?,?)', (rid,sid,label))
+            history(db,rid,'create',sid,None,state.versions.speakers+1)
+        return SpeakerName(id=sid,label=label)
+
     @app.put('/api/recordings/{rid}/speakers/{sid}')
     def rename(rid: str, sid: str, body: RenameSpeaker):
         store = get_store()
@@ -248,6 +265,16 @@ def install(app, get_store):
             if not event: raise HTTPException(409, 'No speaker edit to undo')
             if event['kind'] == 'rename':
                 db.execute('UPDATE speaker_identities SET label=? WHERE recording_id=? AND id=?', (event['previous'],rid,event['target']))
+            elif event['kind'] == 'create':
+                # A later automatic run may have reused the identity. Never leave
+                # published turns or active manual ranges referencing a removed name.
+                result = db.execute('SELECT turns FROM diarization_results WHERE recording_id=?', (rid,)).fetchone()
+                turns = json.loads(result['turns']) if result else []
+                overrides = db.execute('SELECT payload FROM speaker_overrides WHERE recording_id=? AND deleted=0', (rid,))
+                if any(t['speaker'] == event['target'] for t in turns) or any(
+                        json.loads(o['payload'])['speaker'] == event['target'] for o in overrides):
+                    raise HTTPException(409, 'Speaker is in use; undo its range edits first')
+                db.execute('DELETE FROM speaker_identities WHERE recording_id=? AND id=?', (rid,event['target']))
             else:
                 db.execute('UPDATE speaker_overrides SET deleted=? WHERE id=?', (0 if event['kind']=='reset' else 1,event['target']))
             db.execute('UPDATE speaker_edit_history SET undone=1 WHERE id=?', (event['id'],))

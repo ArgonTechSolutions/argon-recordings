@@ -1,7 +1,65 @@
 import json
 
 from test_workflow import client
+from test_accounts import team
 from test_diarization import setup, worker_claim, result, AUTH
+
+
+def test_manual_speakers_work_without_diarization_and_undo_without_changing_text(client):
+    rid, _ = setup(client)
+    base = f'/api/recordings/{rid}'
+    transcript = client.get(base+'/transcript').json()
+    stale = mutation(client,rid)
+    added = client.post(base+'/speakers',json={**stale,'label':'  Alice  '})
+    assert added.status_code == 201, added.text
+    sid = added.json()['id']
+    assert added.json()['label'] == 'Alice'
+    assert client.post(base+'/speakers',json={**stale,'label':'Stale'}).status_code == 409
+    assert client.post(base+'/speaker-overrides',json={**mutation(client,rid),'override':{
+        'interval':{'start':0,'end':1},'speaker':sid}}).status_code == 200
+    state = client.get(base+'/speakers').json()
+    assert state['model'] is None and state['turns'] == []
+    assert state['passages'][0]['speaker_ids'] == [sid]
+    # A second store handle sees the same committed manual identities/ranges.
+    from argon_recordings.store import Store
+    with Store(client.app.state.store.root).db() as db:
+        assert db.execute('SELECT label FROM speaker_identities WHERE recording_id=? AND id=?',(rid,sid)).fetchone()[0] == 'Alice'
+    assert client.get(base+'/transcript').json() == transcript
+    assert client.post(base+'/speakers/undo',json=mutation(client,rid)).status_code == 200
+    assert client.get(base+'/speakers').json()['passages'][0]['speaker_ids'] == []
+    assert client.post(base+'/speakers/undo',json=mutation(client,rid)).status_code == 200
+    assert client.get(base+'/speakers').json()['speakers'] == []
+    assert client.get(base+'/transcript').json() == transcript
+
+
+def test_manual_speaker_create_validates_name_and_source(client):
+    rid, _ = setup(client)
+    base = f'/api/recordings/{rid}/speakers'
+    for label in ('', '   ', 'x'*81):
+        assert client.post(base,json={**mutation(client,rid),'label':label}).status_code == 422
+    assert client.post(base,json={**mutation(client,rid),'expected_source_sha256':'f'*64,'label':'Alice'}).status_code == 409
+    assert client.get(base).json()['speakers'] == []
+
+
+def test_manual_speaker_creation_respects_current_project_role(team):
+    from test_accounts import login, invited
+    app, owner, manager, uid = team
+    headers = login(owner)
+    pid = owner.post('/api/projects',headers=headers,json={'name':'Manual speakers'}).json()['id']
+    rid = owner.post(f'/api/projects/{pid}/recordings',headers=headers,json={'title':'Demo','filename':'demo.mp4'}).json()['id']
+    with manager.store.db() as db:
+        db.execute("UPDATE recordings SET sha256=?,duration=1,status='ready' WHERE id=?",('a'*64,rid))
+    guest, gh = invited(app,manager,uid,'speaker-editor@example.com')
+    try:
+        path = f'/api/recordings/{rid}/speakers'
+        owner.put(f'/api/projects/{pid}/members',headers=headers,json={'email':'speaker-editor@example.com','role':'editor'})
+        body = {**mutation(guest,rid),'label':'Alice'}
+        assert guest.post(path,headers=gh,json=body).status_code == 201
+        owner.put(f'/api/projects/{pid}/members',headers=headers,json={'email':'speaker-editor@example.com','role':'viewer'})
+        assert guest.post(path,headers=gh,json={**mutation(guest,rid),'label':'Bob'}).status_code == 403
+        assert len(guest.get(path).json()['speakers']) == 1
+    finally:
+        guest.close()
 
 
 def reviewed(client):

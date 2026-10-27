@@ -1129,7 +1129,8 @@ export interface paths {
         /** Speakers */
         get: operations["speakers_api_recordings__rid__speakers_get"];
         put?: never;
-        post?: never;
+        /** Create */
+        post: operations["create_api_recordings__rid__speakers_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5776,6 +5777,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpeakersSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_recordings__rid__speakers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameSpeaker"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpeakerName"];
                 };
             };
             /** @description Validation Error */
