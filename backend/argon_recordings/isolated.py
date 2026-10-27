@@ -89,12 +89,13 @@ def api():
             listener.close()
 
 
-def worker():
+def worker(remote=False):
     from .worker import Turbo, run_once
     work = Path('/work')
     if not work.is_dir():
         raise RuntimeError('Private worker workspace is missing')
     transcriber = Turbo('/models/turbo')
+    Path('/tmp/worker-ready').touch()
     stopping = threading.Event()
     for signum in [signal.SIGTERM, signal.SIGINT]:
         signal.signal(signum, lambda *_: stopping.set())
@@ -102,10 +103,13 @@ def worker():
     while not stopping.is_set():
         watchdog = None
         try:
-            credential = json.loads(Path('/run/worker-credentials/self/credential.json').read_text())
-            if credential['id'] != os.environ['RECORDINGS_WORKER_ID'] or len(credential['token']) < 40:
-                raise ValueError('Invalid private worker credential')
-            with httpx.Client(base_url='http://api:8001', headers={'Authorization': 'Bearer ' + credential['token']},
+            headers = {}
+            if not remote:
+                credential = json.loads(Path('/run/worker-credentials/self/credential.json').read_text())
+                if credential['id'] != os.environ['RECORDINGS_WORKER_ID'] or len(credential['token']) < 40:
+                    raise ValueError('Invalid private worker credential')
+                headers['Authorization'] = 'Bearer ' + credential['token']
+            with httpx.Client(base_url='http://api:8001', headers=headers,
                               timeout=60, trust_env=False) as client:
                 from .diarization_worker import capability
                 client.post('/api/worker/ready', json={'diarization_model': capability(os.environ.get('RECORDINGS_DIARIZATION_DIR'))}).raise_for_status()
@@ -140,6 +144,8 @@ def main():
         api()
     elif sys.argv[1:] == ['worker']:
         worker()
+    elif sys.argv[1:] == ['remote-worker']:
+        worker(remote=True)
     else:
         raise SystemExit('Choose api or worker role')
 

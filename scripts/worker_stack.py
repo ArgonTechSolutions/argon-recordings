@@ -24,7 +24,7 @@ def credential_volume(config, index):
 def common(config, name, role, cpus, memory):
     return ['run', '-d', '--init', '--name', name, '--label', 'com.argon.recordings.installation=' + config['identity'],
             '--label', ROLE + '=' + role, '--restart', 'unless-stopped', '--cpus', str(cpus),
-            '--memory', str(memory), '--memory-swap', str(memory), '--pids-limit', '256', '--read-only',
+            '--memory', str(int(memory)), '--memory-swap', str(int(memory)), '--pids-limit', '256', '--read-only',
             '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--tmpfs', '/tmp:rw,size=64m',
             '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3']
 
@@ -68,8 +68,10 @@ def stack_items(installer, config):
         item = json.loads(installer.docker(config, 'inspect', name, capture_output=True, text=True).stdout)[0]
         role = item['Config'].get('Labels', {}).get(ROLE)
         if name == config['name']:
-            if role not in {None, 'api'}:
+            if role not in {None, 'api', 'transport'}:
                 raise ValueError('Unexpected primary container role')
+        elif name==config['name']+'-transport' and role=='transport':
+            pass
         elif not re.fullmatch(re.escape(config['name']) + r'-worker-[1-8]', name) or role != 'worker':
             raise ValueError('Unexpected container in this installation; refusing lifecycle changes')
         items.append(item)

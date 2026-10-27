@@ -24,7 +24,8 @@ def load_config(path):
     data = tomllib.loads(path.read_text())
     allowed = {'app': {'port', 'name', 'max_upload_mb'}, 'models': {'transcription', 'embedding', 'turbo_path'},
                'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}, 'auth': {'mode', 'public_url', 'allow_totp'},
-               'workers': {'count', 'chunk_seconds', 'overlap_seconds', 'api_cpus', 'api_memory_gib'}}
+               'workers': {'count', 'chunk_seconds', 'overlap_seconds', 'api_cpus', 'api_memory_gib'},
+               'deployment': {'mode'}, 'transport': {'origin','bind_address','port','certificate','private_key','peer_certificate'}}
     for section, fields in data.items():
         if section not in allowed or not isinstance(fields, dict) or set(fields) - allowed[section]:
             raise ValueError(f'Unknown configuration key in {section}')
@@ -40,9 +41,14 @@ def load_config(path):
     embedding = models.get('embedding', 'large')
     if not isinstance(embedding, str) or embedding not in {'large', 'base', 'small', 'off'} or models.get('transcription', 'turbo') != 'turbo':
         raise ValueError('Choose transcription=turbo and embedding=large, base, small, or off')
-    cpus, memory = resources.get('cpus', 2), resources.get('memory_gib', 6)
+    mode = data.get('deployment', {}).get('mode', 'local')
+    from scripts.remote_stack import configuration
+    transport = configuration(data.get('transport', {}), path.parent, mode)
+    cpus, memory = resources.get('cpus', 2.5 if mode=='worker' else 2), resources.get('memory_gib', 6)
     if type(cpus) not in {int, float} or not .5 <= cpus <= 8 or type(memory) is not int or not 4 <= memory <= 32:
         raise ValueError('resources: cpus must be 0.5..8 and memory_gib must be 4..32')
+    if mode == 'worker' and cpus < .6:
+        raise ValueError('Remote worker needs at least 0.6 CPUs including transport')
     timeout = resources.get('job_timeout_seconds', 0)
     if type(timeout) is not int or timeout < 0:
         raise ValueError('resources.job_timeout_seconds must be zero (disabled) or a positive integer')
@@ -68,21 +74,23 @@ def load_config(path):
     count = workers.get('count', 1)
     chunk_seconds, overlap = workers.get('chunk_seconds', 180), workers.get('overlap_seconds', 2)
     api_cpus, api_memory = workers.get('api_cpus', .5), workers.get('api_memory_gib', 2)
+    if mode != 'local' and count != 1:
+        raise ValueError('Split deployment supports exactly one worker')
     if type(count) is not int or not 1 <= count <= 8:
         raise ValueError('workers.count must be an integer from 1 to 8')
     if type(chunk_seconds) is not int or not 30 <= chunk_seconds <= 600:
         raise ValueError('workers.chunk_seconds must be 30..600')
     if type(overlap) not in {int, float} or not .5 <= overlap <= 5:
         raise ValueError('workers.overlap_seconds must be 0.5..5 per side')
-    if type(api_cpus) not in {int, float} or api_cpus < .25 or cpus - api_cpus < .5 * count:
+    if type(api_cpus) not in {int, float} or not .25 <= api_cpus <= 8 or (mode=='local' and cpus - api_cpus < .5 * count):
         raise ValueError('Reserve at least 0.5 CPU per worker after workers.api_cpus')
-    if type(api_memory) is not int or api_memory < 1 or memory - api_memory < 2 * count:
+    if type(api_memory) is not int or api_memory < 1 or (mode=='local' and memory - api_memory < 2 * count):
         raise ValueError('Reserve at least 2 GiB per worker after workers.api_memory_gib')
     home = path.parent
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(workers=count, chunk_seconds=chunk_seconds, overlap_seconds=overlap, api_cpus=api_cpus, api_memory=api_memory, allow_totp=allow_totp, auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(mode=mode, transport=transport, workers=count, chunk_seconds=chunk_seconds, overlap_seconds=overlap, api_cpus=api_cpus, api_memory=api_memory, allow_totp=allow_totp, auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
@@ -119,7 +127,7 @@ def source_id():
     paths = [ROOT / 'Dockerfile.install', ROOT / 'backend/requirements.txt', ROOT / 'backend/requirements-inference.lock']
     paths += list((ROOT / 'backend/argon_recordings').glob('*.py'))
     paths += [ROOT / 'scripts' / name for name in ['prepare_turbo.py', 'prepare_embeddings.py', 'check_media_runtime.py', 'evaluate_embeddings.py']]
-    paths += [ROOT / 'scripts' / 'worker_stack.py']
+    paths += [ROOT / 'scripts' / name for name in ['worker_stack.py','remote_stack.py']]
     for directory, folders, filenames in os.walk(ROOT / 'web'):
         folders[:] = [name for name in folders if name not in {'node_modules', 'dist', '.git'}]
         paths += [Path(directory) / name for name in filenames if not name.endswith('.log')]
@@ -135,6 +143,8 @@ def state_path(config):
 
 def state(config):
     data = json.loads(state_path(config).read_text())
+    if data.get('mode','local') != config.get('mode','local'):
+        raise ValueError('Deployment mode changed; run install before starting')
     if data['source'] != source_id() or data['embedding'] != config['embedding'] or data['turbo'] != str(config['turbo']):
         raise ValueError('Source or model configuration changed; run install again before starting')
     return data
@@ -142,7 +152,7 @@ def state(config):
 
 def inspect(config):
     owned = docker(config, 'container', 'ls', '-a', '--filter', 'label=' + LABEL + '=' + config['identity'], '--format', '{{.Names}}', capture_output=True, text=True).stdout.splitlines()
-    if any(name != config['name'] and not re.fullmatch(re.escape(config['name']) + r'-worker-[1-8]', name) for name in owned):
+    if any(name not in {config['name'], config['name']+'-transport'} and not re.fullmatch(re.escape(config['name']) + r'-worker-[1-8]', name) for name in owned):
         raise ValueError('This installation already has a differently named container; restore app.name before managing it')
     result = docker(config, 'container', 'ls', '-a', '--filter', 'name=^/' + config['name'] + '$', '--format', '{{.ID}}', capture_output=True, text=True)
     if not result.stdout.strip():
@@ -162,6 +172,7 @@ def doctor(config):
     if info.get('Architecture') not in {'x86_64', 'amd64'}:
         raise ValueError('This curated CPU installation currently supports Linux x86-64')
     print(f"Docker {info['ServerVersion']} / cgroup {info['CgroupVersion']} / CPUs {info['NCPU']} / RAM {info['MemTotal']}")
+    print('Deployment:', config['mode'])
     print('Local URL:', f"http://localhost:{config['port']}")
     print('Models: Turbo CPU INT8; embeddings:', config['embedding'])
     print('Aggregate budget:', config['cpus'], 'CPUs,', config['memory'], 'GiB RAM, no swap;', config['workers'], 'isolated worker(s)')
@@ -180,23 +191,24 @@ def install(config):
     docker(config, 'build', '--label', 'com.argon.recordings.source=' + revision, '-f', ROOT / 'Dockerfile.install', '-t', image, ROOT)
     models = config['home'] / 'models'
     models.mkdir(exist_ok=True)
-    if config['external']:
-        if not config['turbo'].is_dir():
-            raise ValueError('Configured existing turbo_path does not exist')
-        docker(config, 'run', '--rm', '--network', 'none', '--cpus=1', '--memory=512m', '--memory-swap=512m',
-               '-v', f"{config['turbo']}:/existing:ro", '--entrypoint', 'python', image,
-               'scripts/prepare_turbo.py', '/existing', '--verify-only')
-    else:
-        docker(config, 'run', '--rm', '--user', '0:0', '--cpus=1', '--memory=512m', '--memory-swap=512m',
-               '-v', f'{models}:/models', '--entrypoint', 'python', image, 'scripts/prepare_turbo.py', '/models/turbo')
-    if config['embedding'] != 'off':
+    if config['mode'] != 'coordinator':
+        if config['external']:
+            if not config['turbo'].is_dir():
+                raise ValueError('Configured existing turbo_path does not exist')
+            docker(config, 'run', '--rm', '--network', 'none', '--cpus=1', '--memory=512m', '--memory-swap=512m',
+                   '-v', f"{config['turbo']}:/existing:ro", '--entrypoint', 'python', image,
+                   'scripts/prepare_turbo.py', '/existing', '--verify-only')
+        else:
+            docker(config, 'run', '--rm', '--user', '0:0', '--cpus=1', '--memory=512m', '--memory-swap=512m',
+                   '-v', f'{models}:/models', '--entrypoint', 'python', image, 'scripts/prepare_turbo.py', '/models/turbo')
+    if config['mode'] != 'worker' and config['embedding'] != 'off':
         docker(config, 'run', '--rm', '--user', '0:0', '--cpus=1', '--memory=512m', '--memory-swap=512m',
                '-v', f'{models}:/models', '--entrypoint', 'python', image,
                'scripts/prepare_embeddings.py', '/models/e5-' + config['embedding'], config['embedding'])
     path = state_path(config)
     path.parent.mkdir(exist_ok=True)
     temporary = path.with_suffix('.part')
-    temporary.write_text(json.dumps(dict(image=image, source=revision, embedding=config['embedding'], turbo=str(config['turbo'])), indent=2) + '\n')
+    temporary.write_text(json.dumps(dict(mode=config['mode'], image=image, source=revision, embedding=config['embedding'], turbo=str(config['turbo'])), indent=2) + '\n')
     temporary.replace(path)
     print('Installed. Start with: python3 recordings.py start')
 
@@ -207,6 +219,9 @@ def start_args(config, installed):
 
 
 def start(config):
+    if config.get('mode','local') != 'local':
+        from scripts.remote_stack import start as remote_start
+        return remote_start(sys.modules[__name__], config)
     from scripts.worker_stack import start_stack
     start_stack(sys.modules[__name__], config)
 
@@ -231,7 +246,7 @@ def main():
         config = load_config(args.config)
         if args.command in {'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa'}:
             item = inspect(config)
-            if config['auth_mode'] != 'accounts' or not item or not item['State']['Running'] or 'RECORDINGS_AUTH_MODE=accounts' not in item['Config']['Env']:
+            if config['mode']=='worker' or config['auth_mode'] != 'accounts' or not item or not item['State']['Running'] or 'RECORDINGS_AUTH_MODE=accounts' not in item['Config']['Env']:
                 raise ValueError('Set auth.mode=accounts and restart the app before interactive setup')
             command = ['exec', '-it', config['name'], 'python', '-m', 'argon_recordings.account_cli', args.command]
             if args.adopt_existing:
@@ -253,7 +268,7 @@ def main():
             start(config)
         elif args.command == 'evaluate':
             installed = state(config)
-            if config['embedding'] == 'off':
+            if config['mode']=='worker' or config['embedding'] == 'off':
                 raise ValueError('Choose an embedding profile before evaluating retrieval')
             docker(config, 'run', '--rm', '--network', 'none', '--cpus', str(config['cpus']), '--memory=3g', '--memory-swap=3g',
                    '-v', str(config['home'] / 'models' / ('e5-' + config['embedding'])) + ':/models/embeddings:ro',
@@ -271,7 +286,7 @@ def main():
                 print('API not started. Data volumes, if any, are preserved; stop also stops remaining workers.')
             else:
                 from scripts.worker_stack import stack_items
-                print(json.dumps(dict(workers=[dict(name=member['Name'].lstrip('/'), status=member['State']['Status'], cpus=member['HostConfig']['NanoCpus'], memory_bytes=member['HostConfig']['Memory'], mounts=[dict(destination=m['Destination'], volume=m.get('Name')) for m in member['Mounts']]) for member in stack_items(sys.modules[__name__], config) if member['Name'].lstrip('/') != config['name']], status=item['State']['Status'], image=item['Config']['Image'],
+                print(json.dumps(dict(deployment=config['mode'], workers=[dict(name=member['Name'].lstrip('/'), status=member['State']['Status'], cpus=member['HostConfig']['NanoCpus'], memory_bytes=member['HostConfig']['Memory'], mounts=[dict(destination=m['Destination'], volume=m.get('Name')) for m in member['Mounts']]) for member in stack_items(sys.modules[__name__], config) if member['Config'].get('Labels', {}).get('com.argon.recordings.role') == 'worker'], status=item['State']['Status'], image=item['Config']['Image'],
                                       ports=item['HostConfig']['PortBindings'], cpus=item['HostConfig']['NanoCpus'],
                                       memory_bytes=item['HostConfig']['Memory'], mounts=[dict(destination=m['Destination'], volume=m.get('Name'), source=m['Source']) for m in item['Mounts']]), indent=2))
     except (ValueError, OSError, subprocess.CalledProcessError, KeyError) as exc:

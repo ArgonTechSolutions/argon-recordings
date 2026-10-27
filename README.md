@@ -24,6 +24,8 @@ Project-wide glossary management, range retention/pruning, original expiry, re-u
 
 ## Easy installation
 
+For separate coordinator and inference hosts, see [remote worker installations](docs/REMOTE-WORKERS.md). Local mode remains the default.
+
 On Linux x86-64 with Python 3.11+ and Docker 28+/cgroup v2:
 
 ```bash
@@ -77,7 +79,7 @@ Build the worker independently:
 docker build -f backend/Dockerfile.worker -t argon-recordings-worker:local .
 ```
 
-The one-job CLI accepts `--api-url`, `--model-dir`, and `--work-dir`. Supply the same worker credential privately through the environment. It must reach the coordinator through a loopback endpoint, such as an explicitly configured private tunnel. A split-host installation has not been qualified yet.
+The one-job CLI accepts `--api-url`, `--model-dir`, and `--work-dir`. Supply the same worker credential privately through the environment. It must reach the coordinator through a loopback endpoint, such as an explicitly configured private tunnel. The supported split-host installer profile is described in [remote worker installations](docs/REMOTE-WORKERS.md).
 
 Use the Turbo model directory produced by the benchmark package, including `benchmark-manifest.json`; its repository, immutable revision, and all required file hashes are checked. The selected model is `mobiuslabsgmbh/faster-whisper-large-v3-turbo` at `0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf`.
 

@@ -30,3 +30,7 @@ chunk_seconds = 180
 overlap_seconds = 2
 api_cpus = 0.5
 api_memory_gib = 2
+
+# Optional split-host roles and mutual TLS: docs/REMOTE-WORKERS.md
+# [deployment]
+# mode = "local" # coordinator or worker requires explicit transport settings
