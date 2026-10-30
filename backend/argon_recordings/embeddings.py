@@ -3,6 +3,7 @@ from collections import OrderedDict
 import hashlib
 import logging
 import json
+import os
 from pathlib import Path
 import threading
 
@@ -55,7 +56,7 @@ class Embeddings:
             if digest.hexdigest() != expected:
                 raise RuntimeError('Embedding model checksum mismatch; run prepare_embeddings.py')
         options = ort.SessionOptions()
-        options.intra_op_num_threads = 2
+        options.intra_op_num_threads = 1 if os.environ.get('RECORDINGS_REMOTE_INFERENCE') == 'true' else 2
         options.inter_op_num_threads = 1
         options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         self.session = ort.InferenceSession(str(self.directory / next(n for n in self.files if n.endswith('.onnx'))), options,

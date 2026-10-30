@@ -45,11 +45,13 @@ def write_credentials(index, value):
     folder = Path('/run/worker-credentials') / str(index)
     if not folder.is_dir():
         raise RuntimeError('RAM-backed worker credential mount is missing')
+    shared = os.environ.get('RECORDINGS_REMOTE_EMBEDDINGS') == 'true' or os.environ.get('RECORDINGS_TRANSPORT_GROUP') == 'true'
+    folder.chmod(0o750 if shared else 0o700)
     target = folder / 'credential.json'
     temporary = folder / 'credential.new'
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, 'w') as out:
-        os.fchmod(out.fileno(), 0o600)
+        os.fchmod(out.fileno(), 0o640 if shared else 0o600)
         json.dump(value, out)
     temporary.replace(target)
 
@@ -99,6 +101,9 @@ def worker(remote=False):
     stopping = threading.Event()
     for signum in [signal.SIGTERM, signal.SIGINT]:
         signal.signal(signum, lambda *_: stopping.set())
+    if remote and os.environ.get('RECORDINGS_EMBEDDING_DIR'):
+        from .remote_embeddings import inference_loop
+        threading.Thread(target=inference_loop, args=(stopping,), daemon=True).start()
     last_work = time.monotonic()
     while not stopping.is_set():
         watchdog = None

@@ -167,3 +167,38 @@ def test_streaming_upload_and_prepare_timeout(certificates,tls_relay):
     with socket.create_connection(('127.0.0.1',relay.server_port),timeout=3) as raw:
         with pytest.raises(ssl.SSLCertVerificationError):
             context.wrap_socket(raw,server_hostname='wrong-host.invalid')
+
+
+def test_reboot_transport_mounts_host_tls_only_and_api_uses_remote_inference(tmp_path):
+    cfg=config(tmp_path,'coordinator')
+    args=transport_args(cfg,{'image':'test'},'172.20.0.2')
+    assert args[args.index('--user')+1]==str(os.geteuid())+':10001'
+    for name in ('self.crt','self.key','peer.crt'):
+        assert any('dst=/run/transport-tls/'+name+',readonly' in arg for arg in args)
+    assert not any('credentials-transport' in arg for arg in args)
+    api=api_args(dict(cfg,_worker_subnets='172.20.0.0/24'),{'image':'test'})
+    assert 'RECORDINGS_REMOTE_EMBEDDINGS=true' in api
+    assert not any(':/models/embeddings' in arg for arg in api)
+
+
+def test_transport_runtime_rejects_readable_key_after_restart(certificates):
+    key=certificates/'worker'/'self.key'
+    key.chmod(0o644)
+    with pytest.raises(ValueError,match='private regular file'):
+        tls_context(certificates/'worker')
+
+
+def test_ram_bearer_permissions_are_group_readable_only_for_split_coordinator(tmp_path,monkeypatch):
+    from argon_recordings import isolated
+    monkeypatch.setattr(isolated,'Path',lambda _:tmp_path)
+    folder=tmp_path/'1';folder.mkdir(mode=0o700)
+    monkeypatch.delenv('RECORDINGS_REMOTE_EMBEDDINGS',raising=False)
+    monkeypatch.delenv('RECORDINGS_TRANSPORT_GROUP',raising=False)
+    isolated.write_credentials(1,{'id':'synthetic'})
+    assert folder.stat().st_mode & 0o777 == 0o700
+    assert (folder/'credential.json').stat().st_mode & 0o777 == 0o600
+    monkeypatch.setenv('RECORDINGS_TRANSPORT_GROUP','true')
+    isolated.write_credentials(1,{'id':'synthetic-new'})
+    assert folder.stat().st_mode & 0o777 == 0o750
+    assert (folder/'credential.json').stat().st_mode & 0o777 == 0o640
+    assert json.loads((folder/'credential.json').read_text())['id']=='synthetic-new'

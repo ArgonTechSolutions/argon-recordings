@@ -12,8 +12,8 @@ from pathlib import Path
 import re
 import socket
 import ssl
+import stat
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
@@ -25,6 +25,9 @@ LIMIT = 4 * 1024**3
 
 def tls_context(folder, server=False):
     folder = Path(folder)
+    key = (folder / 'self.key').lstat()
+    if not stat.S_ISREG(key.st_mode) or key.st_uid != os.geteuid() or key.st_mode & 0o077:
+        raise ValueError('TLS key must be a private regular file owned by the transport user')
     peer = (folder / 'peer.crt').read_text()
     if peer.count('-----BEGIN CERTIFICATE-----') != 1:
         raise ValueError('Exactly one peer certificate is required')
@@ -199,12 +202,6 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     mode = os.environ['RECORDINGS_TRANSPORT_MODE']
-    for _ in range(60):
-        if Path('/run/transport-tls/ready').is_file():
-            break
-        time.sleep(1)
-    else:
-        raise RuntimeError('RAM-backed TLS material was not supplied')
     context, fingerprint = tls_context('/run/transport-tls', server=mode=='coordinator')
     if mode == 'coordinator':
         server = Relay(('0.0.0.0',8443), upstream='http://api:8001', tls=context,

@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/worker/inference/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inference Claim */
+        post: operations["inference_claim_api_worker_inference_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/inference/{tid}/{attempt}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inference Complete */
+        post: operations["inference_complete_api_worker_inference__tid___attempt__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/worker/ready": {
         parameters: {
             query?: never;
@@ -176,23 +210,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Search */
-        get: operations["search_api_search_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/recordings/{rid}/correction-candidates": {
         parameters: {
             query?: never;
@@ -324,6 +341,23 @@ export interface paths {
         put?: never;
         /** Fail */
         post: operations["fail_api_worker_corrections__cid__fail_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2455,6 +2489,22 @@ export interface components {
              */
             inspected: true;
         };
+        /** InferenceResult */
+        InferenceResult: {
+            /** Model */
+            model: string;
+            /** Vectors */
+            vectors?: number[][] | null;
+            /** Windows */
+            windows?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Failed
+             * @default false
+             */
+            failed: boolean;
+        };
         /** Interval */
         Interval: {
             /** Start */
@@ -3386,6 +3436,8 @@ export interface components {
         WorkerCapabilities: {
             /** Diarization Model */
             diarization_model?: string | null;
+            /** Embedding Model */
+            embedding_model?: string | null;
         };
     };
     responses: never;
@@ -3396,6 +3448,79 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    inference_claim_api_worker_inference_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerCapabilities"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inference_complete_api_worker_inference__tid___attempt__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                tid: string;
+                attempt: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InferenceResult"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     worker_ready_api_worker_ready_post: {
         parameters: {
             query?: never;
@@ -3757,39 +3882,6 @@ export interface operations {
             };
         };
     };
-    search_api_search_get: {
-        parameters: {
-            query: {
-                project_id: string;
-                q: string;
-                mode?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchHit"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     find_api_recordings__rid__correction_candidates_post: {
         parameters: {
             query?: never;
@@ -4090,6 +4182,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_search_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                q: string;
+                mode?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchHit"][];
                 };
             };
             /** @description Validation Error */

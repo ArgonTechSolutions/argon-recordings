@@ -29,7 +29,7 @@ def configuration(data, home, mode):
     value = {}
     for field in required:
         path = data[field]
-        if not isinstance(path,str) or not path.strip() or ':' in path:
+        if not isinstance(path,str) or not path.strip() or ':' in path or ',' in str(home / path):
             raise ValueError('Transport files require nonempty local paths')
         value[field] = home / path
     if mode == 'coordinator':
@@ -82,26 +82,17 @@ def tls_bundle(config):
         raise ValueError('Use exactly one peer certificate')
     context.load_verify_locations(cadata=value['peer.crt'])
     if sum(len(v.encode()) for v in value.values())>48*1024:
-        raise ValueError('Transport credential bundle exceeds RAM volume budget')
+        raise ValueError('Transport credential files exceed the supported size budget')
     return value
-
-
-def prepare_tls(installer,config,installed,bundle):
-    # Same memory-only storage policy as local bearer credentials.
-    prepare_credentials(installer,config,'transport')
-    volume=credential_volume(config,'transport')
-    code="import json,os,sys; from pathlib import Path; b=json.load(sys.stdin); assert set(b)=={'self.crt','self.key','peer.crt'}; [(Path('/tls')/n).write_text(v) for n,v in b.items()]; [os.chmod('/tls/'+n,0o600) for n in b]; Path('/tls/ready').touch()"
-    installer.docker(config,'run','--rm','-i','--network','none','--read-only','--cap-drop','ALL',
-                     '-v',volume+':/tls','--entrypoint','python',installed['image'],'-c',code,
-                     input=json.dumps(bundle),text=True)
 
 
 def transport_args(config,installed,api_ip=None):
     coordinator=config['mode']=='coordinator'
     name=config['name']+'-transport' if coordinator else config['name']
     args=common(config,name,'transport',.1,128*1024**2)
-    args += ['-v',credential_volume(config,'transport')+':/run/transport-tls:ro',
-             '-e','RECORDINGS_TRANSPORT_MODE='+config['mode']]
+    args += ['--user',str(config.get('_transport_uid',os.geteuid()))+':10001', '-e','RECORDINGS_TRANSPORT_MODE='+config['mode']]
+    for field,name in [('certificate','self.crt'),('private_key','self.key'),('peer_certificate','peer.crt')]:
+        args += ['--mount',f"type=bind,src={config['transport'][field].absolute()},dst=/run/transport-tls/{name},readonly"]
     if coordinator:
         args += ['-p',f"{config['transport']['bind_address']}:{config['transport']['port']}:8443",
                  '--add-host','api:'+api_ip,
@@ -114,9 +105,11 @@ def transport_args(config,installed,api_ip=None):
 
 def start(installer,config):
     installed=installer.state(config)
-    bundle=tls_bundle(config)
+    tls_bundle(config)
     coordinator=config['mode']=='coordinator'
-    needed = (config['home']/'models'/('e5-'+config['embedding'])) if coordinator and config['embedding']!='off' else config['turbo'] if not coordinator else None
+    needed = config['turbo'] if not coordinator else None
+    if not coordinator and config['embedding'] != 'off' and not (config['home']/'models'/('e5-'+config['embedding'])).is_dir():
+        raise ValueError('Prepared embedding directory missing; run install on the worker')
     if needed and not needed.is_dir():
         raise ValueError('Prepared model directory missing; run install')
     image=json.loads(installer.docker(config,'image','inspect',installed['image'],capture_output=True,text=True).stdout)[0]
@@ -130,8 +123,9 @@ def start(installer,config):
             with socket.socket() as probe:
                 probe.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
                 probe.bind((bind,port))
-    runtime=dict(config,_worker_subnets=prepare_network(installer,config))
-    prepare_credentials(installer,runtime,'transport')
+    security=json.loads(installer.docker(config,'info','--format','{{json .SecurityOptions}}',capture_output=True,text=True).stdout)
+    uid=0 if any('rootless' in option for option in security) else os.geteuid()
+    runtime=dict(config,_transport_uid=uid,_worker_subnets=prepare_network(installer,config))
     if coordinator:
         prepare_credentials(installer,runtime,1)
     for item in previous:
@@ -146,11 +140,9 @@ def start(installer,config):
             api_ip=info['NetworkSettings']['Networks'][network]['IPAddress']
             installer.docker(runtime,*transport_args(runtime,installed,api_ip))
             installer.docker(runtime,'network','connect',network,runtime['name']+'-transport')
-            prepare_tls(installer,runtime,installed,bundle)
         else:
             installer.docker(runtime,*transport_args(runtime,installed))
             installer.docker(runtime,'network','connect',network,runtime['name'])
-            prepare_tls(installer,runtime,installed,bundle)
             info=installer.inspect(runtime)
             relay_ip=info['NetworkSettings']['Networks'][network]['IPAddress']
             # Full configured inference allocation less the small transport budget;
@@ -158,6 +150,8 @@ def start(installer,config):
             worker=worker_args(dict(runtime,api_cpus=.1,api_memory=.125),installed,1,relay_ip)
             index=worker.index(credential_volume(runtime,1)+':/run/worker-credentials/self:ro')
             del worker[index-1:index+1]
+            if runtime['embedding'] != 'off':
+                worker[-6:-6] = ['-v', str(runtime['home']/'models'/('e5-'+runtime['embedding']))+':/models/embeddings:ro', '-e', 'RECORDINGS_EMBEDDING_DIR=/models/embeddings', '-e', 'RECORDINGS_EMBEDDING_PROFILE='+runtime['embedding'], '-e', 'RECORDINGS_REMOTE_INFERENCE=true']
             worker[-1]='remote-worker'
             installer.docker(runtime,*worker)
         for _ in range(60):

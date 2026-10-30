@@ -19,6 +19,8 @@ for name, expected in FILES.items():
     target = root / name
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists() and checksum(target) == expected:
+        target.chmod(0o644)
+        target.parent.chmod(0o755)
         continue
     temporary = target.with_suffix('.download')
     try:
@@ -28,6 +30,9 @@ for name, expected in FILES.items():
         if checksum(temporary) != expected:
             raise RuntimeError(f'Checksum mismatch: {name}')
         temporary.replace(target)
+        target.chmod(0o644)
+        target.parent.chmod(0o755)
     finally:
         temporary.unlink(missing_ok=True)
+root.chmod(0o755)
 print('Embedding model prepared and verified:', root)

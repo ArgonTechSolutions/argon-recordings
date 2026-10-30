@@ -201,7 +201,7 @@ def install(config):
         else:
             docker(config, 'run', '--rm', '--user', '0:0', '--cpus=1', '--memory=512m', '--memory-swap=512m',
                    '-v', f'{models}:/models', '--entrypoint', 'python', image, 'scripts/prepare_turbo.py', '/models/turbo')
-    if config['mode'] != 'worker' and config['embedding'] != 'off':
+    if config['mode'] != 'coordinator' and config['embedding'] != 'off':
         docker(config, 'run', '--rm', '--user', '0:0', '--cpus=1', '--memory=512m', '--memory-swap=512m',
                '-v', f'{models}:/models', '--entrypoint', 'python', image,
                'scripts/prepare_embeddings.py', '/models/e5-' + config['embedding'], config['embedding'])

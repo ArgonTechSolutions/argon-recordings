@@ -28,6 +28,7 @@ from .store import Store, identity, lease_row
 
 class WorkerCapabilities(Strict):
     diarization_model: str | None = None
+    embedding_model: str | None = None
 
 
 class Settings:
@@ -44,7 +45,9 @@ class Settings:
         self.worker_limit, self.chunk_seconds, self.overlap_seconds = worker_limit, chunk_seconds, overlap_seconds
         self.auth_mode = auth_mode or os.environ.get("RECORDINGS_AUTH_MODE", "local")
         self.public_url = public_url if public_url is not None else os.environ.get("RECORDINGS_PUBLIC_URL", "")
-        self.embeddings = embeddings or Embeddings(os.environ.get('RECORDINGS_EMBEDDING_DIR'), os.environ.get('RECORDINGS_EMBEDDING_PROFILE', 'large'))
+        from .remote_embeddings import RemoteEmbeddings
+        profile = os.environ.get('RECORDINGS_EMBEDDING_PROFILE', 'large')
+        self.embeddings = embeddings or (RemoteEmbeddings(profile) if os.environ.get('RECORDINGS_REMOTE_EMBEDDINGS') == 'true' else Embeddings(os.environ.get('RECORDINGS_EMBEDDING_DIR'), profile))
         self.data = Path(data or os.environ.get('RECORDINGS_DATA', 'data'))
         self.worker_token = worker_token if worker_token is not None else os.environ.get('RECORDINGS_WORKER_TOKEN', '')
         if max_upload is None:
@@ -176,6 +179,26 @@ def create_app(settings=None):
                 raise HTTPException(503, 'Worker access is not configured')
             if not authorization or not hmac.compare_digest(authorization, 'Bearer ' + settings.worker_token):
                 raise HTTPException(401, 'Worker credentials required')
+
+    from .remote_embeddings import RemoteEmbeddings, InferenceResult
+    if isinstance(settings.embeddings, RemoteEmbeddings):
+        settings.embeddings.require_worker = True
+
+    @app.post('/api/worker/inference/claim', dependencies=[Depends(worker_auth)])
+    async def inference_claim(request: Request, body: WorkerCapabilities):
+        if not isinstance(settings.embeddings, RemoteEmbeddings):
+            raise HTTPException(404, 'Remote inference is not enabled')
+        if body.embedding_model != settings.embeddings.model:
+            raise HTTPException(409, 'Embedding profiles must match on coordinator and worker')
+        settings.embeddings.last_seen = time.monotonic()
+        return settings.embeddings.claim(request.state.worker_id or 'legacy')
+
+    @app.post('/api/worker/inference/{tid}/{attempt}', dependencies=[Depends(worker_auth)])
+    async def inference_complete(tid: str, attempt: str, body: InferenceResult, request: Request):
+        if not isinstance(settings.embeddings, RemoteEmbeddings):
+            raise HTTPException(404, 'Remote inference is not enabled')
+        settings.embeddings.complete(tid, attempt, request.state.worker_id or 'legacy', body)
+        return {'ok': True}
 
     @app.post('/api/worker/ready', dependencies=[Depends(worker_auth)])
     def worker_ready(request: Request, body: WorkerCapabilities | None = None):
@@ -377,8 +400,7 @@ def create_app(settings=None):
             raise HTTPException(404, 'Artifact not available')
         return FileResponse(row['path'], media_type='audio/wav' if row['kind'] == 'audio' else 'image/jpeg', headers={'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff'})
 
-    @app.get('/api/search', response_model=list[SearchHit])
-    def search(project_id: str, q: str, mode: str = 'hybrid'):
+    def perform_search(project_id: str, q: str, mode: str = 'hybrid'):
         project_or_404(project_id)
         if mode not in {'hybrid', 'keyword', 'semantic'}:
             raise HTTPException(422, 'Unknown search mode')
@@ -395,6 +417,8 @@ def create_app(settings=None):
         try:
             semantic = settings.embeddings.search(store(), project_id, q[:300])
         except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception('Semantic search failed')
             # Explicit failure keeps a broken model visible; users can select keyword search.
             raise HTTPException(503, 'Semantic index unavailable; use keyword search or check model configuration') from exc
         if mode == 'semantic':
@@ -409,6 +433,28 @@ def create_app(settings=None):
         return [values[k] for k in sorted(ranks, key=ranks.get, reverse=True)[:30]]
 
     install_corrections(app, store, recording_or_404, worker_auth, settings.embeddings)
+
+    import threading
+    from starlette.concurrency import run_in_threadpool
+    search_slots = threading.BoundedSemaphore(4)
+
+    def bounded_agent_search(project_id, q, mode):
+        if not search_slots.acquire(blocking=False):
+            raise HTTPException(429, 'Search is busy; try again shortly')
+        try:
+            return perform_search(project_id, q, mode)
+        finally:
+            search_slots.release()
+
+    @app.get('/api/search', response_model=list[SearchHit])
+    async def search(project_id: str, q: str, mode: str = 'hybrid'):
+        # Fail before consuming a request thread while another query waits for inference.
+        if not search_slots.acquire(blocking=False):
+            raise HTTPException(429, 'Search is busy; try again shortly')
+        try:
+            return await run_in_threadpool(perform_search, project_id, q, mode)
+        finally:
+            search_slots.release()
 
     @app.post('/api/worker/claim', dependencies=[Depends(worker_auth)])
     def claim(body: ClaimRequest, request: Request):
@@ -515,7 +561,7 @@ def create_app(settings=None):
     from .agent_grants import install as install_agent_grants
     install_agent_grants(app, lambda: app.state.accounts)
     from .agent_api import install as install_agent_api
-    install_agent_api(app, lambda: app.state.accounts, view, search, speaker_readers, visual_actions)
+    install_agent_api(app, lambda: app.state.accounts, view, bounded_agent_search, speaker_readers, visual_actions)
 
     static = os.environ.get('RECORDINGS_STATIC')
     if static:

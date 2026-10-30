@@ -41,7 +41,11 @@ def api_args(config, installed, label=None):
              '-e', 'RECORDINGS_WORKER_SUBNETS=' + config.get('_worker_subnets', '')]
     for index in range(1, config['workers'] + 1):
         args += ['-v', credential_volume(config, index) + ':/run/worker-credentials/' + str(index)]
-    if config['embedding'] != 'off':
+    if config.get('mode') == 'coordinator':
+        args += ['-e', 'RECORDINGS_TRANSPORT_GROUP=true']
+        if config['embedding'] != 'off':
+            args += ['-e', 'RECORDINGS_REMOTE_EMBEDDINGS=true', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]
+    elif config['embedding'] != 'off':
         args += ['-v', str(config['home'] / 'models' / ('e5-' + config['embedding'])) + ':/models/embeddings:ro',
                  '-e', 'RECORDINGS_EMBEDDING_DIR=/models/embeddings', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]
     return [*args, '--entrypoint', 'python', installed['image'], '-m', 'argon_recordings.isolated', 'api']

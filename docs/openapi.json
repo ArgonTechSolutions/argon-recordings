@@ -5,6 +5,132 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/worker/inference/claim": {
+      "post": {
+        "summary": "Inference Claim",
+        "operationId": "inference_claim_api_worker_inference_claim_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerCapabilities"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/inference/{tid}/{attempt}": {
+      "post": {
+        "summary": "Inference Complete",
+        "operationId": "inference_complete_api_worker_inference__tid___attempt__post",
+        "parameters": [
+          {
+            "name": "tid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tid"
+            }
+          },
+          {
+            "name": "attempt",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attempt"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InferenceResult"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/worker/ready": {
       "post": {
         "summary": "Worker Ready",
@@ -455,68 +581,6 @@
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/search": {
-      "get": {
-        "summary": "Search",
-        "operationId": "search_api_search_get",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Q"
-            }
-          },
-          {
-            "name": "mode",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "hybrid",
-              "title": "Mode"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SearchHit"
-                  },
-                  "title": "Response Search Api Search Get"
-                }
               }
             }
           },
@@ -1035,6 +1099,68 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "summary": "Search",
+        "operationId": "search_api_search_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "hybrid",
+              "title": "Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchHit"
+                  },
+                  "title": "Response Search Api Search Get"
+                }
               }
             }
           },
@@ -7747,6 +7873,59 @@
         ],
         "title": "ImageAcknowledgement"
       },
+      "InferenceResult": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Model"
+          },
+          "vectors": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array",
+                "maxItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vectors"
+          },
+          "windows": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array",
+                "maxItems": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Windows"
+          },
+          "failed": {
+            "type": "boolean",
+            "title": "Failed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "InferenceResult"
+      },
       "Interval": {
         "properties": {
           "start": {
@@ -10330,6 +10509,17 @@
               }
             ],
             "title": "Diarization Model"
+          },
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model"
           }
         },
         "additionalProperties": false,
