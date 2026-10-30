@@ -215,3 +215,64 @@ query and blocked worker external DNS, then restarts existing containers with a
 rotated RAM bearer and checks an unchanged durable synthetic index. Fixture cleanup
 checks ownership labels before removing its containers, networks and volumes. It
 never mounts real recordings and does not reboot the host or prove boot ordering.
+
+
+## Coordinator private-listener boot recovery
+
+Docker's restart policy cannot repair a container whose host-port publishing fails
+before its process starts. If Tailscale's configured address is not present when
+Docker restores the coordinator transport, the API can be healthy while no worker
+can connect. This is separate from Caddy's LAN bind retry and private Docker DNS.
+
+On a rootful Linux coordinator, opt in once after updating and starting the app:
+
+```sh
+sudo -v
+python3 recordings.py setup-boot-recovery
+```
+
+Run as the installation's normal nonroot owner, using sudo for the prompted system
+setup. No credentials are generated. The command validates the owned API/transport,
+rootful daemon and exact Tailscale-only binding. It verifies and installs a root-owned
+stdlib helper snapshot plus manifest, and enables an installation-specific systemd
+oneshot service after Docker, Tailscale and network-online. It does not change the
+Caddyfile, firewall, Docker unit, public ports, recordings, models or worker count.
+
+The helper retries every five seconds only for the recorded host-port
+`cannot assign requested address` failure, once the configured address exists. It
+starts the already-existing transport by immutable container ID after verifying
+its installation/role labels, private binding and restart policy. It never creates
+containers or starts an absent/stopped API. Normal manual stops and unrelated runtime
+failures are left unchanged. Start/stop and recovery share a persistent lifecycle
+lock, so a concurrent operator stop cannot be undone by the helper.
+
+Executable snapshots live under `/usr/local/lib/argon-recordings/boot/IDENTITY/`;
+the shared lock is under `/var/lib/argon-recordings/boot/IDENTITY/`. Systemd executes
+only root-owned code, never files from the user's checkout. Setup stages and verifies
+the unit, backs up a previous unit under `/var/backups/argon-recordings/transport-boot-*`,
+and restores its prior unit/enablement/active state on publication failure. It retains
+unreferenced helper generations for rollback. Standard app updates keep the same
+container names/identity, so registration survives them. Rerun setup when changing
+the installation owner, private binding or recovery helper version.
+
+For Argon's existing installation:
+
+```sh
+systemctl --no-pager status argon-recordings-a06fd327a1985e6d-boot-recovery.service
+sudo -n journalctl -u argon-recordings-a06fd327a1985e6d-boot-recovery.service -b -n 30 --no-pager
+```
+
+Successful oneshot completion normally shows `active (exited)`. A missing address
+shows retrying until it becomes available. Verify a real Vesta reboot afterward:
+Caddy active, loopback health OK with one online worker, Forculus origin HTTP200,
+semantic search and private admin MFA still working, without manual container starts.
+
+To disable only this optional recovery helper:
+
+```sh
+sudo -n systemctl disable --now argon-recordings-a06fd327a1985e6d-boot-recovery.service
+```
+
+This leaves all application containers, data, model files and Caddy settings intact.
+The feature currently supports rootful Docker and a Tailscale IPv4 coordinator only.
+Local/worker-only roles and rootless Docker do not install a system recovery service.

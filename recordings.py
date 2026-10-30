@@ -219,6 +219,12 @@ def start_args(config, installed):
 
 
 def start(config):
+    from scripts.boot_recovery import lifecycle_lock
+    with lifecycle_lock(config):
+        return _start(config)
+
+
+def _start(config):
     if config.get('mode','local') != 'local':
         from scripts.remote_stack import start as remote_start
         return remote_start(sys.modules[__name__], config)
@@ -228,13 +234,15 @@ def start(config):
 
 def stop(config):
     from scripts.worker_stack import stop_stack
-    stop_stack(sys.modules[__name__], config)
+    from scripts.boot_recovery import lifecycle_lock
+    with lifecycle_lock(config):
+        stop_stack(sys.modules[__name__], config)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT / 'recordings.toml')
-    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa'])
+    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-boot-recovery', 'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa'])
     parser.add_argument('--adopt-existing', action='store_true')
     args = parser.parse_args()
     try:
@@ -252,6 +260,9 @@ def main():
             if args.adopt_existing:
                 command += ['--adopt-existing']
             docker(config, *command)
+        elif args.command == 'setup-boot-recovery':
+            from scripts.boot_recovery import setup
+            setup(sys.modules[__name__], config)
         elif args.command == 'update':
             from scripts.git_updates import update
             update(sys.modules[__name__], config)
@@ -289,7 +300,7 @@ def main():
                 print(json.dumps(dict(deployment=config['mode'], workers=[dict(name=member['Name'].lstrip('/'), status=member['State']['Status'], cpus=member['HostConfig']['NanoCpus'], memory_bytes=member['HostConfig']['Memory'], mounts=[dict(destination=m['Destination'], volume=m.get('Name')) for m in member['Mounts']]) for member in stack_items(sys.modules[__name__], config) if member['Config'].get('Labels', {}).get('com.argon.recordings.role') == 'worker'], status=item['State']['Status'], image=item['Config']['Image'],
                                       ports=item['HostConfig']['PortBindings'], cpus=item['HostConfig']['NanoCpus'],
                                       memory_bytes=item['HostConfig']['Memory'], mounts=[dict(destination=m['Destination'], volume=m.get('Name'), source=m['Source']) for m in item['Mounts']]), indent=2))
-    except (ValueError, OSError, subprocess.CalledProcessError, KeyError) as exc:
+    except (ValueError, RuntimeError, OSError, subprocess.SubprocessError, KeyError) as exc:
         parser.exit(1, f'Error: {exc}\n')
 
 
