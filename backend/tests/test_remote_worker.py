@@ -122,7 +122,7 @@ def test_role_config_resources_and_installation_identity(tmp_path):
     coordinator=config(tmp_path,'coordinator')
     assert worker['identity']==coordinator['identity']
     assert worker['turbo']==coordinator['turbo']
-    assert '127.0.0.1:8788:8443' in transport_args(coordinator,{'image':'test'},'172.20.0.2')
+    assert '127.0.0.1:8788:8443' in transport_args(coordinator,{'image':'test'})
 
 
 @pytest.mark.parametrize('role,extra',[
@@ -171,7 +171,7 @@ def test_streaming_upload_and_prepare_timeout(certificates,tls_relay):
 
 def test_reboot_transport_mounts_host_tls_only_and_api_uses_remote_inference(tmp_path):
     cfg=config(tmp_path,'coordinator')
-    args=transport_args(cfg,{'image':'test'},'172.20.0.2')
+    args=transport_args(cfg,{'image':'test'})
     assert args[args.index('--user')+1]==str(os.geteuid())+':10001'
     for name in ('self.crt','self.key','peer.crt'):
         assert any('dst=/run/transport-tls/'+name+',readonly' in arg for arg in args)
@@ -202,3 +202,63 @@ def test_ram_bearer_permissions_are_group_readable_only_for_split_coordinator(tm
     assert folder.stat().st_mode & 0o777 == 0o750
     assert (folder/'credential.json').stat().st_mode & 0o777 == 0o640
     assert json.loads((folder/'credential.json').read_text())['id']=='synthetic-new'
+
+
+@pytest.mark.parametrize('role',['worker','coordinator'])
+def test_discovery_does_not_pin_a_container_ip(tmp_path,role):
+    cfg=config(tmp_path,role,'origin="https://vesta.example:8788"' if role=='worker' else '')
+    cfg['_worker_subnets']='172.20.0.0/24'
+    relay=transport_args(cfg,{'image':'test'})
+    inference=worker_args(cfg,{'image':'test'},1)
+    assert '--add-host' not in relay+inference
+    assert inference[inference.index('--dns')+1]=='127.0.0.1'
+    if role=='coordinator':
+        assert relay[relay.index('--dns')+1]=='127.0.0.1'
+    else:
+        assert '--dns' not in relay  # Keep fixed HTTPS-origin hostname resolution.
+
+
+@pytest.mark.parametrize('role',['worker','coordinator'])
+def test_remote_start_registers_upstream_alias_without_inspecting_endpoint_ips(tmp_path,role,monkeypatch):
+    from types import SimpleNamespace
+    from scripts import remote_stack
+    from scripts.worker_stack import prefix
+    cfg=config(tmp_path,role,'origin="https://vesta.example:8788"' if role=='worker' else '')
+    cfg['turbo'].mkdir(parents=True)
+    (cfg['home']/'models/e5-large').mkdir(parents=True)
+    monkeypatch.setattr(remote_stack,'tls_bundle',lambda _:None)
+    class Response:
+        def __enter__(self):return self
+        def __exit__(self,*_):pass
+        def read(self):return b'{"status":"ok"}'
+    monkeypatch.setattr(remote_stack.urllib.request,'urlopen',lambda *a,**k:Response())
+    class Installer:
+        LABEL='com.argon.recordings.installation'
+        def __init__(self):self.calls=[];self.items={}
+        def state(self,_):return {'image':'test','source':'test'}
+        def inspect(self,_):return self.items.get(cfg['name'])
+        def docker(self,config,*args,**kwargs):
+            self.calls.append(args)
+            value=''
+            if args[:2]==('image','inspect'):
+                value=json.dumps([{'Config':{'Labels':{'com.argon.recordings.source':'test'}}}])
+            elif args[0]=='info':value='["name=rootless"]'
+            elif args[:2]==('container','ls'):value='\n'.join(self.items)
+            elif args[:2]==('network','inspect'):
+                value=json.dumps([{'Internal':True,'Driver':'bridge','Labels':{self.LABEL:cfg['identity']},'IPAM':{'Config':[{'Subnet':'172.20.0.0/24'}]}}])
+            elif args[:2]==('volume','inspect'):
+                value=json.dumps([{'Driver':'local','Labels':{self.LABEL:cfg['identity']},'Options':{'type':'tmpfs','device':'tmpfs','o':'size=65536,uid=10001,gid=10001,mode=0700'}}])
+            elif args[0]=='run':
+                name=args[args.index('--name')+1]
+                labels=dict(args[i+1].split('=',1) for i,v in enumerate(args) if v=='--label')
+                self.items[name]={'Name':'/'+name,'State':{'Running':True},'Config':{'Labels':labels}}
+            elif args[0]=='inspect':value=json.dumps([self.items[args[1]]])
+            elif args[0]=='exec':value='True'
+            return SimpleNamespace(stdout=value)
+    installer=Installer()
+    remote_stack.start(installer,cfg)
+    assert ('network','connect','--alias','api',prefix(cfg)+'-workers',cfg['name']) in installer.calls
+    runs=[call for call in installer.calls if call[0]=='run']
+    assert len(runs)==2
+    assert all('--add-host' not in call for call in runs)
+    assert all('IPAddress' not in item for item in installer.items.values())

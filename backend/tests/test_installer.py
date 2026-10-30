@@ -20,7 +20,7 @@ def test_config_defaults_and_resource_limited_start(tmp_path):
     args = installer.start_args(settings, {'image': 'test-image'})
     assert '127.0.0.1:8877:8000' in args
     assert '--read-only' in args and '--cap-drop' in args
-    worker = worker_args(settings, {'image': 'test-image'}, 1, '172.20.0.2')
+    worker = worker_args(settings, {'image': 'test-image'}, 1)
     assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=0' in worker
     assert '--memory-swap' in args
     assert str(2 * 1024**3) in args
@@ -95,7 +95,7 @@ def test_first_up_installs_before_starting(tmp_path, monkeypatch):
 
 def test_optional_timeout_can_be_enabled_explicitly(tmp_path):
     settings = config(tmp_path, '[resources]\njob_timeout_seconds=14400\n')
-    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=14400' in worker_args(settings, {'image': 'test'}, 1, '172.20.0.2')
+    assert 'RECORDINGS_JOB_TIMEOUT_SECONDS=14400' in worker_args(settings, {'image': 'test'}, 1)
 
 
 def test_upload_limit_is_passed_to_container(tmp_path):

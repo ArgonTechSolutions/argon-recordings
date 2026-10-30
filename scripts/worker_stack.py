@@ -51,11 +51,11 @@ def api_args(config, installed, label=None):
     return [*args, '--entrypoint', 'python', installed['image'], '-m', 'argon_recordings.isolated', 'api']
 
 
-def worker_args(config, installed, index, api_ip):
+def worker_args(config, installed, index):
     memory = (config['memory'] - config['api_memory']) * 1024**3 // config['workers']
     args = common(config, worker_name(config, index), 'worker', (config['cpus'] - config['api_cpus']) / config['workers'], memory)
     work = prefix(config) + ('-work' if index == 1 else '-work-' + str(index))
-    args += ['--network', prefix(config) + '-workers', '--dns', '127.0.0.1', '--add-host', 'api:' + api_ip,
+    args += ['--network', prefix(config) + '-workers', '--dns', '127.0.0.1',
              '-v', work + ':/work', '-v', str(config['turbo']) + ':/models/turbo:ro',
              '-v', credential_volume(config, index) + ':/run/worker-credentials/self:ro',
              '-e', 'RECORDINGS_WORKER_ID=worker-' + str(index),
@@ -141,10 +141,8 @@ def start_stack(installer, config):
         installer.docker(runtime, *api_args(runtime, installed))
         name = prefix(runtime) + '-workers'
         installer.docker(runtime, 'network', 'connect', '--alias', 'api', name, runtime['name'])
-        item = installer.inspect(runtime)
-        api_ip = item['NetworkSettings']['Networks'][name]['IPAddress']
         for index in range(1, runtime['workers'] + 1):
-            installer.docker(runtime, *worker_args(runtime, installed, index, api_ip))
+            installer.docker(runtime, *worker_args(runtime, installed, index))
         for _ in range(120):
             try:
                 with urllib.request.urlopen(f"http://127.0.0.1:{runtime['port']}/api/health", timeout=1) as reply:

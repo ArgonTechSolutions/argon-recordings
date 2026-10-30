@@ -179,3 +179,39 @@ retain owner-only permissions. Old RAM TLS volumes are left untouched and unused
 This does not configure Docker/Tailscale service boot ordering or renew certificates:
 keep Docker enabled and monitor certificate expiry. Philemon retries Vesta while its
 network is unavailable. Validate an actual host reboot separately after updating.
+
+
+## Internal service discovery and IP reassignment
+
+The private Docker network owns an `api` service alias. On the coordinator it names
+its API; on the worker host it names the outbound TLS transport. Consumers resolve
+that alias through Docker's embedded DNS, with no saved IP in `ExtraHosts`. Local
+installations use the same discovery path. Existing installation/network identities,
+volumes, model paths, TLS files, and remote worker count remain unchanged.
+
+Inference workers and the coordinator transport retain `--dns 127.0.0.1`: embedded
+Docker service names resolve, while ordinary external DNS forwarding is blocked.
+The worker transport retains normal resolution for its fixed HTTPS origin. This
+change does not open an inbound worker port or remove TLS/private-interface checks.
+
+Run the normal update on Philemon first, then Vesta. The launcher must recreate each
+host's containers once to register aliases and remove stale `/etc/hosts` entries;
+restarting old containers alone cannot apply the fix. Keep the existing verified
+backups, recordings.toml and installation directories. Do not remove data/work volumes
+or either host's model directories. Retest semantic search and then each host reboot.
+The separate host-port/Tailscale boot-order prerequisite still applies on Vesta.
+
+A reproducible local IP-reassignment check uses existing model weights and a supplied
+install image, with current backend code mounted read-only. It requires the personal
+rootless Docker context and creates only labelled synthetic fixture resources:
+
+```sh
+python3 scripts/check_service_discovery.py --image YOUR_LOCAL_INSTALL_IMAGE
+```
+
+It runs one worker, a real E5-large semantic query over mTLS, forces both internal
+upstream IPs to change while consumers remain running, verifies another uncached
+query and blocked worker external DNS, then restarts existing containers with a
+rotated RAM bearer and checks an unchanged durable synthetic index. Fixture cleanup
+checks ownership labels before removing its containers, networks and volumes. It
+never mounts real recordings and does not reboot the host or prove boot ordering.

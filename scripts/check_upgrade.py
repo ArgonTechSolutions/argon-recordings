@@ -66,8 +66,10 @@ def installer_snapshot(work):
     assert config['workers'] == 1 and config['embedding'] == 'large'
     assert config['turbo'] == (work/'retained-turbo').resolve()
     api = recordings.start_args(config, {'image':'disposable-not-built'})
-    worker = worker_args(config, {'image':'disposable-not-built'}, 1, '172.20.0.2')
+    worker = worker_args(config, {'image':'disposable-not-built'}, 1)
     assert worker[worker.index('--cpus')+1] == '2.0'
+    assert '--add-host' not in worker
+    assert worker[worker.index('--dns')+1] == '127.0.0.1'
     assert 'RECORDINGS_WORKER_TOKEN' not in ' '.join(api+worker)
     assert hashlib.sha256(config_path.read_bytes()).hexdigest() == before
     return {'config_sha256':before,'identity':config['identity'],'home':str(config['home']),

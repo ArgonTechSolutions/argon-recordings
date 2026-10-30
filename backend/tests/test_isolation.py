@@ -53,7 +53,7 @@ def test_multiworker_budget_and_credential_mounts(tmp_path):
     path = tmp_path / 'recordings.toml'
     path.write_text('[resources]\ncpus=3\nmemory_gib=8\n[workers]\ncount=2\n')
     cfg = installer.load_config(path)
-    args = [api_args(cfg, {'image': 'test'})] + [worker_args(cfg, {'image': 'test'}, i, '172.20.0.2') for i in [1, 2]]
+    args = [api_args(cfg, {'image': 'test'})] + [worker_args(cfg, {'image': 'test'}, i) for i in [1, 2]]
     assert sum(float(a[a.index('--cpus')+1]) for a in args) == 3
     assert sum(int(a[a.index('--memory')+1]) for a in args) <= 8 * 1024**3
     for index, worker in enumerate(args[1:], 1):

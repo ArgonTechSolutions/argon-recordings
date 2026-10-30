@@ -86,7 +86,7 @@ def tls_bundle(config):
     return value
 
 
-def transport_args(config,installed,api_ip=None):
+def transport_args(config,installed):
     coordinator=config['mode']=='coordinator'
     name=config['name']+'-transport' if coordinator else config['name']
     args=common(config,name,'transport',.1,128*1024**2)
@@ -95,7 +95,7 @@ def transport_args(config,installed,api_ip=None):
         args += ['--mount',f"type=bind,src={config['transport'][field].absolute()},dst=/run/transport-tls/{name},readonly"]
     if coordinator:
         args += ['-p',f"{config['transport']['bind_address']}:{config['transport']['port']}:8443",
-                 '--add-host','api:'+api_ip,
+                 '--dns','127.0.0.1',
                  '-v',credential_volume(config,1)+':/run/worker-credentials/self:ro']
     else:
         args += ['-e','RECORDINGS_COORDINATOR_ORIGIN='+config['transport']['origin'],
@@ -135,19 +135,15 @@ def start(installer,config):
         if coordinator:
             api=api_args(dict(runtime,api_cpus=runtime['cpus']-.1,api_memory=runtime['memory']-0.125),installed)
             installer.docker(runtime,*api)
-            installer.docker(runtime,'network','connect',network,runtime['name'])
-            info=installer.inspect(runtime)
-            api_ip=info['NetworkSettings']['Networks'][network]['IPAddress']
-            installer.docker(runtime,*transport_args(runtime,installed,api_ip))
+            installer.docker(runtime,'network','connect','--alias','api',network,runtime['name'])
+            installer.docker(runtime,*transport_args(runtime,installed))
             installer.docker(runtime,'network','connect',network,runtime['name']+'-transport')
         else:
             installer.docker(runtime,*transport_args(runtime,installed))
-            installer.docker(runtime,'network','connect',network,runtime['name'])
-            info=installer.inspect(runtime)
-            relay_ip=info['NetworkSettings']['Networks'][network]['IPAddress']
+            installer.docker(runtime,'network','connect','--alias','api',network,runtime['name'])
             # Full configured inference allocation less the small transport budget;
             # local API reservation is not deducted on the worker-only host.
-            worker=worker_args(dict(runtime,api_cpus=.1,api_memory=.125),installed,1,relay_ip)
+            worker=worker_args(dict(runtime,api_cpus=.1,api_memory=.125),installed,1)
             index=worker.index(credential_volume(runtime,1)+':/run/worker-credentials/self:ro')
             del worker[index-1:index+1]
             if runtime['embedding'] != 'off':
