@@ -46,38 +46,56 @@ def checked_checkout(root):
 
 
 def update(installer, config):
+    from scripts import update_backups as backups
+    from scripts.boot_recovery import lifecycle_lock
     root = checked_checkout(installer.ROOT)
-    previous = git(root, 'rev-parse', 'HEAD').stdout.strip()
-    git(root, 'fetch', 'origin', 'main')  # Fetch/authentication errors occur before stopping the app.
-    target = git(root, 'rev-parse', 'refs/remotes/origin/main').stdout.strip()
-    tree(root, target)
-    if git(root, 'merge-base', '--is-ancestor', previous, target, check=False).returncode:
-        raise ValueError('Local history has diverged from origin/main; refusing to overwrite it')
-    needs_install = True
-    try:
-        installer.state(config)
-        needs_install = False
-    except (OSError, ValueError, KeyError):
-        pass
-    if previous == target and not needs_install:
-        print('Already up to date:', target[:12])
-        return
-    current = installer.inspect(config)
-    was_running = bool(current and current['State']['Running'])
-    if was_running:
-        if hasattr(installer, 'stop'):
-            installer.stop(config)
-        else:  # Compatibility with the launcher loaded before this update.
-            installer.docker(config, 'stop', '-t', '30', config['name'])
-    git(root, 'merge', '--ff-only', target)
-    # Execute the new installer, not Python functions loaded from the old version.
-    command = [sys.executable, str(root / 'recordings.py'), '--config', str(config['config_path'])]
-    subprocess.run([*command, 'install'], check=True)
-    if was_running:
-        subprocess.run([*command, 'start'], check=True)
-    print(f'Updated {previous[:12]} -> {target[:12]}. Config, weights and data volumes preserved.')
-    if not was_running:
-        print('App remains stopped; run start when ready.')
+    git(root, 'fetch', 'origin', 'main')  # Network/auth errors happen before downtime.
+    with backups.update_lock(config) as update_fd:
+        previous = git(root, 'rev-parse', 'HEAD').stdout.strip()
+        target = git(root, 'rev-parse', 'refs/remotes/origin/main').stdout.strip()
+        tree(root, target)
+        if git(root, 'merge-base', '--is-ancestor', previous, target, check=False).returncode:
+            raise ValueError('Local history has diverged from origin/main; refusing to overwrite it')
+        needs_install = True
+        try:
+            installer.state(config)
+            needs_install = False
+        except (OSError, ValueError, KeyError):
+            pass
+        if previous == target and not needs_install:
+            print('Already up to date:', target[:12])
+            return
+        layout = backups.plan(installer,config)
+        backups.preflight(installer,config,layout)
+        # Fence manual starts and boot recovery until the volume comparison ends.
+        with lifecycle_lock(config):
+            fresh=backups.plan(installer,config)
+            if sorted(fresh['volumes'],key=lambda v:v['volume'])!=sorted(layout['volumes'],key=lambda v:v['volume']):
+                raise ValueError('Installation volume/image layout changed during preflight; retry update')
+            layout=fresh
+            try:
+                installer._stop(config)
+                backup = backups.snapshot(installer,config,layout,previous,root,git)
+            except BaseException:
+                # A later stop may fail after earlier members stopped successfully.
+                backups.restore_running(installer,config,layout)
+                raise
+        try:
+            git(root, 'merge', '--ff-only', target)
+            # Execute the new installer, not Python functions loaded before the merge.
+            command = [sys.executable, str(root / 'recordings.py'), '--config', str(config['config_path'])]
+            environment=dict(os.environ,RECORDINGS_UPDATE_LOCK_FD=str(update_fd))
+            subprocess.run([*command, 'install'], check=True,env=environment,pass_fds=(update_fd,))
+            if layout['was_running']:
+                subprocess.run([*command, 'start'], check=True,env=environment,pass_fds=(update_fd,))
+        except BaseException:
+            print('Update failed. Verified rollback backup retained:',backup)
+            print('Older backups are retained; no automatic database restore was attempted.')
+            raise
+        backups.prune(config,backup)
+        print(f'Updated {previous[:12]} -> {target[:12]}. Config, weights and data volumes preserved.')
+        if not layout['was_running']:
+            print('App remains stopped; run start when ready.')
 
 
 def file_digest(path):

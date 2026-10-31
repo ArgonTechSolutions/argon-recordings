@@ -276,3 +276,71 @@ sudo -n systemctl disable --now argon-recordings-a06fd327a1985e6d-boot-recovery.
 This leaves all application containers, data, model files and Caddy settings intact.
 The feature currently supports rootful Docker and a Tailscale IPv4 coordinator only.
 Local/worker-only roles and rootless Docker do not install a system recovery service.
+
+
+## Automatic update backups and retention
+
+After installing the backup-capable updater, the existing single command performs
+backup, verification, installation, startup and retention:
+
+```sh
+sudo -v
+python3 recordings.py update
+```
+
+For split deployments update Philemon first, then Vesta. Run when no recording is
+processing. The one-time installation of this updater is executed by the old updater:
+it preserves the existing verified manual backup; automatic snapshots begin with the
+following actual update/reinstall. An already-current installation produces no extra
+backup or downtime. Keep the existing verified backup through that first rollout.
+
+Every actual update snapshots the existing deployment's named volumes: `/data` on
+Vesta/coordinators, `/work` on Philemon/worker-only hosts, and both on local deployments.
+Local additional worker workspaces are included. Models, RAM worker credentials and
+TLS key mounts are excluded. Each backup includes private copies of recordings.toml,
+installation.json, a verified Git source bundle, and a manifest of the source revision,
+volume/image identities and SHA-256 payload hashes. Backups live in private
+`.recordings/backups/update-TIMESTAMP-ID/` directories; they contain account/MFA data
+and must not be published or committed. Existing backup/update directories must be
+owned by the installation user and must not be group/world writable.
+
+The updater estimates required space before stopping anything and preserves the
+previous backup while writing the new one. Under the installation lifecycle lock it
+stops all owned containers, creates uncompressed tar archives from read-only mounts
+as application UID10001, compares each archive against the stopped volume, hashes all
+payloads and flushes files/directory publication to disk. Only then does it advance
+source/build. Lack of space, unreadable files, archive comparison/checksum or durability
+failure blocks source changes and attempts to restart only the originally running
+container IDs. Partial stop failures use the same recovery path. No automatic database
+restore is attempted on a failed application install/start.
+
+After install/start succeeds, it rechecks the kept backup's hashes before pruning
+recognized older verified backups of the same installation/role whose volumes are
+covered by the new snapshot. Recognized old `remote-inference-*` backups are adopted
+and removed after a verified replacement. Failed updater-owned partial snapshots are
+also removed on the next successful update. Unknown, damaged or foreign backups and
+Caddy/system-helper rollback files are preserved. Any failed update keeps the new
+backup and all older backups; retention only runs after a later successful update.
+
+Updates are serialized. Manual install/start/stop commands queue behind an update;
+a queued stop executes afterward. Installer subprocesses inherit the parent's checked
+lock descriptor so startup does not deadlock. The separate lifecycle lock fences
+backup consistency against private-listener boot recovery. Do not edit configuration
+or use direct Docker lifecycle commands while the updater is working.
+
+The manifest and Git bundle describe the pre-update rollback point, not the current
+live application after it accepts new recordings. Restore only with the installation
+stopped and an explicit recovery procedure. No model weights or live volumes are
+deleted by retention.
+
+Developer reproduction with personal rootless Docker and a supplied local install
+image (no downloads, synthetic data only):
+
+```sh
+python3 scripts/check_update_backups.py --image YOUR_LOCAL_INSTALL_IMAGE
+```
+
+This creates actual UID10001-owned 0700 directories/0600 files for coordinator and
+worker volumes, verifies snapshots by tar comparison, restores into separate disposable
+volumes, checks content/permissions, and confirms one-backup retention. Only fixture-
+labelled containers and volumes are removed at the end.

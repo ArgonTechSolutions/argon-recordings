@@ -1,5 +1,6 @@
 """Real disposable Git repositories; Docker/install execution is isolated."""
 import importlib.util
+from contextlib import nullcontext
 from pathlib import Path
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT))
 spec = importlib.util.spec_from_file_location('git_updates_test', ROOT / 'scripts/git_updates.py')
 updates = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(updates)
@@ -46,8 +48,27 @@ def repos(tmp_path, monkeypatch):
 def fake_installer(root, running=True):
     events = []
     installer = SimpleNamespace(ROOT=root, state=lambda config: {}, inspect=lambda config: {'State': {'Running': running}},
-                                docker=lambda *args: events.append('stop'))
+                                docker=lambda *args: events.append('stop'),
+                                _stop=lambda config: events.append('stop'),
+                                start=lambda config: events.append('restore'))
+    installer._events=events
     return installer, events
+
+
+@pytest.fixture(autouse=True)
+def snapshot_boundary(monkeypatch):
+    from scripts import update_backups
+    monkeypatch.setattr(update_backups,'plan',lambda installer,cfg:dict(was_running=installer.inspect(cfg)['State']['Running'],volumes=[]))
+    monkeypatch.setattr(update_backups,'preflight',lambda *args:None)
+    monkeypatch.setattr(update_backups,'restore_running',lambda installer,cfg,layout:installer._events.append('restore') if layout['was_running'] else None)
+    def snapshot(installer,cfg,*args):
+        cfg['_events']=installer._events
+        installer._events.append('backup')
+        return cfg['home']/'.recordings/backups/synthetic'
+    monkeypatch.setattr(update_backups,'snapshot',snapshot)
+    def prune(cfg,path):
+        cfg['_events'].append('prune')
+    monkeypatch.setattr(update_backups,'prune',prune)
 
 
 def test_update_fast_forwards_and_executes_new_installer(repos, monkeypatch):
@@ -64,8 +85,8 @@ def test_update_fast_forwards_and_executes_new_installer(repos, monkeypatch):
             return SimpleNamespace(returncode=0)
         return real_run(args, **kwargs)
     monkeypatch.setattr(updates.subprocess, 'run', run)
-    updates.update(installer, {'name': 'fixture', 'config_path': config})
-    assert events == ['stop', 'install', 'start']
+    updates.update(installer, {'name': 'fixture', 'config_path': config,'home':repos.client,'identity':'a'*16})
+    assert events == ['stop', 'backup', 'install', 'start', 'prune']
     assert command('git', '-C', repos.client, 'rev-parse', 'HEAD') == repos.new
     assert config.read_text() == 'private operator config\n'
     assert (repos.client / 'models' / 'retained').read_text() == 'model fixture'
@@ -75,10 +96,10 @@ def test_update_refuses_dirty_or_diverged_source_before_stop(repos):
     installer, events = fake_installer(repos.client)
     (repos.client / 'README.md').write_text('operator edits\n')
     with pytest.raises(ValueError, match='Local source changes'):
-        updates.update(installer, {})
+        updates.update(installer, {'home':repos.client,'identity':'a'*16})
     commit(repos.client, 'fix: local divergent edit')
     with pytest.raises(ValueError, match='diverged'):
-        updates.update(installer, {})
+        updates.update(installer, {'home':repos.client,'identity':'a'*16})
     assert not events
 
 
@@ -90,10 +111,10 @@ def test_update_noop_and_preserves_stopped_state(repos, monkeypatch):
             events.append(args[-1]); return SimpleNamespace(returncode=0)
         return real_run(args, **kwargs)
     monkeypatch.setattr(updates.subprocess, 'run', run)
-    updates.update(installer, {'config_path': repos.client / 'recordings.toml'})
-    assert events == ['install']
+    updates.update(installer, {'config_path': repos.client / 'recordings.toml','home':repos.client,'identity':'a'*16})
+    assert events == ['stop', 'backup', 'install', 'prune']
     events.clear()
-    updates.update(installer, {})
+    updates.update(installer, {'home':repos.client,'identity':'a'*16})
     assert events == []
 
 
@@ -133,6 +154,42 @@ def test_fetch_failure_keeps_running_app_untouched(repos):
     installer, events = fake_installer(repos.client)
     repos.remote.rename(repos.remote.with_name('unavailable.git'))
     with pytest.raises(subprocess.CalledProcessError):
-        updates.update(installer, {})
+        updates.update(installer, {'home':repos.client,'identity':'a'*16})
     assert events == []
     assert command('git', '-C', repos.client, 'rev-parse', 'HEAD') == repos.old
+
+
+def test_backup_failure_blocks_merge_and_restores_old_running_stack(repos,monkeypatch):
+    from scripts import update_backups
+    installer,events=fake_installer(repos.client)
+    def fail(*args):raise RuntimeError('compare failed')
+    monkeypatch.setattr(update_backups,'snapshot',fail)
+    with pytest.raises(RuntimeError,match='compare failed'):
+        updates.update(installer,dict(home=repos.client,identity='a'*16,config_path=repos.client/'recordings.toml'))
+    assert command('git','-C',repos.client,'rev-parse','HEAD')==repos.old
+    assert events==['stop','restore']
+
+
+def test_install_failure_retains_new_and_older_backups(repos,monkeypatch):
+    installer,events=fake_installer(repos.client)
+    real_run=subprocess.run
+    def run(args,**kwargs):
+        if args[0]==sys.executable:raise subprocess.CalledProcessError(1,args)
+        return real_run(args,**kwargs)
+    monkeypatch.setattr(updates.subprocess,'run',run)
+    with pytest.raises(subprocess.CalledProcessError):
+        updates.update(installer,dict(home=repos.client,identity='a'*16,config_path=repos.client/'recordings.toml'))
+    assert events==['stop','backup']  # No retention after installation failure.
+
+
+
+def test_partial_stop_failure_attempts_restoration_before_any_source_change(repos,monkeypatch):
+    installer,events=fake_installer(repos.client)
+    def stop(cfg):
+        events.append('first-stopped')
+        raise RuntimeError('second stop failed')
+    installer._stop=stop
+    with pytest.raises(RuntimeError,match='second stop failed'):
+        updates.update(installer,dict(home=repos.client,identity='a'*16,config_path=repos.client/'recordings.toml'))
+    assert events==['first-stopped','restore']
+    assert command('git','-C',repos.client,'rev-parse','HEAD')==repos.old

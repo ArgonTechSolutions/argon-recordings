@@ -127,7 +127,7 @@ def source_id():
     paths = [ROOT / 'Dockerfile.install', ROOT / 'backend/requirements.txt', ROOT / 'backend/requirements-inference.lock']
     paths += list((ROOT / 'backend/argon_recordings').glob('*.py'))
     paths += [ROOT / 'scripts' / name for name in ['prepare_turbo.py', 'prepare_embeddings.py', 'check_media_runtime.py', 'evaluate_embeddings.py']]
-    paths += [ROOT / 'scripts' / name for name in ['worker_stack.py','remote_stack.py']]
+    paths += [ROOT / 'scripts' / name for name in ['worker_stack.py','remote_stack.py','git_updates.py','update_backups.py']]
     for directory, folders, filenames in os.walk(ROOT / 'web'):
         folders[:] = [name for name in folders if name not in {'node_modules', 'dist', '.git'}]
         paths += [Path(directory) / name for name in filenames if not name.endswith('.log')]
@@ -180,6 +180,12 @@ def doctor(config):
 
 
 def install(config):
+    from scripts.update_backups import update_lock
+    with update_lock(config,blocking=True):
+        return _install(config)
+
+
+def _install(config):
     doctor(config)
     from scripts.worker_stack import stack_items
     if any(item['State']['Running'] for item in stack_items(sys.modules[__name__], config)):
@@ -220,7 +226,8 @@ def start_args(config, installed):
 
 def start(config):
     from scripts.boot_recovery import lifecycle_lock
-    with lifecycle_lock(config):
+    from scripts.update_backups import update_lock
+    with update_lock(config,blocking=True), lifecycle_lock(config):
         return _start(config)
 
 
@@ -233,10 +240,15 @@ def _start(config):
 
 
 def stop(config):
-    from scripts.worker_stack import stop_stack
     from scripts.boot_recovery import lifecycle_lock
-    with lifecycle_lock(config):
-        stop_stack(sys.modules[__name__], config)
+    from scripts.update_backups import update_lock
+    with update_lock(config,blocking=True), lifecycle_lock(config):
+        _stop(config)
+
+
+def _stop(config):
+    from scripts.worker_stack import stop_stack
+    stop_stack(sys.modules[__name__], config)
 
 
 def main():
