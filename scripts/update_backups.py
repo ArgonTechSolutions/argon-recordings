@@ -31,9 +31,21 @@ def safe_directory(path):
     for directory in reversed(missing):
         directory.mkdir(mode=0o700,exist_ok=True)
         sync_path(directory.parent,directory=True)
-    info=path.stat()
-    if info.st_uid!=os.geteuid() or info.st_mode & 0o022:
-        raise ValueError('Backup/update directory must belong to the installation user and not be group/world writable')
+    fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        info=os.fstat(fd)
+        if info.st_uid!=os.geteuid():
+            raise ValueError(f'Metadata directory {path} belongs to UID {info.st_uid}; run as its installation owner (current UID {os.geteuid()}). Ownership was not changed.')
+        if info.st_mode & 0o022:
+            # Upgrade older umask-0002 installations without changing ownership,
+            # read/traverse permissions, children, or any application data volume.
+            os.fchmod(fd,stat.S_IMODE(info.st_mode) & ~0o022)
+            os.fsync(fd)
+            print('Secured metadata directory:',path)
+        current=path.lstat()
+        if (current.st_dev,current.st_ino)!=(info.st_dev,info.st_ino):
+            raise ValueError('Metadata directory changed concurrently; retry the command')
+    finally:os.close(fd)
 
 
 def write(path, data):

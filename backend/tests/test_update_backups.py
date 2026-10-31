@@ -183,3 +183,34 @@ def test_manual_stop_queues_and_runs_after_update_lock_is_released(fixture):
     finally:
         if process is not None and process.poll() is None:
             process.terminate();process.wait(timeout=5)
+
+
+
+def test_owner_metadata_permissions_are_tightened_without_recursive_changes(tmp_path):
+    import os
+    folder=tmp_path/'metadata';folder.mkdir();folder.chmod(0o775)
+    child=folder/'child';child.mkdir();child.chmod(0o775)
+    before=folder.stat()
+    backups.safe_directory(folder)
+    after=folder.stat()
+    assert after.st_mode&0o777==0o755
+    assert after.st_uid==before.st_uid and after.st_gid==before.st_gid
+    assert child.stat().st_mode&0o777==0o775
+    backups.safe_directory(folder)  # Idempotent.
+
+
+def test_foreign_owned_metadata_is_not_chmodded_or_chowned(tmp_path):
+    import os
+    folder=tmp_path/'metadata';folder.mkdir();folder.chmod(0o775)
+    os.chown(folder,10001,10001)
+    with pytest.raises(ValueError,match='belongs to UID 10001'):
+        backups.safe_directory(folder)
+    assert folder.stat().st_uid==10001 and folder.stat().st_mode&0o777==0o775
+
+
+def test_metadata_symlink_does_not_change_target_permissions(tmp_path):
+    target=tmp_path/'target';target.mkdir();target.chmod(0o775)
+    link=tmp_path/'metadata';link.symlink_to(target,target_is_directory=True)
+    with pytest.raises(ValueError,match='symlinks'):
+        backups.safe_directory(link)
+    assert target.stat().st_mode&0o777==0o775

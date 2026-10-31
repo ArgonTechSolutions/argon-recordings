@@ -302,7 +302,10 @@ installation.json, a verified Git source bundle, and a manifest of the source re
 volume/image identities and SHA-256 payload hashes. Backups live in private
 `.recordings/backups/update-TIMESTAMP-ID/` directories; they contain account/MFA data
 and must not be published or committed. Existing backup/update directories must be
-owned by the installation user and must not be group/world writable.
+owned by the installation user. Older owner-owned metadata directories with group/world
+write permission are tightened automatically, removing only those write bits through
+a checked directory descriptor. Read/traverse bits and ownership are preserved; foreign
+owners and symlinks are refused. This never changes application volume permissions.
 
 The updater estimates required space before stopping anything and preserves the
 previous backup while writing the new one. Under the installation lifecycle lock it
