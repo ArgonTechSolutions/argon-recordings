@@ -82,15 +82,19 @@ def test_disjoint_project_access_and_role_changes(team):
                  f'/api/recordings/{rid}/visual-evidence', f'/api/recordings/{rid}/visual-evidence/unknown/media']
         for path in paths:
             assert guest.get(path).status_code == 404, path
+        assert guest.patch(f'/api/recordings/{rid}', json={'title':'Hidden'}, headers=guest_headers).status_code == 404
         assert guest.put(f'/api/recordings/{rid}/source', content=b'forbidden', headers=guest_headers).status_code == 404
         assert owner.put(f'/api/projects/{pid}/members', json={'email':'guest@example.com','role':'viewer'}, headers=headers).status_code == 200
         assert guest.get('/api/projects').json()[0]['role'] == 'viewer'
+        assert guest.patch(f'/api/recordings/{rid}', json={'title':'Blocked'}, headers=guest_headers).status_code == 403
         assert guest.post(f'/api/projects/{pid}/recordings', json={'title':'Blocked','filename':'x.wav'}, headers=guest_headers).status_code == 403
         assert guest.post(f'/api/recordings/{rid}/corrections', json={}, headers=guest_headers).status_code == 403
         assert guest.post(f'/api/recordings/{rid}/visual-jobs', json={}, headers=guest_headers).status_code == 403
         assert guest.post(f'/api/recordings/{rid}/visual-jobs/unknown/cancel', headers=guest_headers).status_code == 403
         assert guest.get(f'/api/projects/{pid}/members').status_code == 403
         assert owner.put(f'/api/projects/{pid}/members', json={'email':'guest@example.com','role':'editor'}, headers=headers).status_code == 200
+        assert guest.patch(f'/api/recordings/{rid}', json={'title':'Renamed by editor'}, headers=guest_headers).status_code == 200
+        assert owner.get(f'/api/recordings/{rid}').json()['title'] == 'Renamed by editor'
         assert guest.put(f'/api/recordings/{rid}/source', content=b'authorized', headers=guest_headers).status_code == 200
         assert owner.request('DELETE', f'/api/projects/{pid}/members', json={'email':'owner@example.com'}, headers=headers).status_code == 409
     finally:

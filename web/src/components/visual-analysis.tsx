@@ -85,8 +85,8 @@ export function VisualAnalysis({
   const data = detail.data
   const busy = data?.state === "queued" || data?.state === "running"
   return (
-    <details className="visual-analysis">
-      <summary>Visual suggestions</summary>
+    <section className="visual-analysis">
+      <h3>Visual suggestions</h3>
       {canEdit && (
         <form
           onSubmit={(event) => {
@@ -234,6 +234,6 @@ export function VisualAnalysis({
             detail.error?.message}
         </p>
       )}
-    </details>
+    </section>
   )
 }

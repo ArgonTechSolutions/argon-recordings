@@ -1755,3 +1755,44 @@ h1 {
   overflow-wrap: anywhere;
   text-align: left;
 }
+
+/* Keep recording names readable while allowing the toolbar to wrap. */
+.workspace-topline { flex-wrap: wrap; }
+.workspace-topline > label { display: flex; flex: 1 1 280px; letter-spacing: normal; }
+.workspace-topline .recording-select { width: 100%; max-width: 100%; min-width: 0; }
+[data-slot="select-value"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+[data-slot="select-item"] { overflow-wrap: anywhere; white-space: normal; }
+.sidebar-bottom { padding-top: 18px; }
+.sidebar-bottom .account-controls { display: grid; gap: 2px; }
+.sidebar-bottom .account-controls > span { padding: 6px 9px; font-size: 12px; overflow-wrap: anywhere; }
+.sidebar-bottom .account-controls > button,
+.sidebar-bottom .account-controls > a,
+.sidebar-bottom .theme-toggle {
+  display: flex; align-items: center; justify-content: flex-start; gap: 9px;
+  width: 100%; height: 34px; padding: 0 9px; border: 0;
+  font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: normal;
+  color: var(--muted-foreground); text-decoration: none;
+}
+.sidebar-bottom .account-controls > a:hover,
+.sidebar-bottom .theme-toggle:hover { background: var(--muted); color: var(--foreground); }
+.sidebar-bottom .theme-toggle { margin-top: 5px; }
+.argon-credit { padding-top: 9px; }
+.speaker-dialog, .visual-tools-dialog { width: min(760px, calc(100vw - 24px)); max-width: 760px; max-height: 85dvh; overflow-y: auto; }
+.speaker-dialog > p { color: var(--muted-foreground); font-size: 13px; }
+.speaker-dialog form, .visual-tools-dialog section { border-top: 1px solid var(--border); padding-top: 16px; }
+.speaker-dialog .speaker-actions { flex-wrap: wrap; gap: 12px; }
+.speaker-dialog label { display: grid; gap: 6px; min-width: 0; }
+.speaker-dialog h4 { font-weight: 600; margin-block: 12px; }
+.passage-navigation { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.passage-navigation button { text-transform: none; letter-spacing: normal; padding-inline: 8px; }
+.visual-tool-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px; border-top: 1px solid var(--border); }
+.reports-panel { border: 1px solid var(--border); background: var(--card); margin-top: 20px; padding: 16px; }
+.reports-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.rename-form { display: grid; gap: 16px; }
+.rename-form label { display: grid; gap: 8px; }
+.tool-playback { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tool-playback input { flex: 1; min-width: 0; }
+.tool-playback span { font-size: 12px; font-variant-numeric: tabular-nums; }
+.passage-navigation button { flex: 1; min-width: 0; height: auto; min-height: 36px; white-space: normal; }
+.passage-navigation > span { flex-shrink: 0; font-size: 12px; }
+.correction-actions { flex-wrap: wrap; }

@@ -18,6 +18,7 @@ import {
   Layers3,
   LoaderCircle,
   Menu,
+  Pencil,
   Moon,
   Pause,
   Play,
@@ -75,7 +76,7 @@ const isBusy = (r: Recording) =>
 function App() {
   const account = useAccountSession()
   const cache = useQueryClient()
-  const { theme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
   const [sourceLink] = useState(() => {
     const query = new URLSearchParams(window.location.search)
     const at = Number(query.get("at") ?? 0)
@@ -104,6 +105,11 @@ function App() {
     document.addEventListener("keydown", close)
     return () => document.removeEventListener("keydown", close)
   }, [mobileMenu])
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [title, setTitle] = useState("")
+  const [visualTool, setVisualTool] = useState<"evidence" | "marks" | null>(
+    null
+  )
   const [projectOpen, setProjectOpen] = useState(false)
   const [projectName, setProjectName] = useState("")
   const [searchMode, setSearchMode] = useState("hybrid")
@@ -189,6 +195,18 @@ function App() {
       setProjectOpen(false)
       setProjectName("")
       setPage("library")
+    },
+  })
+  const renameRecording = useMutation({
+    mutationFn: () =>
+      request<Recording>(`/api/recordings/${current!.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: title.trim() }),
+      }),
+    onSuccess: () => {
+      setRenameOpen(false)
+      void cache.invalidateQueries({ queryKey: ["recordings"] })
+      void cache.invalidateQueries({ queryKey: ["search"] })
     },
   })
   const retryRecording = useMutation({
@@ -351,10 +369,12 @@ function App() {
           <AccountControls />
           <button
             className="theme-toggle"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onClick={() =>
+              setTheme(resolvedTheme === "dark" ? "light" : "dark")
+            }
           >
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{" "}
-            {theme === "dark" ? "Light appearance" : "Dark appearance"}
+            {resolvedTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{" "}
+            {resolvedTheme === "dark" ? "Light appearance" : "Dark appearance"}
           </button>
           <div className="argon-credit">
             An open-source project by{" "}
@@ -675,6 +695,20 @@ function App() {
                         }
                       />
                     </label>
+                    {canEdit && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={preview}
+                        onClick={() => {
+                          setTitle(current.title)
+                          renameRecording.reset()
+                          setRenameOpen(true)
+                        }}
+                      >
+                        <Pencil size={14} /> Rename
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -757,6 +791,7 @@ function App() {
                             key={current.id}
                             recordingId={current.id}
                             segments={segments}
+                            time={time}
                           />
                         )}
                         {!preview && (
@@ -888,37 +923,129 @@ function App() {
                           </Button>
                         )}
                         {!preview && (
-                          <VisualEvidence
-                            key={current.id + "-visual"}
-                            recording={current}
-                            canEdit={canEdit}
-                            time={time}
-                            playing={playing}
-                            speed={speed}
-                            seek={seek}
-                          />
+                          <div className="visual-tool-actions">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setVisualTool("evidence")}
+                            >
+                              Visual tools
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setVisualTool("marks")}
+                            >
+                              Timeline marks
+                            </Button>
+                          </div>
                         )}
-                        {!preview && (
-                          <VisualMarks
-                            key={current.id}
-                            recordingId={current.id}
-                            projectId={current.project_id}
-                            time={time}
-                            duration={duration}
-                            canEdit={canEdit}
-                            seek={seek}
-                          />
-                        )}
-                        {!preview && (
-                          <RecordingReports
-                            key={current.id + "-reports"}
-                            recording={current}
-                            canEdit={canEdit}
-                            seek={seek}
-                          />
-                        )}
+                        <Dialog
+                          open={visualTool !== null}
+                          onOpenChange={(open) => {
+                            if (!open) setVisualTool(null)
+                          }}
+                        >
+                          <DialogContent
+                            className="visual-tools-dialog"
+                            aria-describedby={undefined}
+                          >
+                            <DialogHeader>
+                              <DialogTitle>
+                                {visualTool === "marks"
+                                  ? "Timeline marks"
+                                  : "Visual tools"}
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="tool-playback">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!audioAsset}
+                                aria-label={
+                                  playing ? "Pause recording" : "Play recording"
+                                }
+                                onClick={() => {
+                                  if (audio.current) {
+                                    if (playing) audio.current.pause()
+                                    else
+                                      void audio.current
+                                        .play()
+                                        .catch(() =>
+                                          setNotice(
+                                            "Audio playback could not start."
+                                          )
+                                        )
+                                  }
+                                }}
+                              >
+                                {playing ? "Pause" : "Play"}
+                              </Button>
+                              <input
+                                aria-label="Recording position"
+                                type="range"
+                                min={0}
+                                max={duration}
+                                step={0.1}
+                                value={time}
+                                onChange={(event) =>
+                                  seek(Number(event.target.value))
+                                }
+                              />
+                              <span>{stamp(time)}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-label="Change playback speed"
+                                onClick={() => {
+                                  const next = speed >= 2 ? 1 : speed + 0.25
+                                  setSpeed(next)
+                                  if (audio.current)
+                                    audio.current.playbackRate = next
+                                }}
+                              >
+                                {speed}×
+                              </Button>
+                            </div>
+                            {visualTool === "evidence" && (
+                              <VisualEvidence
+                                key={current.id}
+                                recording={current}
+                                canEdit={canEdit}
+                                time={time}
+                                playing={playing}
+                                speed={speed}
+                                seek={seek}
+                              />
+                            )}
+                            {visualTool === "marks" && (
+                              <VisualMarks
+                                key={current.id}
+                                recordingId={current.id}
+                                projectId={current.project_id}
+                                time={time}
+                                duration={duration}
+                                canEdit={canEdit}
+                                seek={seek}
+                              />
+                            )}
+                          </DialogContent>
+                        </Dialog>
                       </section>
                     </div>
+                  )}
+                  {current.status === "ready" && !preview && (
+                    <section
+                      className="reports-panel"
+                      aria-label="Recording reports"
+                    >
+                      <RecordingReports
+                        key={current.id}
+                        recording={current}
+                        canEdit={canEdit}
+                        seek={seek}
+                      />
+                    </section>
                   )}
                   {current.status === "ready" && (
                     <div className="audio-dock">
@@ -1029,6 +1156,39 @@ function App() {
           )}
         </div>
       </main>
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Rename recording</DialogTitle>
+          </DialogHeader>
+          <form
+            className="rename-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (title.trim()) renameRecording.mutate()
+            }}
+          >
+            <label>
+              Recording name
+              <Input
+                autoFocus
+                maxLength={150}
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </label>
+            <Button
+              disabled={!title.trim() || renameRecording.isPending}
+              type="submit"
+            >
+              {renameRecording.isPending ? "Saving…" : "Save name"}
+            </Button>
+            {renameRecording.isError && (
+              <p role="alert">{renameRecording.error.message}</p>
+            )}
+          </form>
+        </DialogContent>
+      </Dialog>
       <Dialog open={projectOpen} onOpenChange={setProjectOpen}>
         <DialogContent aria-describedby={undefined}>
           <DialogHeader>

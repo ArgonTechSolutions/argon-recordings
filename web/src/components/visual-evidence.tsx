@@ -138,8 +138,8 @@ export function VisualEvidence({
     <div className="visual-evidence">
       <h3>Visual evidence</h3>
       {canEdit && videoAvailable && (
-        <details>
-          <summary>Extract evidence</summary>
+        <section>
+          <h3>Extract evidence</h3>
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -269,7 +269,7 @@ export function VisualEvidence({
           {!evidence.data?.source_available && (
             <p>Original source unavailable.</p>
           )}
-        </details>
+        </section>
       )}
       {mutation.isError && <p role="alert">{mutation.error.message}</p>}
       {busy.map((job) => (

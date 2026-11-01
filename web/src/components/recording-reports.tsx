@@ -92,8 +92,8 @@ export function RecordingReports({
     ),
   ]
   return (
-    <details className="recording-reports">
-      <summary>Reports</summary>
+    <section className="recording-reports">
+      <h3>Reports</h3>
       {canEdit && !reports.data?.reports.length && (
         <p>
           Ask your agent to use recording-summary and return a report draft.
@@ -221,6 +221,6 @@ export function RecordingReports({
             detail.error?.message}
         </p>
       )}
-    </details>
+    </section>
   )
 }

@@ -197,3 +197,17 @@ def test_upload_limit_environment_health_and_stream_enforcement(tmp_path, monkey
         assert c.get(f'/api/recordings/{rid}').json()['status'] == 'awaiting_upload'
         assert not list((tmp_path / 'staging').glob('*.part'))
         assert c.put(f'/api/recordings/{rid}/source', content=b'small source').status_code == 200
+
+
+def test_recording_rename_persists_and_validates(client):
+    pid = project(client)
+    rid = upload(client, pid)
+    path = f'/api/recordings/{rid}'
+    response = client.patch(path, json={'title': '  A renamed conversation  '})
+    assert response.status_code == 200
+    assert response.json()['title'] == 'A renamed conversation'
+    assert client.get(path).json()['title'] == 'A renamed conversation'
+    assert client.get(f'/api/projects/{pid}/recordings').json()[0]['title'] == 'A renamed conversation'
+    for title in ['', '   ', 'x' * 151]:
+        assert client.patch(path, json={'title': title}).status_code == 422
+    assert client.patch('/api/recordings/missing', json={'title': 'Valid'}).status_code == 404

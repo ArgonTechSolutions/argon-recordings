@@ -9,6 +9,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { request, preview } from "@/lib/api"
 import { setSessionTransport, type AccountSession } from "@/lib/account-session"
+import { UserRound, LogOut, Shield } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -258,11 +259,15 @@ export function AccountControls() {
     <div className="account-controls">
       <span>{session.user.name}</span>
       <Button variant="ghost" onClick={() => setOpen(true)}>
-        Account
+        <UserRound size={16} /> Account
       </Button>
-      {!!session.user.admin && <a href="/admin/">Administration</a>}
+      {!!session.user.admin && (
+        <a href="/admin/">
+          <Shield size={16} /> Administration
+        </a>
+      )}
       <Button variant="ghost" onClick={() => logout()}>
-        Sign out
+        <LogOut size={16} /> Sign out
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="account-dialog">

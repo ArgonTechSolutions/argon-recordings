@@ -20,7 +20,7 @@ from .accounts import Accounts, AccountRequestBudget
 from .account_routes import install as install_accounts
 
 from .contracts import (ClaimRequest, Completion, Failure, Heartbeat, Project, ProjectCreate,
-                        Recording, RecordingCreate, SearchHit, Transcript, Strict)
+                        Recording, RecordingCreate, RecordingRename, SearchHit, Transcript, Strict)
 from .embeddings import Embeddings
 from .corrections import install as install_corrections
 from .store import Store, identity, lease_row
@@ -331,6 +331,13 @@ def create_app(settings=None):
 
     @app.get('/api/recordings/{rid}', response_model=Recording)
     def recording(rid: str):
+        return view(recording_or_404(rid))
+
+    @app.patch('/api/recordings/{rid}', response_model=Recording)
+    def rename_recording(rid: str, body: RecordingRename):
+        recording_or_404(rid)
+        with store().db() as db:
+            db.execute('UPDATE recordings SET title=? WHERE id=?', (body.title.strip(), rid))
         return view(recording_or_404(rid))
 
     @app.put('/api/recordings/{rid}/source', response_model=Recording)

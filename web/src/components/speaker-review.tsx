@@ -1,6 +1,12 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ValueSelect } from "@/components/value-select"
 import { request, type Recording, type Health } from "@/lib/api"
@@ -30,6 +36,7 @@ export function SpeakerReview({
   setFilter: (v: string) => void
   health?: Health
 }) {
+  const [editorOpen, setEditorOpen] = useState(false)
   const cache = useQueryClient()
   const base = `/api/recordings/${recording.id}`
   const evidence = useQuery({
@@ -195,192 +202,219 @@ export function SpeakerReview({
         </p>
       )}
       {canEdit && (
-        <details>
-          <summary>Review speakers</summary>
-          <p>
-            Automatic labels are experimental. Add or correct speakers manually.
-          </p>
-          <form
-            className="speaker-actions"
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (newName.trim()) change.mutate({ action: "create" })
+        <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setStart(time)
+              setEnd(Math.min(time + 10, recording.duration ?? 0))
+              setEditorOpen(true)
             }}
           >
-            <label>
-              New speaker
-              <Input
-                aria-label="New speaker name"
-                value={newName}
-                maxLength={80}
-                onChange={(e) => setNewName(e.target.value)}
-              />
-            </label>
-            <Button type="submit" size="sm" disabled={busy || !newName.trim()}>
-              Add speaker
-            </Button>
-          </form>
-          <div className="speaker-actions">
-            <label>
-              Min speakers
-              <Input
-                aria-label="Minimum speakers"
-                type="number"
-                min={1}
-                max={32}
-                value={min}
-                onChange={(e) => setMin(Number(e.target.value))}
-              />
-            </label>
-            <label>
-              Max speakers
-              <Input
-                aria-label="Maximum speakers"
-                type="number"
-                min={min}
-                max={32}
-                value={max}
-                onChange={(e) => setMax(Number(e.target.value))}
-              />
-            </label>
-            <Button
-              size="sm"
-              disabled={
-                busy ||
-                active ||
-                !health?.diarization_available ||
-                !Number.isInteger(min) ||
-                !Number.isInteger(max) ||
-                min < 1 ||
-                max < min ||
-                max > 32
-              }
-              onClick={() => change.mutate({ action: "analyze" })}
-            >
-              Analyze speakers
-            </Button>
-            {active && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() => change.mutate({ action: "cancel" })}
-              >
-                Cancel analysis
-              </Button>
-            )}
-          </div>
-          {!health?.diarization_available && (
-            <p>No speaker-analysis worker is available.</p>
-          )}
-          {names.map((s) => (
+            Edit speakers
+          </Button>
+          <DialogContent
+            className="speaker-dialog"
+            aria-describedby={undefined}
+          >
+            <DialogHeader>
+              <DialogTitle>Edit speakers</DialogTitle>
+            </DialogHeader>
+            <p>
+              Automatic labels are experimental. Add or correct speakers
+              manually.
+            </p>
             <form
               className="speaker-actions"
-              key={s.id}
               onSubmit={(e) => {
                 e.preventDefault()
-                change.mutate({ action: "rename", id: s.id })
+                if (newName.trim()) change.mutate({ action: "create" })
               }}
             >
               <label>
-                {s.label}
+                New speaker
                 <Input
-                  aria-label={`Name for ${s.label}`}
-                  value={renames[s.id] ?? s.label}
+                  aria-label="New speaker name"
+                  value={newName}
                   maxLength={80}
-                  onChange={(e) =>
-                    setRenames({ ...renames, [s.id]: e.target.value })
-                  }
+                  onChange={(e) => setNewName(e.target.value)}
+                />
+              </label>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={busy || !newName.trim()}
+              >
+                Add speaker
+              </Button>
+            </form>
+            <div className="speaker-actions">
+              <label>
+                Min speakers
+                <Input
+                  aria-label="Minimum speakers"
+                  type="number"
+                  min={1}
+                  max={32}
+                  value={min}
+                  onChange={(e) => setMin(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                Max speakers
+                <Input
+                  aria-label="Maximum speakers"
+                  type="number"
+                  min={min}
+                  max={32}
+                  value={max}
+                  onChange={(e) => setMax(Number(e.target.value))}
                 />
               </label>
               <Button
                 size="sm"
-                variant="outline"
-                disabled={busy || !(renames[s.id] ?? s.label).trim()}
-                type="submit"
+                disabled={
+                  busy ||
+                  active ||
+                  !health?.diarization_available ||
+                  !Number.isInteger(min) ||
+                  !Number.isInteger(max) ||
+                  min < 1 ||
+                  max < min ||
+                  max > 32
+                }
+                onClick={() => change.mutate({ action: "analyze" })}
               >
-                Save name
+                Analyze speakers
               </Button>
-            </form>
-          ))}
-          {
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (rangeValid) change.mutate({ action: "assign" })
-              }}
-            >
-              <div className="speaker-actions">
-                <label>
-                  From (s)
-                  <Input
-                    aria-label="Speaker range start"
-                    type="number"
-                    min={0}
-                    step=".1"
-                    value={start}
-                    onChange={(e) => setStart(Number(e.target.value))}
-                  />
-                </label>
+              {active && (
                 <Button
-                  type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setStart(time)
-                    if (end <= time)
-                      setEnd(Math.min(recording.duration ?? time, time + 1))
-                  }}
-                >
-                  From here
-                </Button>
-                <label>
-                  To (s)
-                  <Input
-                    aria-label="Speaker range end"
-                    type="number"
-                    min={start}
-                    max={recording.duration ?? 0}
-                    step=".1"
-                    value={end}
-                    onChange={(e) => setEnd(Number(e.target.value))}
-                  />
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setEnd(time)}
-                >
-                  To here
-                </Button>
-              </div>
-              <div className="speaker-actions">
-                <ValueSelect
-                  label="Assign speaker"
-                  value={target}
-                  onChange={setTarget}
-                  items={[
-                    { value: "unknown", label: "Unknown" },
-                    ...names.map((s) => ({ value: s.id, label: s.label })),
-                  ]}
-                />
-                <Button type="submit" size="sm" disabled={busy || !rangeValid}>
-                  Assign range
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
                   disabled={busy}
-                  onClick={() => change.mutate({ action: "undo" })}
+                  onClick={() => change.mutate({ action: "cancel" })}
                 >
-                  Undo speaker edit
+                  Cancel analysis
                 </Button>
-              </div>
-            </form>
-          }
-        </details>
+              )}
+            </div>
+            {!health?.diarization_available && (
+              <p>No speaker-analysis worker is available.</p>
+            )}
+            {names.map((s) => (
+              <form
+                className="speaker-actions"
+                key={s.id}
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  change.mutate({ action: "rename", id: s.id })
+                }}
+              >
+                <label>
+                  {s.label}
+                  <Input
+                    aria-label={`Name for ${s.label}`}
+                    value={renames[s.id] ?? s.label}
+                    maxLength={80}
+                    onChange={(e) =>
+                      setRenames({ ...renames, [s.id]: e.target.value })
+                    }
+                  />
+                </label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || !(renames[s.id] ?? s.label).trim()}
+                  type="submit"
+                >
+                  Save name
+                </Button>
+              </form>
+            ))}
+            {
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (rangeValid) change.mutate({ action: "assign" })
+                }}
+              >
+                <div className="speaker-actions">
+                  <label>
+                    From (s)
+                    <Input
+                      aria-label="Speaker range start"
+                      type="number"
+                      min={0}
+                      step=".1"
+                      value={start}
+                      onChange={(e) => setStart(Number(e.target.value))}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setStart(time)
+                      if (end <= time)
+                        setEnd(Math.min(recording.duration ?? time, time + 1))
+                    }}
+                  >
+                    From here
+                  </Button>
+                  <label>
+                    To (s)
+                    <Input
+                      aria-label="Speaker range end"
+                      type="number"
+                      min={start}
+                      max={recording.duration ?? 0}
+                      step=".1"
+                      value={end}
+                      onChange={(e) => setEnd(Number(e.target.value))}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEnd(time)}
+                  >
+                    To here
+                  </Button>
+                </div>
+                <div className="speaker-actions">
+                  <ValueSelect
+                    label="Assign speaker"
+                    value={target}
+                    onChange={setTarget}
+                    items={[
+                      { value: "unknown", label: "Unknown" },
+                      ...names.map((s) => ({ value: s.id, label: s.label })),
+                    ]}
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={busy || !rangeValid}
+                  >
+                    Assign range
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => change.mutate({ action: "undo" })}
+                  >
+                    Undo speaker edit
+                  </Button>
+                </div>
+              </form>
+            }
+          </DialogContent>
+        </Dialog>
       )}
       {!!state?.overrides.length && (
         <ul>

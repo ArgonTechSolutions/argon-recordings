@@ -18,6 +18,10 @@ class Project(Strict):
     role: Literal['owner', 'editor', 'viewer'] = 'owner'
 
 
+class RecordingRename(Strict):
+    title: str = Field(min_length=1, max_length=150, pattern=r'\S')
+
+
 class RecordingCreate(Strict):
     title: str = Field(min_length=1, max_length=150, pattern=r'\S')
     filename: str = Field(min_length=1, max_length=255)

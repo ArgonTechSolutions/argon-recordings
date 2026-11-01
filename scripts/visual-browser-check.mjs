@@ -28,7 +28,7 @@ try {
  await page.getByRole('button',{name:'More frames',exact:true}).click()
  assert.equal(await page.locator('.frame-strip button').count(),26)
  const panel=page.locator('.visual-evidence')
- await panel.locator('summary').first().click()
+ await page.getByRole('button',{name:'Visual tools',exact:true}).click()
  await panel.getByLabel('Evidence start',{exact:true}).fill('0.36')
  await panel.getByRole('button',{name:'Extract',exact:true}).click()
  await panel.getByText('Visual queued',{exact:true}).waitFor()
@@ -63,8 +63,8 @@ try {
  assert.ok(Math.abs(clocks.audio-(clocks.video+2))<.4,JSON.stringify(clocks))
  await page.getByRole('button',{name:'Pause recording',exact:true}).click()
  await page.waitForFunction(()=>document.querySelector('video')?.paused)
- await page.getByLabel('Recording position',{exact:true}).fill('3')
- await page.getByLabel('Recording position',{exact:true}).dispatchEvent('change')
+ await page.getByRole('dialog').getByLabel('Recording position',{exact:true}).fill('3')
+ await page.getByRole('dialog').getByLabel('Recording position',{exact:true}).dispatchEvent('change')
  await page.waitForFunction(()=>Math.abs(document.querySelector('video').currentTime-1)<.3)
  await page.getByRole('button',{name:'Change playback speed',exact:true}).click()
  await page.waitForFunction(()=>document.querySelector('video').playbackRate===1.25)
@@ -87,9 +87,9 @@ try {
  const rid=recordings[0].id
  const peer=await context.newPage();peer.on('pageerror',e=>result.console_errors.push(e.message))
  await peer.goto(base+`/?project=${projects[0].id}&recording=${rid}`)
- await peer.locator('.visual-analysis summary').click()
+ await peer.getByRole('button',{name:'Visual tools',exact:true}).click()
  const analysis=page.locator('.visual-analysis'),other=peer.locator('.visual-analysis')
- await analysis.locator('summary').click()
+
  const runAnalysis=()=>execFileSync('python',['-c',
   "import httpx; from types import SimpleNamespace; from argon_recordings.analysis_worker import run; client=httpx.Client(base_url='http://127.0.0.1:8765',headers={'Authorization':'Bearer synthetic-browser-only'},trust_env=False); assert run(client,SimpleNamespace(model=None)); client.close()"],{env,stdio:'inherit',timeout:30000})
  await analysis.getByLabel('Analysis end',{exact:true}).fill('6')
@@ -102,7 +102,11 @@ try {
  await other.getByText('Marked',{exact:true}).first().waitFor()
  const marks=page.getByRole('region',{name:'Timeline marks',exact:true})
  assert.equal((await(await page.request.get(base+`/api/recordings/${rid}/marks`)).json()).marks.length,1)
+ await page.keyboard.press('Escape')
+ await page.getByRole('button',{name:'Timeline marks',exact:true}).click()
  await marks.getByRole('button',{name:'Undo',exact:true}).click()
+ await page.keyboard.press('Escape')
+ await page.getByRole('button',{name:'Visual tools',exact:true}).click()
  await analysis.getByText('Mark removed',{exact:true}).first().waitFor()
  await other.getByText('Mark removed',{exact:true}).first().waitFor()
  await analysis.getByLabel('Analysis start',{exact:true}).fill('6')
@@ -136,10 +140,10 @@ try {
    {id:'screen',kind:'image',evidence_id:'frame:frame-0000.jpg',interval:{start:0,end:0}}],
   items:[{id:'claim',kind:'summary',basis:'explicit',text:'<img src="https://evil.invalid/x" onerror="window.reportPwned=1"> [unsafe](https://evil.invalid)',citation_ids:['source','screen']}]},
   inspected_images:[{id:'frame:frame-0000.jpg',sha256:createHash('sha256').update(imageBytes).digest('hex'),inspected:true}]}
- const reports=page.locator('.recording-reports');await reports.locator('summary').click()
+ const reports=page.locator('.recording-reports');await page.keyboard.press('Escape')
  const reportPeer=await context.newPage();reportPeer.on('pageerror',e=>result.console_errors.push(e.message))
  await reportPeer.goto(base+`/?project=${projects[0].id}&recording=${rid}`)
- const peerReports=reportPeer.locator('.recording-reports');await peerReports.locator('summary').click()
+ const peerReports=reportPeer.locator('.recording-reports')
  await reports.getByLabel('Import report draft',{exact:true}).setInputFiles({name:'report-draft.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(reportDraft))})
  await reports.getByRole('button',{name:'Save draft',exact:true}).click()
  await reports.locator('article').getByText('Draft',{exact:true}).waitFor()

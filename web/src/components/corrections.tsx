@@ -11,7 +11,6 @@ import {
 import { preview, request, type Transcript } from "@/lib/api"
 
 type Passage = Transcript["segments"][number]
-import { ValueSelect } from "@/components/value-select"
 import type { components } from "@/lib/schema"
 type Candidate = components["schemas"]["CorrectionCandidateHit"]
 type Correction = components["schemas"]["CorrectionView"]
@@ -21,9 +20,11 @@ const timestamp = (value: number) =>
 export function Corrections({
   recordingId,
   segments,
+  time,
 }: {
   recordingId: string
   segments: Passage[]
+  time: number
 }) {
   const cache = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -103,7 +104,14 @@ export function Corrections({
             const selection = window.getSelection()?.toString().trim() ?? ""
             const passage =
               segments.find((s) => selection && s.text.includes(selection)) ??
-              segments[0]
+              segments.find((s) => time >= s.start && time < s.end) ??
+              segments.reduce(
+                (best, s) =>
+                  Math.abs(s.start - time) < Math.abs(best.start - time)
+                    ? s
+                    : best,
+                segments[0]
+              )
             setSegmentId(passage.id)
             setPhrase(
               selection && passage.text.includes(selection)
@@ -178,22 +186,40 @@ export function Corrections({
           <DialogHeader>
             <DialogTitle>Correct text</DialogTitle>
           </DialogHeader>
-          <label>
-            Passage
-            <ValueSelect
-              label="Passage"
-              value={segmentId}
-              onChange={(id) => {
-                setSegmentId(id)
+          <div className="passage-navigation">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={segments.findIndex((s) => s.id === segmentId) <= 0}
+              onClick={() => {
+                const index = segments.findIndex((s) => s.id === segmentId)
+                setSegmentId(segments[index - 1].id)
+                setPhrase("")
                 resetCandidates()
               }}
-              className="w-full"
-              items={segments.map((s) => ({
-                value: s.id,
-                label: `${timestamp(s.start)} · ${s.text.slice(0, 90)}`,
-              }))}
-            />
-          </label>
+            >
+              Previous passage
+            </Button>
+            <span>
+              {timestamp(segments.find((s) => s.id === segmentId)?.start ?? 0)}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                segments.findIndex((s) => s.id === segmentId) >=
+                segments.length - 1
+              }
+              onClick={() => {
+                const index = segments.findIndex((s) => s.id === segmentId)
+                setSegmentId(segments[index + 1].id)
+                setPhrase("")
+                resetCandidates()
+              }}
+            >
+              Next passage
+            </Button>
+          </div>
           <p className="correction-source">
             {segments.find((s) => s.id === segmentId)?.text}
           </p>

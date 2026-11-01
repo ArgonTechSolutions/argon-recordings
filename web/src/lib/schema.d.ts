@@ -139,7 +139,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Rename Recording */
+        patch: operations["rename_recording_api_recordings__rid__patch"];
         trace?: never;
     };
     "/api/recordings/{rid}/source": {
@@ -2862,6 +2863,11 @@ export interface components {
              */
             priority: "normal" | "urgent";
         };
+        /** RecordingRename */
+        RecordingRename: {
+            /** Title */
+            title: string;
+        };
         /** Recovery */
         Recovery: {
             /** Code */
@@ -3736,6 +3742,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recording"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_recording_api_recordings__rid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordingRename"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
