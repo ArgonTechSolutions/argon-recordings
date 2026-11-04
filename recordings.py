@@ -264,7 +264,10 @@ def main():
     parser.add_argument('--config', type=Path, default=ROOT / 'recordings.toml')
     parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-boot-recovery', 'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa'])
     parser.add_argument('--adopt-existing', action='store_true')
+    parser.add_argument('--keep-backups', action='store_true', help='Keep all previous backups after a successful update')
     args = parser.parse_args()
+    if args.keep_backups and args.command != 'update':
+        parser.error('--keep-backups applies only to update')
     try:
         if args.command == 'init':
             with args.config.open('x') as out:
@@ -285,7 +288,7 @@ def main():
             setup(sys.modules[__name__], config)
         elif args.command == 'update':
             from scripts.git_updates import update
-            update(sys.modules[__name__], config)
+            update(sys.modules[__name__], config, keep_backups=args.keep_backups)
         elif args.command == 'doctor':
             doctor(config)
         elif args.command == 'install':

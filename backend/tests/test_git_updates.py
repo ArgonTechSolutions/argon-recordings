@@ -69,9 +69,11 @@ def snapshot_boundary(monkeypatch):
     def prune(cfg,path):
         cfg['_events'].append('prune')
     monkeypatch.setattr(update_backups,'prune',prune)
+    monkeypatch.setattr(update_backups,'verified',lambda path,cfg:{'verified':True})
 
 
-def test_update_fast_forwards_and_executes_new_installer(repos, monkeypatch):
+@pytest.mark.parametrize('keep_backups',[False,True])
+def test_update_fast_forwards_and_executes_new_installer(repos, monkeypatch,keep_backups):
     config = repos.client / 'recordings.toml'
     config.write_text('private operator config\n')
     (repos.client / 'models').mkdir()
@@ -85,8 +87,8 @@ def test_update_fast_forwards_and_executes_new_installer(repos, monkeypatch):
             return SimpleNamespace(returncode=0)
         return real_run(args, **kwargs)
     monkeypatch.setattr(updates.subprocess, 'run', run)
-    updates.update(installer, {'name': 'fixture', 'config_path': config,'home':repos.client,'identity':'a'*16})
-    assert events == ['stop', 'backup', 'install', 'start', 'prune']
+    updates.update(installer, {'name': 'fixture', 'config_path': config,'home':repos.client,'identity':'a'*16},keep_backups=keep_backups)
+    assert events == ['stop', 'backup', 'install', 'start']+([] if keep_backups else ['prune'])
     assert command('git', '-C', repos.client, 'rev-parse', 'HEAD') == repos.new
     assert config.read_text() == 'private operator config\n'
     assert (repos.client / 'models' / 'retained').read_text() == 'model fixture'

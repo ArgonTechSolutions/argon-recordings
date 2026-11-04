@@ -45,7 +45,7 @@ def checked_checkout(root):
     return root
 
 
-def update(installer, config):
+def update(installer, config, *, keep_backups=False):
     from scripts import update_backups as backups
     from scripts.boot_recovery import lifecycle_lock
     root = checked_checkout(installer.ROOT)
@@ -92,7 +92,11 @@ def update(installer, config):
             print('Update failed. Verified rollback backup retained:',backup)
             print('Older backups are retained; no automatic database restore was attempted.')
             raise
-        backups.prune(config,backup)
+        if keep_backups:
+            backups.verified(backup,config)
+            print('All existing backups retained; automatic backup cleanup was skipped.')
+        else:
+            backups.prune(config,backup)
         print(f'Updated {previous[:12]} -> {target[:12]}. Config, weights and data volumes preserved.')
         if not layout['was_running']:
             print('App remains stopped; run start when ready.')
