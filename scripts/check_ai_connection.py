@@ -6,6 +6,7 @@ printing it. Creates no production recording/report and removes its scratch DB.
 import asyncio
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -20,7 +21,10 @@ from argon_recordings.store import Store, identity
 
 
 async def check():
-    with tempfile.TemporaryDirectory(prefix='recordings-ai-smoke-') as directory:
+    # Use the configured data filesystem: the runtime /tmp is only 64 MiB,
+    # while an ordinary report save reserves 64 MiB for export. Keep a separate,
+    # private scratch directory and never open the production database.
+    with tempfile.TemporaryDirectory(prefix='.recordings-ai-smoke-', dir=os.environ.get('RECORDINGS_DATA')) as directory:
         settings=Settings(data=directory,reserve=0,auth_mode='local',embeddings=Embeddings())
         app=create_app(settings)
         store=Store(Path(directory))
