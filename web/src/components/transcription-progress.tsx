@@ -18,6 +18,7 @@ export function TranscriptionProgress({ job }: { job: Recording["job"] }) {
     return () => clearInterval(timer)
   }, [])
   const detail = job?.transcription
+  const chunked = job?.state === "prepared"
   if (!detail || !["running", "prepared"].includes(job?.state ?? "")) return null
   const age =
     job.updated_at == null ? null : Math.max(0, now / 1000 - job.updated_at)
@@ -28,11 +29,14 @@ export function TranscriptionProgress({ job }: { job: Recording["job"] }) {
   return (
     <div className="transcription-progress">
       <p>
-        Audio covered: {duration(detail.audio_processed_seconds)} /{" "}
+        {chunked ? "Audio completed" : "Audio covered"}: {duration(detail.audio_processed_seconds)} /{" "}
         {duration(detail.audio_total_seconds)}
       </p>
       <p>
-        {detail.passages} {detail.passages === 1 ? "passage" : "passages"} ·{" "}
+        {detail.passages}{" "}
+        {chunked
+          ? detail.passages === 1 ? "chunk completed" : "chunks completed"
+          : detail.passages === 1 ? "passage" : "passages"} ·{" "}
         {duration(elapsed)} elapsed
       </p>
       <p role="status" aria-live="polite">
@@ -41,11 +45,14 @@ export function TranscriptionProgress({ job }: { job: Recording["job"] }) {
             ? "Waiting for a worker update…"
             : `Last update ${Math.floor(age)} seconds ago · Waiting for worker`
           : minutes === null
-            ? "Estimating remaining time…"
+            ? chunked
+              ? "Worker connected · Processing current chunk"
+              : "Estimating remaining time…"
             : minutes < 1
               ? "Finishing transcription…"
               : `About ${minutes} min remaining for transcription`}
       </p>
+      {chunked && <p>Completed chunks are kept during retries.</p>}
     </div>
   )
 }

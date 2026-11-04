@@ -8,6 +8,10 @@ import wave
 from .contracts import Segment
 
 
+class WordTimelineError(ValueError):
+    """A fixed, safe diagnostic for rejected inference timestamps."""
+
+
 def plan(audio, seconds=180, overlap=2):
     """Move nominal cuts to quiet 200 ms windows within five seconds."""
     with wave.open(str(audio), 'rb') as stream:
@@ -50,16 +54,16 @@ def validate_words(segments, start, end):
         for word in segment['words']:
             count += 1
             if count > math.ceil((end-start)*20)+128:
-                raise ValueError('Chunk word count exceeds bounded speech density')
+                raise WordTimelineError('Chunk word count exceeds bounded speech density')
             if not start-.01 <= word['start'] <= word['end'] <= end+.01 or word['end']-word['start'] > 30:
-                raise ValueError('Word timestamp outside plausible chunk interval')
+                raise WordTimelineError('Word timestamp outside plausible chunk interval')
             if previous and (word['start'] < previous['start'] or word['start'] < previous['end']-.2):
-                raise ValueError('Word timeline overlaps excessively or is unordered')
+                raise WordTimelineError('Word timeline overlaps excessively or is unordered')
             while recent and recent[0] < word['start']-1:
                 recent.popleft()
             recent.append(word['start'])
             if len(recent) > 50:
-                raise ValueError('Word timeline exceeds bounded speech density')
+                raise WordTimelineError('Word timeline exceeds bounded speech density')
             previous = word
 
 

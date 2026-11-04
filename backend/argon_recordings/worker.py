@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import logging
 import math
 import shutil
 import os
@@ -13,12 +14,20 @@ import time
 import wave
 
 import httpx
+from pydantic import ValidationError
 
 from .contracts import Segment
 
 from .models import TURBO_FILES, TURBO_REPO, TURBO_REVISION
 
 MODEL_REVISION = TURBO_REVISION
+logger = logging.getLogger(__name__)
+CHUNK_STALL_SECONDS = 300
+CHUNK_HEARTBEAT_SECONDS = 5
+
+
+class InvalidChunkTranscript(ValueError):
+    """A safe, fixed diagnostic; never includes transcript text or model inputs."""
 
 
 class Turbo:
@@ -38,11 +47,14 @@ class Turbo:
                 raise RuntimeError('Model checksum mismatch')
         self.model = None
 
-    def transcribe(self, audio, language, progress, hint=None):
+    def _load_model(self):
         if self.model is None:
             from faster_whisper import WhisperModel
             self.model = WhisperModel(str(self.directory), device='cpu', compute_type='int8',
                                       cpu_threads=2, num_workers=1, local_files_only=True)
+
+    def transcribe(self, audio, language, progress, hint=None):
+        self._load_model()
         segments, _ = self.model.transcribe(str(audio), language=None if language == 'auto' else language,
                                             beam_size=5, temperature=0, word_timestamps=True, vad_filter=True,
                                             initial_prompt=hint, hotwords=hint)
@@ -52,6 +64,63 @@ class Turbo:
                                   words=[dict(start=w.start, end=w.end, word=w.word, probability=w.probability) for w in (s.words or [])]))
             progress(s.end)
         return result
+
+    def transcribe_chunk(self, audio, language, progress, *, recovery=False, on_recovery=None):
+        """One normal pass and at most one distinct recovery, with early validation.
+
+        Chunk retries start with recovery directly. No words are dropped, retimed,
+        or accepted outside the coordinator's existing timestamp constraints.
+        """
+        self._load_model()
+        with wave.open(str(audio), 'rb') as stream:
+            duration = stream.getnframes() / stream.getframerate()
+        from .chunk_audio import WordTimelineError, validate_words
+        for alternate in ([True] if recovery else [False, True]):
+            if alternate and on_recovery:
+                on_recovery()
+            started = time.monotonic()
+            segments, _ = self.model.transcribe(
+                str(audio), language=None if language == 'auto' else language,
+                beam_size=1 if alternate else 5, best_of=1, temperature=0,
+                word_timestamps=True, vad_filter=not alternate,
+                condition_on_previous_text=False)
+            result = []
+
+            def checked():
+                for raw in segments:
+                    try:
+                        segment = Segment(start=raw.start, end=raw.end, text=raw.text,
+                                          words=[dict(start=w.start, end=w.end, word=w.word,
+                                                      probability=w.probability) for w in (raw.words or [])])
+                    except ValidationError:
+                        raise InvalidChunkTranscript('Invalid segment or word interval') from None
+                    if len(result) >= 4000:
+                        raise InvalidChunkTranscript('Chunk segment count exceeds supported limit')
+                    if segment.end > duration + .01 or (result and segment.start < result[-1].start):
+                        raise InvalidChunkTranscript('Chunk timestamps must be local and ordered')
+                    if segment.text.strip() and not segment.words:
+                        raise InvalidChunkTranscript('Word timestamps required for safe reconciliation')
+                    result.append(segment)
+                    yield segment.model_dump()
+                    progress(segment.end)
+
+            try:
+                validate_words(checked(), 0, duration)
+                if alternate and not result:
+                    raise InvalidChunkTranscript('Recovery produced no timed speech; audio review required')
+            except (InvalidChunkTranscript, WordTimelineError) as exc:
+                reason = str(exc)  # Only fixed messages from the validators above.
+                logger.warning('chunk_validation_rejected recovery=%s segments=%d words=%d elapsed_seconds=%.1f reason=%s',
+                               alternate, len(result), sum(len(s.words) for s in result), time.monotonic()-started, reason)
+                if alternate:
+                    raise RuntimeError('Chunk transcription recovery failed: ' + reason) from None
+            else:
+                logger.info('chunk_transcription_validated recovery=%s segments=%d words=%d elapsed_seconds=%.1f',
+                            alternate, len(result), sum(len(s.words) for s in result), time.monotonic()-started)
+                return result
+            finally:
+                if close := getattr(segments, 'close', None):
+                    close()
 
 
 def ffmpeg(arguments, timeout=120):
@@ -230,15 +299,44 @@ def run_chunk(client, transcriber, job, work_root=None):
     headers = {'X-Lease-Id': job['lease_id']}
     done, lost = threading.Event(), threading.Event()
     tracker = TranscriptionTracker(job['end']-job['start'])
+    phase = 'Downloading chunk audio'
+    started = last_progress = time.monotonic()
+    attempt = job.get('attempts', 0) + 1
+    logger.info('chunk_started chunk=%s attempt=%d duration_seconds=%.2f',
+                job['id'], attempt, job['end']-job['start'])
     def heartbeat():
+        last_log = time.monotonic()
         while not done.is_set():
             try:
+                now = time.monotonic()
+                if now-last_progress >= CHUNK_STALL_SECONDS:
+                    lost.set()
+                    logger.error('chunk_stalled chunk=%s attempt=%d phase=%s idle_seconds=%.1f restarting_worker=true',
+                                 job['id'], attempt, phase, now-last_progress)
+                    try:
+                        client.post(base+'/fail',headers=headers,
+                                    json={'message':'Chunk made no audio progress for 5 minutes; worker restarted'}, timeout=5).raise_for_status()
+                    except Exception:
+                        # A disconnected coordinator will expire the lease.
+                        logger.warning('chunk_stall_report_failed chunk=%s', job['id'])
+                    # Native inference cannot be interrupted safely in a thread.
+                    # Docker restarts the worker; the next claim uses recovery.
+                    os._exit(124)
+                    return
+                if lost.is_set():
+                    done.wait(CHUNK_HEARTBEAT_SECONDS)
+                    continue
                 client.post(base+'/heartbeat', headers=headers,
-                            json={'progress':min(.95, tracker.position[0]/tracker.duration), 'stage':'Transcribing chunk'}).raise_for_status()
+                            json={'progress':min(.95, tracker.position[0]/tracker.duration), 'stage':phase}).raise_for_status()
+                now = time.monotonic()
+                if now - last_log >= 60:
+                    logger.info('chunk_activity chunk=%s attempt=%d phase=%s audio_seconds=%.2f elapsed_seconds=%.1f idle_seconds=%.1f',
+                                job['id'], attempt, phase, tracker.position[0], now-started, now-last_progress)
+                    last_log = now
             except Exception:
                 lost.set()
-                return
-            done.wait(5)
+                logger.warning('chunk_heartbeat_failed chunk=%s attempt=%d', job['id'], attempt)
+            done.wait(CHUNK_HEARTBEAT_SECONDS)
     thread = threading.Thread(target=heartbeat, daemon=True)
     thread.start()
     try:
@@ -256,16 +354,34 @@ def run_chunk(client, transcriber, job, work_root=None):
             if size != job['bytes'] or digest.hexdigest() != job['sha256']:
                 raise RuntimeError('Chunk integrity mismatch')
             def advance(seconds):
+                nonlocal last_progress
                 if lost.is_set():
                     raise RuntimeError('Worker lease lost')
+                if seconds > tracker.position[0]:
+                    last_progress = time.monotonic()
                 tracker.advance(seconds)
-            segments = transcriber.transcribe(audio,job['language'],advance)
+            def recovery():
+                nonlocal phase, tracker, last_progress
+                phase = 'Recovering chunk timestamps'
+                tracker = TranscriptionTracker(job['end']-job['start'])
+                last_progress = time.monotonic()
+                logger.warning('chunk_recovery_started chunk=%s attempt=%d strategy=greedy_original_audio', job['id'], attempt)
+                client.post(base+'/heartbeat',headers=headers,json={'progress':0,'stage':phase}).raise_for_status()
+            phase = 'Transcribing chunk'
+            if transcribe_chunk := getattr(transcriber, 'transcribe_chunk', None):
+                segments = transcribe_chunk(audio,job['language'],advance,
+                                            recovery=bool(job.get('error') or job.get('attempts',0)), on_recovery=recovery)
+            else:
+                segments = transcriber.transcribe(audio,job['language'],advance)
             if lost.is_set():
                 raise RuntimeError('Worker lease lost')
             response = client.post(base+'/complete',headers=headers,json={'segments':[s.model_dump() for s in segments]})
             _check_chunk_completion(response)
+            logger.info('chunk_completed chunk=%s attempt=%d elapsed_seconds=%.1f', job['id'], attempt, time.monotonic()-started)
         return True
     except Exception as exc:
+        logger.error('chunk_failed chunk=%s attempt=%d error_type=%s elapsed_seconds=%.1f',
+                     job['id'], attempt, type(exc).__name__, time.monotonic()-started)
         if not lost.is_set():
             try:
                 client.post(base+'/fail',headers=headers,json={'message':str(exc)[:500]}).raise_for_status()
