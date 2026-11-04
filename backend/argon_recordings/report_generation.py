@@ -25,7 +25,7 @@ from .reports import SaveReport, current_reference, checked_image, image_record,
 from .store import identity
 from .visual_jobs import VisualRequest
 from .ai_settings import controls, read_key
-from .report_reading import (READER_MODEL, WRITER_MODEL, Reading, READING_SYSTEM, NOTES_BYTES,
+from .report_reading import (READER_MODEL, WRITER_MODEL, Reading, READING_SYSTEM, NOTES_BYTES, reading_schema,
                              GenerationEstimate, encode, batches, transcript_batches, cache_key, price)
 
 MODEL = WRITER_MODEL
@@ -334,17 +334,25 @@ class Generation:
         supplied=[{**item,'segment_ids':[short[sid] for sid in item['segment_ids']]} if consolidate
                   else {**item,'id':short[item['id']]} for item in batch]
         inputs=[{'role':'user','content':encode({'language':language,'notes' if consolidate else 'passages':supplied})}]
+        schema=reading_schema(reverse)
         for attempt in range(2):
-            result=await self.complete(client,jid,READER_MODEL,READING_SYSTEM,inputs,Reading.model_json_schema(),8192)
+            result=await self.complete(client,jid,READER_MODEL,READING_SYSTEM,inputs,schema,8192)
             try:
                 reading=Reading.model_validate_json(self.output_text(result))
                 if any(not set(note.segment_ids)<=reverse.keys() for note in reading.notes):
                     raise ValueError('Unknown source reference')
                 break
-            except (ValidationError,ValueError):
-                if attempt:raise HTTPException(502,'Internal summary could not use valid transcript references. No draft was saved.') from None
+            except (ValidationError,ValueError) as exc:
+                issues=[{'field':'.'.join(str(part) if type(part) is int or part in {'notes','text','segment_ids'} else 'unknown_field' for part in e['loc']),'type':e['type']} for e in exc.errors()[:16]] if isinstance(exc,ValidationError) else [{'field':'notes.segment_ids','type':'unknown_source'}]
+                with self.store.db() as db:
+                    trace=json.loads(db.execute('SELECT trace FROM report_generation WHERE id=?',(jid,)).fetchone()[0])
+                    trace.append({'tool':'internal_reading_validation','attempt':attempt+1,'consolidation':consolidate,'issues':issues})
+                    db.execute('UPDATE report_generation SET trace=? WHERE id=?',(json.dumps(trace),jid))
+                if attempt:
+                    message='Internal summary could not use valid transcript references' if not isinstance(exc,ValidationError) else 'Internal summary did not match its required format ('+', '.join(sorted({e['type'] for e in issues}))+')'
+                    raise HTTPException(502,message+'. No draft was saved; completed readings are retained.') from None
                 self.stage(jid,'Correcting internal transcript references')
-                inputs.append({'role':'developer','content':'Return valid internal notes JSON. Use only the short passage IDs in this request: '+', '.join(reverse)+'. Do not invent or copy UUIDs. Every note must have at least one valid supporting ID.'})
+                inputs.append({'role':'developer','content':'Return valid internal notes JSON: 1–8 notes, each with 1–600 characters and 1–4 supporting IDs. Use only these passage IDs: '+', '.join(reverse)+'. Validation issues (field names and types only): '+json.dumps(issues)+'. Do not invent or copy UUIDs.'})
         reading=reading.model_copy(update={'notes':[note.model_copy(update={'segment_ids':[reverse[sid] for sid in note.segment_ids]}) for note in reading.notes]})
         self.check(jid)
         with self.store.db() as db:

@@ -459,3 +459,40 @@ def test_invalid_short_reader_reference_is_corrected_before_caching(client,tmp_p
     assert set(cached['notes'][0]['segment_ids'])<=expected
     assert 'invented' not in json.dumps(cached)
     assert client.get(f'/api/recordings/{rid}/report-generation').json()['jobs'][0]['state']=='completed'
+
+
+def test_reader_schema_constrains_transcript_and_consolidated_source_ids(client,tmp_path,monkeypatch):
+    rid,body,_=draft(client,tmp_path);jid=queue(client,rid,visuals=False)
+    sent=transport(monkeypatch,client,body,images=False)
+    g=client.app.state.generation
+    client.portal.call(g.run,jid)
+    payload=next(p for p in sent if p['model']==READER_MODEL)
+    allowed=payload['text']['format']['schema']['$defs']['ReadingNote']['properties']['segment_ids']['items']['enum']
+    assert allowed==['p0']
+    assert payload['text']['format']['schema']['$defs']['ReadingNote']['properties']['text']['pattern']==r'^[\s\S]{1,600}$'
+    with g.store.db() as db:
+        row=db.execute('SELECT * FROM report_generation WHERE id=?',(jid,)).fetchone()
+        reference=json.loads(row['reference'])
+    other=queue(client,rid,visuals=False)
+    async def consolidate():
+        async with httpx.AsyncClient() as http:
+            return await g.read_batch(http,other,reference,'en',[{'text':'Decision summary','segment_ids':['canonical-a','canonical-b']}],rid,consolidate=True)
+    result=client.portal.call(consolidate)
+    last=sent[-1]
+    assert last['text']['format']['schema']['$defs']['ReadingNote']['properties']['segment_ids']['items']['enum']==['p0','p1']
+    assert result[0].segment_ids==['canonical-a','canonical-b']
+
+
+def test_reading_validation_reports_format_errors_without_recording_private_text(client,tmp_path,monkeypatch):
+    rid,_,_=draft(client,tmp_path);jid=queue(client,rid)
+    original=httpx.AsyncClient
+    secret_text='synthetic transcript content must never enter the diagnostic trace'
+    def respond(request):
+        value={'notes':[{'text':secret_text*20,'segment_ids':['p0']}],secret_text:'unexpected field'}
+        return httpx.Response(200,json={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps(value)}]}],
+                                       'usage':{'input_tokens':100,'output_tokens':100}})
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:original(**kwargs,transport=httpx.MockTransport(respond)))
+    with pytest.raises(HTTPException) as error:client.portal.call(client.app.state.generation.run,jid)
+    assert 'required format' in error.value.detail and 'string_too_long' in error.value.detail
+    with client.app.state.store.db() as db:trace=db.execute('SELECT trace FROM report_generation WHERE id=?',(jid,)).fetchone()[0]
+    assert secret_text not in trace and 'string_too_long' in trace

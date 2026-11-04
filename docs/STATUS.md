@@ -1,5 +1,11 @@
 # Foundation status
 
+## Schema-constrained reading references (2026-11-04; REC-33)
+
+The provider schema now enumerates each batch's exact allowed short source IDs for transcript reading and consolidation, and constrains note length with a supported string pattern. Canonical mapping and server-side evidence validation remain in place. Format/size errors are distinguished from unknown references; diagnostic traces retain only known field names, numeric indexes and type codes, with unexpected names redacted. Existing valid cached readings remain reusable.
+
+The final backend regression passed **375 tests with one opt-in skip**, focused report checks pass (24 cases), and the real API synthetic Spanish-hour scenario saved a cited draft at **$0.033761** estimated measured usage. The source-reference fix still requires operator installation and a private-recording retry. The update uses normal backup retention while retaining config/key/data preservation and integrity checks.
+
 ## Admin AI controls and report recovery (2026-11-04; REC-33)
 
 Administration now supports a write-only API key override, an enable switch and optional per-report/monthly soft and hard cost limits. Key storage is a private coordinator data-volume file with existing admin MFA/CSRF protection; values never enter SQLite, responses or audit events. Soft limits warn and finish concisely, while hard limits atomically gate the next conservatively reserved call. The per-call UTC ledger accounts correctly for runs crossing month-end and retains uncertain charges.

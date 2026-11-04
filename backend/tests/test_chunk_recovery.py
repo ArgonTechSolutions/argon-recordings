@@ -181,6 +181,7 @@ def test_no_progress_restarts_stalled_inference_and_preserves_completed_work(pre
 
     class Stalled:
         def transcribe(self, audio, language, advance):
+            monkeypatch.setattr(worker_module, 'CHUNK_STALL_SECONDS', .1)
             decoding.set()
             assert release.wait(5), 'Stall watchdog did not run'
             return []
@@ -194,7 +195,9 @@ def test_no_progress_restarts_stalled_inference_and_preserves_completed_work(pre
             return httpx.Response(503)
         return client.request(request.method, str(request.url), headers=dict(request.headers), content=request.read())
 
-    monkeypatch.setattr(worker_module, 'CHUNK_STALL_SECONDS', .1)
+    # Arm the short deadline only when the target inference stall starts;
+    # downloading the fixture must not race the decoder-specific assertion.
+    monkeypatch.setattr(worker_module, 'CHUNK_STALL_SECONDS', 5)
     monkeypatch.setattr(worker_module, 'CHUNK_HEARTBEAT_SECONDS', .01)
     monkeypatch.setattr(worker_module.os, '_exit', exit_worker)
     with httpx.Client(base_url='http://testserver', headers=auth('one'),

@@ -24,6 +24,14 @@ class Reading(Strict):
     notes: list[ReadingNote] = Field(min_length=1, max_length=8)
 
 
+def reading_schema(source_ids):
+    schema=Reading.model_json_schema()
+    schema['$defs']['ReadingNote']['properties']['text']['pattern']=r'^[\s\S]{1,600}$'
+    schema['$defs']['ReadingNote']['properties']['segment_ids']['items']={
+        'type':'string','enum':list(source_ids)}
+    return schema
+
+
 class GenerationEstimate(Strict):
     estimated_cost_usd: float
     low_usd: float
