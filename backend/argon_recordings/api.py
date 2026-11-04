@@ -77,9 +77,13 @@ def create_app(settings=None):
         app.state.upload_lock = asyncio.Lock()
         app.state.events = ProjectEvents(lambda pid: [Recording.model_validate(row).model_dump(mode='json') for row in recording_snapshot(pid)])
         app.state.store.on_commit = app.state.events.notify
+        from .report_generation import Generation
+        app.state.generation = Generation(app, settings, save_report, visual_actions)
+        app.state.generation.start()
         try:
             yield
         finally:
+            await app.state.generation.stop()
             app.state.store.on_commit = None
             await app.state.events.close()
 
@@ -564,7 +568,9 @@ def create_app(settings=None):
     from .analysis_jobs import install as install_analysis_jobs
     install_analysis_jobs(app, store, worker_auth, settings.reserve)
     from .reports import install as install_reports
-    install_reports(app, store, settings.reserve)
+    save_report = install_reports(app, store, settings.reserve)
+    from .report_generation import install as install_generation
+    install_generation(app, settings, save_report, visual_actions)
     from .agent_grants import install as install_agent_grants
     install_agent_grants(app, lambda: app.state.accounts)
     from .agent_api import install as install_agent_api

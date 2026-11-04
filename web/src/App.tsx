@@ -34,7 +34,7 @@ import { useProjectEvents } from "@/lib/use-project-events"
 import { TranscriptionProgress } from "@/components/transcription-progress"
 import { VisualMarks } from "@/components/visual-marks"
 import { VisualEvidence } from "@/components/visual-evidence"
-import { RecordingReports } from "@/components/recording-reports"
+import { RecordingReports, ReportSource } from "@/components/recording-reports"
 import { SpeakerReview, type Speakers } from "@/components/speaker-review"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -94,6 +94,9 @@ function App() {
   )
   const [page, setPage] = useState<"library" | "workspace">(
     preview || sourceLink.recording ? "workspace" : "library"
+  )
+  const [workspaceView, setWorkspaceView] = useState<"transcript" | "reports">(
+    "transcript"
   )
   const [mobileMenu, setMobileMenu] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -718,7 +721,108 @@ function App() {
                       <ArrowDownToLine size={13} /> Download transcript
                     </Button>
                   </div>
-                  {current.status !== "ready" ? (
+                  {current.status === "ready" && !preview && (
+                    <div
+                      className="recording-tabs"
+                      role="tablist"
+                      aria-label="Recording view"
+                      onKeyDown={(e) => {
+                        if (
+                          ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                            e.key
+                          )
+                        ) {
+                          e.preventDefault()
+                          const tabs = Array.from(
+                            e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                              "[role=tab]"
+                            )
+                          )
+                          const next =
+                            e.key === "Home"
+                              ? tabs[0]
+                              : e.key === "End"
+                                ? tabs[1]
+                                : tabs.find(
+                                    (t) =>
+                                      t.getAttribute("aria-selected") !== "true"
+                                  )
+                          next?.focus()
+                          next?.click()
+                        }
+                      }}
+                    >
+                      <button
+                        role="tab"
+                        aria-controls="recording-transcript-view"
+                        tabIndex={workspaceView === "transcript" ? 0 : -1}
+                        aria-selected={workspaceView === "transcript"}
+                        onClick={() => setWorkspaceView("transcript")}
+                      >
+                        Transcript
+                      </button>
+                      <button
+                        role="tab"
+                        aria-controls="recording-reports-view"
+                        tabIndex={workspaceView === "reports" ? 0 : -1}
+                        aria-selected={workspaceView === "reports"}
+                        onClick={() => setWorkspaceView("reports")}
+                      >
+                        Reports
+                      </button>
+                    </div>
+                  )}
+                  {current.status === "ready" &&
+                  workspaceView === "reports" &&
+                  !preview ? (
+                    <RecordingReports
+                      key={current.id}
+                      recording={current}
+                      canEdit={canEdit}
+                      pauseSource={() => audio.current?.pause()}
+                      seek={(at) => {
+                        seek(at)
+                        const source =
+                          document.querySelector<HTMLDetailsElement>(
+                            ".report-source"
+                          )
+                        if (source) {
+                          source.open = true
+                          if (window.innerWidth < 960)
+                            source.scrollIntoView({
+                              behavior: "smooth",
+                              block: "nearest",
+                            })
+                        }
+                      }}
+                      source={
+                        <ReportSource
+                          recording={current}
+                          transcript={transcript.data}
+                          time={time}
+                          seek={seek}
+                          playing={playing}
+                          toggle={() => {
+                            if (audio.current) {
+                              if (playing) audio.current.pause()
+                              else {
+                                document
+                                  .querySelectorAll<HTMLVideoElement>(
+                                    ".report-section video"
+                                  )
+                                  .forEach((video) => video.pause())
+                                void audio.current
+                                  .play()
+                                  .catch(() =>
+                                    setNotice("Audio playback could not start.")
+                                  )
+                              }
+                            }
+                          }}
+                        />
+                      }
+                    />
+                  ) : current.status !== "ready" ? (
                     <div className="processing-state">
                       <div className="empty-icon">
                         {isBusy(current) ? (
@@ -767,7 +871,11 @@ function App() {
                       )}
                     </div>
                   ) : (
-                    <div className="recording-workspace">
+                    <div
+                      className="recording-workspace"
+                      id="recording-transcript-view"
+                      role="tabpanel"
+                    >
                       <section
                         className="transcript-panel"
                         aria-label="Transcript"
@@ -1034,21 +1142,10 @@ function App() {
                       </section>
                     </div>
                   )}
-                  {current.status === "ready" && !preview && (
-                    <section
-                      className="reports-panel"
-                      aria-label="Recording reports"
-                    >
-                      <RecordingReports
-                        key={current.id}
-                        recording={current}
-                        canEdit={canEdit}
-                        seek={seek}
-                      />
-                    </section>
-                  )}
                   {current.status === "ready" && (
-                    <div className="audio-dock">
+                    <div
+                      className={`audio-dock ${workspaceView === "reports" && !preview ? "report-audio-dock" : ""}`}
+                    >
                       <div className="audio-label">
                         <div className="audio-icon">
                           <AudioLines size={20} />

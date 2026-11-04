@@ -1737,6 +1737,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/reports/{report_id}/clips/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report Clip */
+        get: operations["report_clip_api_recordings__rid__reports__report_id__clips__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings/{rid}/reports/{report_id}/export.zip": {
         parameters: {
             query?: never;
@@ -1748,6 +1765,41 @@ export interface paths {
         get: operations["export_api_recordings__rid__reports__report_id__export_zip_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/report-generation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_recordings__rid__report_generation_get"];
+        put?: never;
+        /** Generate */
+        post: operations["generate_api_recordings__rid__report_generation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/report-generation/{jid}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_recordings__rid__report_generation__jid__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2411,6 +2463,78 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** GenerateReport */
+        GenerateReport: {
+            /**
+             * Kind
+             * @default summary
+             * @enum {string}
+             */
+            kind: "summary" | "actions" | "report" | "custom";
+            /**
+             * Instruction
+             * @default
+             */
+            instruction: string;
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+            /**
+             * Visuals
+             * @default true
+             */
+            visuals: boolean;
+            /** Previous Report Id */
+            previous_report_id?: string | null;
+            /**
+             * Start
+             * @default 0
+             */
+            start: number;
+            /** End */
+            end?: number | null;
+        };
+        /** GenerationJob */
+        GenerationJob: {
+            /** Id */
+            id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Stage */
+            stage: string;
+            /** Report Id */
+            report_id: string | null;
+            /** Error */
+            error: string | null;
+            /** Created */
+            created: number;
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+        };
+        /** GenerationState */
+        GenerationState: {
+            /** Enabled */
+            enabled: boolean;
+            /** Model */
+            model: string;
+            /** Budget Usd */
+            budget_usd: number;
+            /** Committed Usd */
+            committed_usd: number;
+            /** Reservation Usd */
+            reservation_usd: number;
+            /** Jobs */
+            jobs: components["schemas"]["GenerationJob"][];
+        };
         /** Generator */
         Generator: {
             /** Name */
@@ -2896,9 +3020,9 @@ export interface components {
             /**
              * Template Version
              * @default argon-summary-v1
-             * @constant
+             * @enum {string}
              */
-            template_version: "argon-summary-v1";
+            template_version: "argon-summary-v1" | "argon-summary-v2";
             reference: components["schemas"]["Reference"];
             scope: components["schemas"]["Interval"];
             /** Language */
@@ -2914,15 +3038,17 @@ export interface components {
             citations: components["schemas"]["Citation"][];
             /** Items */
             items: components["schemas"]["Item"][];
+            /** Video References */
+            video_references?: components["schemas"]["VideoReference"][];
         };
         /** Report */
         "Report-Output": {
             /**
              * Template Version
              * @default argon-summary-v1
-             * @constant
+             * @enum {string}
              */
-            template_version: "argon-summary-v1";
+            template_version: "argon-summary-v1" | "argon-summary-v2";
             reference: components["schemas"]["Reference"];
             scope: components["schemas"]["Interval"];
             /** Language */
@@ -2938,6 +3064,8 @@ export interface components {
             citations: components["schemas"]["Citation"][];
             /** Items */
             items: components["schemas"]["Item"][];
+            /** Video References */
+            video_references?: components["schemas"]["VideoReference"][];
         };
         /** ReportDetail */
         ReportDetail: {
@@ -3216,6 +3344,18 @@ export interface components {
             annotations: number;
             /** Extraction */
             extraction: number;
+        };
+        /** VideoReference */
+        VideoReference: {
+            /** Item Id */
+            item_id: string;
+            /** Asset Id */
+            asset_id: string;
+            /** Sha256 */
+            sha256: string;
+            interval: components["schemas"]["Interval"];
+            /** Caption */
+            caption: string;
         };
         /** VisualAsset */
         VisualAsset: {
@@ -7267,6 +7407,39 @@ export interface operations {
             };
         };
     };
+    report_clip_api_recordings__rid__reports__report_id__clips__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_api_recordings__rid__reports__report_id__export_zip_get: {
         parameters: {
             query?: never;
@@ -7286,6 +7459,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_recordings__rid__report_generation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_api_recordings__rid__report_generation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_recordings__rid__report_generation__jid__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationJob"];
                 };
             };
             /** @description Validation Error */

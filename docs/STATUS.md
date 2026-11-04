@@ -1,5 +1,11 @@
 # Foundation status
 
+## OpenAI reports checkpoint (local, 2026-11-03; REC-33)
+
+A separate mobile-ready Reports tab now generates summaries, actions, custom/visual reports and independent refinements through OpenAI. Actual supplied image IDs/hashes and canonical source citations are checked before saving a draft. Clip references play in the app; exports include reference text rather than video bytes. Generation is durable, cancellable and bounded by application-wide estimated-cost reservations. See [AI-REPORTS.md](AI-REPORTS.md).
+
+The final backend regression passed **334 tests**, with **one opt-in embedding test skipped**. OpenAPI/generated types, frontend production build/lint and main/visual/report-generation Chromium checks passed. The new browser check uses a synthetic upstream with real jobs, storage and evidence; 320/390/768/960/1440 px layouts had no horizontal overflow or JavaScript errors. Separate real OpenAI smoke checks generated an action list and an image-backed report from tiny synthetic inputs. No private recording was used. This addition is not deployed, and the installed coordinator's secret/configuration has not changed.
+
 ## Active delivery — functional first (2026-10-26)
 
 The owner resumed development with model optimization deferred. REC-3/P02 and REC-14/P13 are Backlog; failed speaker-count targets remain recorded and do not block the usable workflow. Automatic diarization remains optional/experimental. Independent manual speaker creation/correction now works without an automatic result, with source/revision fencing and undo. The speakers → marked video → MCP evidence → reviewed report/ZIP path is verified locally. No new model benchmark campaign or deployment. See [FUNCTIONAL-WORKFLOW.md](FUNCTIONAL-WORKFLOW.md) and the active scope in [INTELLIGENCE-PLAN.md](INTELLIGENCE-PLAN.md).

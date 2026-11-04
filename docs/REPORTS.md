@@ -2,7 +2,7 @@
 
 Local P12 implementation, owned by Argon. No deployment, real agent grant or plugin installation is implied.
 
-An agent returns a cited summary by default. When the user requests an importable report, the packaged `recording-summary` skill uses the shared `argon-summary-v1` contract to prepare `report-draft.json`. The editor opens the matching recording, expands **Reports**, chooses **Import draft** and **Save draft**. Saving verifies the current source hash, transcript/speaker/annotation/extraction revisions, report-list revision, canonical cited passages, registered image times and inspected-image SHA-256. The submitted draft cannot choose a reviewed state. Read the saved report and select **Mark reviewed** explicitly; stale reports cannot be newly reviewed. Viewers can inspect and export existing reports but cannot import, save or review them.
+An agent returns a cited summary by default. When the user requests an importable report, the packaged `recording-summary` skill uses the shared `argon-summary-v1` contract to prepare `report-draft.json`. The editor opens the matching recording, switches to **Reports**, opens **More options**, chooses **Import draft** and **Save draft**. Saving verifies the current source hash, transcript/speaker/annotation/extraction revisions, report-list revision, canonical cited passages, registered image times and inspected-image SHA-256. The submitted draft cannot choose a reviewed state. Read the saved report and select **Mark reviewed** explicitly; stale reports cannot be newly reviewed. Viewers can inspect and export existing reports but cannot import, save or review them.
 
 The helper and API use the same canonical `backend/argon_recordings/report_contract.py`; the private plugin builder includes that module beside its CLI wrapper. Use the prepared interpreter and actual generator metadata:
 
@@ -18,7 +18,7 @@ This produces a local artifact, not an application write. No report save/review 
 
 ## ZIP contents and provenance
 
-**Export ZIP** downloads a private portable bundle:
+**Export report** downloads a private portable bundle:
 
 - `report.md`, `report.html` and structured `report.json`, with claims and exact source intervals.
 - `transcript.json` and `transcript.html`, containing only cited passages; HTML citations target local passage anchors.
@@ -45,3 +45,7 @@ Six focused backend tests cover explicit draft/review, optimistic and stale conf
 Chromium exercised import/review/export, cross-tab review/staleness, 320/390/768 px controls, unpacked ZIP checksums, opening offline HTML and its actual JPEG, local transcript anchors, and hostile source strings without execution or external requests. The full backend suite passed **239 tests** with prepared E5-large and real FFmpeg; OpenAPI passed. The SDK/backend/package suite passed **25 tests**, including importable-draft CLI generation and real MCP → explicit browser report → ZIP. Accounts/MFA Chromium passed, including hidden report-write controls for viewers. An independent GPT-6.1 review and focused cleanup/provenance follow-up returned no material findings. Frontend production build/lint and the affected visual/report Chromium workflow passed.
 
 These checks use disposable synthetic accounts/media and prove local behavior. Representative semantic summary quality, real-footage readability, owner pairing, installed Philemon/old-data upgrade and release qualification remain P13/P14 or separately named acceptance gates.
+
+## In-app generation and video references
+
+The Reports tab now also creates OpenAI-generated drafts and separate refinements, alongside the existing import/review/export workflow. Report v2 adds registered clip references for in-app playback while exports retain text references rather than video bytes. See [in-app report generation](AI-REPORTS.md) for source/inspection validation, runtime configuration, accounting and qualification boundaries. The historical checks above describe their original checkpoint; they do not establish deployment of this addition.

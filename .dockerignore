@@ -9,3 +9,7 @@ models
 recordings.toml
 .recordings
 tls/
+
+.env
+.env.*
+!.env.example

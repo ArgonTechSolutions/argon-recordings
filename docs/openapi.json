@@ -5651,6 +5651,61 @@
         }
       }
     },
+    "/api/recordings/{rid}/reports/{report_id}/clips/{asset_id}": {
+      "get": {
+        "summary": "Report Clip",
+        "operationId": "report_clip_api_recordings__rid__reports__report_id__clips__asset_id__get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/recordings/{rid}/reports/{report_id}/export.zip": {
       "get": {
         "summary": "Export",
@@ -5681,6 +5736,140 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/report-generation": {
+      "get": {
+        "summary": "Status",
+        "operationId": "status_api_recordings__rid__report_generation_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Generate",
+        "operationId": "generate_api_recordings__rid__report_generation_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/report-generation/{jid}/cancel": {
+      "post": {
+        "summary": "Cancel",
+        "operationId": "cancel_api_recordings__rid__report_generation__jid__cancel_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJob"
+                }
               }
             }
           },
@@ -7679,6 +7868,189 @@
         ],
         "title": "Failure"
       },
+      "GenerateReport": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "actions",
+              "report",
+              "custom"
+            ],
+            "title": "Kind",
+            "default": "summary"
+          },
+          "instruction": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Instruction",
+            "default": ""
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 35,
+            "pattern": "^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]+)*$",
+            "title": "Language",
+            "default": "en"
+          },
+          "visuals": {
+            "type": "boolean",
+            "title": "Visuals",
+            "default": true
+          },
+          "previous_report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Report Id"
+          },
+          "start": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Start",
+            "default": 0
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GenerateReport"
+      },
+      "GenerationJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created": {
+            "type": "number",
+            "title": "Created"
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "title": "Estimated Cost Usd"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "state",
+          "stage",
+          "report_id",
+          "error",
+          "created",
+          "estimated_cost_usd",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "title": "GenerationJob"
+      },
+      "GenerationState": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "budget_usd": {
+            "type": "number",
+            "title": "Budget Usd"
+          },
+          "committed_usd": {
+            "type": "number",
+            "title": "Committed Usd"
+          },
+          "reservation_usd": {
+            "type": "number",
+            "title": "Reservation Usd"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/GenerationJob"
+            },
+            "type": "array",
+            "title": "Jobs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled",
+          "model",
+          "budget_usd",
+          "committed_usd",
+          "reservation_usd",
+          "jobs"
+        ],
+        "title": "GenerationState"
+      },
       "Generator": {
         "properties": {
           "name": {
@@ -9091,7 +9463,10 @@
         "properties": {
           "template_version": {
             "type": "string",
-            "const": "argon-summary-v1",
+            "enum": [
+              "argon-summary-v1",
+              "argon-summary-v2"
+            ],
             "title": "Template Version",
             "default": "argon-summary-v1"
           },
@@ -9140,6 +9515,14 @@
             "maxItems": 1000,
             "minItems": 1,
             "title": "Items"
+          },
+          "video_references": {
+            "items": {
+              "$ref": "#/components/schemas/VideoReference"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Video References"
           }
         },
         "additionalProperties": false,
@@ -9158,7 +9541,10 @@
         "properties": {
           "template_version": {
             "type": "string",
-            "const": "argon-summary-v1",
+            "enum": [
+              "argon-summary-v1",
+              "argon-summary-v2"
+            ],
             "title": "Template Version",
             "default": "argon-summary-v1"
           },
@@ -9207,6 +9593,14 @@
             "maxItems": 1000,
             "minItems": 1,
             "title": "Items"
+          },
+          "video_references": {
+            "items": {
+              "$ref": "#/components/schemas/VideoReference"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Video References"
           }
         },
         "additionalProperties": false,
@@ -10038,6 +10432,44 @@
           "extraction"
         ],
         "title": "Versions"
+      },
+      "VideoReference": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "title": "Item Id"
+          },
+          "asset_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Asset Id"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256"
+          },
+          "interval": {
+            "$ref": "#/components/schemas/Interval"
+          },
+          "caption": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Caption"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "item_id",
+          "asset_id",
+          "sha256",
+          "interval",
+          "caption"
+        ],
+        "title": "VideoReference"
       },
       "VisualAsset": {
         "properties": {

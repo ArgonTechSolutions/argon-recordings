@@ -17,6 +17,7 @@ A self-hosted workspace for finding the useful moments in recordings. Built by A
 - Editable speaker names and manual range attribution, including speaker creation without an automatic result. Optional CPU diarization remains experimental.
 - Timeline marks, source-derived screenshots/clips, reviewed visual suggestions, and synchronized evidence playback.
 - Invitation-only accounts, project permissions, OIDC/admin MFA, account-scoped MCP access and a cited-summary skill; explicit report review and portable evidence ZIPs.
+- Opt-in [OpenAI report generation](docs/AI-REPORTS.md): summaries, action lists, custom/visual reports and separate refinements, with cited images, in-app clip references and a mobile-ready Reports tab.
 
 Start with the [speakers → video → agent summary workflow](docs/FUNCTIONAL-WORKFLOW.md). Model optimization is deferred while the functional workflow is prepared for owner use; local checks do not establish installed/private-recording acceptance.
 

@@ -99,8 +99,16 @@ class Item(Strict):
     due: GroundedValue | None = None
 
 
+class VideoReference(Strict):
+    item_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    asset_id: str = Field(pattern=ID)
+    sha256: str = Field(pattern=SHA)
+    interval: Interval
+    caption: str = Field(min_length=1, max_length=500)
+
+
 class Report(Strict):
-    template_version: Literal["argon-summary-v1"] = VERSION
+    template_version: Literal["argon-summary-v1", "argon-summary-v2"] = VERSION
     reference: Reference
     scope: Interval
     language: str = Field(min_length=2, max_length=35, pattern=r"^[a-zA-Z]+(?:-[a-zA-Z0-9]+)*$")
@@ -108,6 +116,7 @@ class Report(Strict):
     limitations: list[str] = Field(default_factory=list, max_length=100)
     citations: list[Citation] = Field(max_length=1000)
     items: list[Item] = Field(min_length=1, max_length=1000)
+    video_references: list[VideoReference] = Field(default_factory=list, max_length=8, exclude_if=lambda value: not value)
 
 
 class Generator(Strict):
@@ -201,6 +210,11 @@ def validate_citations(report: Report, current: Reference, segments: dict[str, S
             require(citation.interval.start == citation.interval.end == image.timestamp,
                     "image citation must use actual source timestamp")
     unique([item.id for item in report.items])
+    require(not report.video_references or report.template_version == 'argon-summary-v2', 'video references require report v2')
+    for video in report.video_references:
+        require(video.item_id in {item.id for item in report.items}, 'unknown video section')
+        require(report.scope.contains(video.interval) and 0 < video.interval.end-video.interval.start <= 30,
+                'video interval exceeds report scope or clip limit')
     for item in report.items:
         require(all(cid in citations for cid in item.citation_ids), "unknown item citation")
         require(bool(item.citation_ids) or item.basis == "unresolved", "claim requires source evidence")

@@ -146,3 +146,25 @@ def test_stop_dispatches_even_when_api_container_is_missing(tmp_path, monkeypatc
     monkeypatch.setattr(installer, 'stop', lambda cfg: stopped.append(cfg['name']))
     installer.main()
     assert stopped == ['argon-recordings']
+
+
+def test_ai_secret_is_coordinator_only_private_mount(tmp_path):
+    key = tmp_path/'openai.env'; key.write_text('OPENAI_API_KEY=synthetic-only'); key.chmod(0o600)
+    settings = config(tmp_path, '[ai]\nkey_file="openai.env"\nbudget_usd=10\n')
+    args = installer.start_args(settings, {'image':'test-image'})
+    assert f'type=bind,src={key},dst=/run/openai/key,readonly' in args
+    assert 'RECORDINGS_OPENAI_KEY_FILE=/run/openai/key' in args
+    assert 'RECORDINGS_AI_BUDGET_USD=10' in args
+    assert 'synthetic-only' not in ' '.join(args)
+    worker = worker_args(settings, {'image':'test-image'}, 1)
+    assert not any('openai' in value or 'AI_BUDGET' in value for value in worker)
+    key.chmod(0o644)
+    with pytest.raises(ValueError, match='private regular'): installer.start_args(settings, {'image':'test-image'})
+    key.chmod(0o600); link=tmp_path/'linked.env';link.symlink_to(key)
+    settings['ai_key_file']=link
+    with pytest.raises(ValueError, match='private regular'): installer.start_args(settings, {'image':'test-image'})
+
+
+@pytest.mark.parametrize('body', ['[ai]\nbudget_usd=true','[ai]\nbudget_usd=-1', '[ai]\nkey_file="a,b"', '[ai]\nkey_file=""', '[ai]\nkey_file=2'])
+def test_ai_invalid_config_fails_before_docker(tmp_path, body):
+    with pytest.raises(ValueError): config(tmp_path, body)

@@ -10,7 +10,7 @@ import time
 from typing import Literal
 
 from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import Field
 
 from .contracts import Strict
@@ -153,11 +153,16 @@ def install(app,get_store,reserve):
             db.execute('BEGIN IMMEDIATE');current=current_reference(db,store,rid)
             return ReportsList(revision=version(db,rid),reports=[view(row,current) for row in db.execute('SELECT * FROM reports WHERE recording_id=? ORDER BY created DESC,id',(rid,))])
 
-    @app.post('/api/recordings/{rid}/reports',response_model=ReportDetail,status_code=201)
-    def save(rid: str,body: SaveReport):
+    def persist(rid: str,body: SaveReport,generation_id=None):
         store=get_store();report=body.report
         with store.db() as db:
             db.execute('BEGIN IMMEDIATE');current=current_reference(db,store,rid)
+            if generation_id:
+                job=db.execute('SELECT * FROM report_generation WHERE id=? AND recording_id=?',(generation_id,rid)).fetchone()
+                if not job or job['state']!='running': raise HTTPException(409,'Generation cancelled')
+                if app.state.accounts.enabled:
+                    permission=db.execute('SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id JOIN recordings r ON r.project_id=m.project_id WHERE r.id=? AND m.user_id=? AND u.disabled=0',(rid,job['requester'])).fetchone()
+                    if not permission or permission['role'] not in {'editor','owner'}: raise HTTPException(403,'Generation access was removed')
             if report.reference!=current: raise HTTPException(409,'Recording evidence changed; regenerate or reconcile the draft')
             if db.execute('SELECT count(*) FROM reports WHERE recording_id=?',(rid,)).fetchone()[0]>=100:
                 raise HTTPException(409,'Report history limit reached')
@@ -175,6 +180,14 @@ def install(app,get_store,reserve):
                 item['sha256']=digest
                 images.append(InspectedImage(**{k:item[k] for k in ('id','source_sha256','timestamp','recipe_version','sha256')},inspected=True))
                 snap_images.append(item)
+            for video in report.video_references:
+                asset=db.execute('SELECT * FROM visual_assets WHERE recording_id=? AND id=?',(rid,video.asset_id)).fetchone()
+                if not asset or asset['source_sha256']!=current.source_sha256:
+                    raise HTTPException(422,'Video reference is not registered for this source')
+                manifest=json.loads(asset['manifest'])
+                if (manifest['kind']!='clip' or manifest['sha256']!=video.sha256 or
+                        video.interval.start!=manifest['actual_start'] or video.interval.end!=manifest['actual_end']):
+                    raise HTTPException(422,'Video reference does not match registered clip')
             try: validate_citations(report,current,segments,images)
             except ContractError as exc: raise HTTPException(422,str(exc)) from None
             captured={'reference':current.model_dump(),'segments':[s.model_dump() for s in sorted(segments.values(),key=lambda s:(s.start,s.id))],
@@ -187,7 +200,13 @@ def install(app,get_store,reserve):
                 raise HTTPException(507,'Insufficient reserved space for report storage/export')
             revision=advance(db,rid,body.expected_revision);report_id=identity();now=time.time()
             db.execute('INSERT INTO reports VALUES(?,?,?,?,?,?,?,?,?,NULL)',(report_id,rid,body.title,body.generator.model_dump_json(),report.model_dump_json(),encoded,'draft',revision,now))
+            if generation_id:
+                db.execute("UPDATE report_generation SET state='completed',stage='Draft ready',report_id=?,reserved=0,updated=? WHERE id=?",(report_id,now,generation_id))
             return ReportDetail(**view(report_row(db,rid,report_id),current).model_dump(),report=report,selected_image_count=len(images))
+
+    @app.post('/api/recordings/{rid}/reports',response_model=ReportDetail,status_code=201)
+    def save(rid: str,body: SaveReport):
+        return persist(rid,body)
 
     @app.get('/api/recordings/{rid}/reports/{report_id}',response_model=ReportDetail)
     def detail(rid: str,report_id: str):
@@ -207,6 +226,24 @@ def install(app,get_store,reserve):
             revision=advance(db,rid,body.expected_revision)
             db.execute("UPDATE reports SET status='reviewed',revision=?,reviewed=? WHERE id=?",(revision,time.time(),report_id))
             return view(report_row(db,rid,report_id),current)
+
+    @app.get('/api/recordings/{rid}/reports/{report_id}/clips/{asset_id}')
+    def report_clip(rid: str,report_id: str,asset_id: str):
+        with get_store().db() as db:
+            report=Report.model_validate_json(report_row(db,rid,report_id)['payload'])
+            video=next((v for v in report.video_references if v.asset_id==asset_id),None)
+            asset=db.execute('SELECT * FROM visual_assets WHERE recording_id=? AND id=?',(rid,asset_id)).fetchone()
+            if not video or not asset: raise HTTPException(404,'Report clip not found')
+            if asset['source_sha256']!=report.reference.source_sha256: raise HTTPException(409,'Report clip source changed')
+            path=Path(asset['path'])
+            try:
+                if path.stat().st_size>128*1024**2: raise HTTPException(422,'Report clip exceeds media limit')
+                digest=hashlib.sha256()
+                with path.open('rb') as stream:
+                    for block in iter(lambda:stream.read(65536),b''): digest.update(block)
+            except OSError: raise HTTPException(410,'Report clip is unavailable') from None
+            if digest.hexdigest()!=video.sha256: raise HTTPException(409,'Report clip integrity changed')
+            return FileResponse(path,media_type='video/mp4',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
     @app.get('/api/recordings/{rid}/reports/{report_id}/export.zip')
     def export(rid: str,report_id: str):
@@ -249,3 +286,5 @@ def install(app,get_store,reserve):
                 'Content-Length':str(size),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
         except BaseException:
             cleanup();raise
+
+    return persist

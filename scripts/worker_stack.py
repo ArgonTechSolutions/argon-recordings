@@ -2,6 +2,7 @@
 import json
 import re
 import socket
+import stat
 import time
 import urllib.request
 
@@ -39,6 +40,14 @@ def api_args(config, installed, label=None):
              '-e', 'RECORDINGS_CHUNK_SECONDS=' + str(config['chunk_seconds']),
              '-e', 'RECORDINGS_OVERLAP_SECONDS=' + str(config['overlap_seconds']),
              '-e', 'RECORDINGS_WORKER_SUBNETS=' + config.get('_worker_subnets', '')]
+    key = config.get('ai_key_file')
+    if key is not None:
+        info = key.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or not 0 < info.st_size <= 4096:
+            raise ValueError('AI secret must be an existing private regular file of at most 4096 bytes')
+        args += ['--mount', f'type=bind,src={key},dst=/run/openai/key,readonly',
+                 '-e', 'RECORDINGS_OPENAI_KEY_FILE=/run/openai/key',
+                 '-e', 'RECORDINGS_AI_BUDGET_USD=' + str(config['ai_budget'])]
     for index in range(1, config['workers'] + 1):
         args += ['-v', credential_volume(config, index) + ':/run/worker-credentials/' + str(index)]
     if config.get('mode') == 'coordinator':

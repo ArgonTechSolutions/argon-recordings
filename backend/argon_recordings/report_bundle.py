@@ -67,6 +67,11 @@ def render(report,captured,metadata):
             citation=citations[cid];label=f'{stamp(citation.interval.start)}–{stamp(citation.interval.end)} · {citation.evidence_id}'
             body.append(f'<a href="{links[cid]}">{text(label)}</a> ')
             md.append(f'[{markdown(label)}]({links[cid]})')
+        for video in report.video_references:
+            if video.item_id == item.id:
+                label=f'Video reference: {stamp(video.interval.start)}–{stamp(video.interval.end)}. {video.caption} (playback available in the app; video is not included in this export).'
+                body.append(f'<p>{text(label)}</p>')
+                md.append(markdown(label))
         body.append('</section>')
     for image in captured['images']:
         filename=image_filename(image['id']);label=f'{image["id"]} · {stamp(image["timestamp"])}'

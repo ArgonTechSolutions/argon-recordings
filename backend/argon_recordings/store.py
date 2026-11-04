@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS pipeline_progress(job_id TEXT PRIMARY KEY REFERENCES 
             db.executescript(analysis_schema)
             from .reports import SCHEMA as reports_schema
             db.executescript(reports_schema)
+            from .report_generation import SCHEMA as generation_schema
+            db.executescript(generation_schema)
 
     @contextmanager
     def db(self):

@@ -25,7 +25,7 @@ def load_config(path):
     allowed = {'app': {'port', 'name', 'max_upload_mb'}, 'models': {'transcription', 'embedding', 'turbo_path'},
                'resources': {'cpus', 'memory_gib', 'job_timeout_seconds'}, 'docker': {'sudo'}, 'auth': {'mode', 'public_url', 'allow_totp'},
                'workers': {'count', 'chunk_seconds', 'overlap_seconds', 'api_cpus', 'api_memory_gib'},
-               'deployment': {'mode'}, 'transport': {'origin','bind_address','port','certificate','private_key','peer_certificate'}}
+               'deployment': {'mode'}, 'ai': {'key_file', 'budget_usd'}, 'transport': {'origin','bind_address','port','certificate','private_key','peer_certificate'}}
     for section, fields in data.items():
         if section not in allowed or not isinstance(fields, dict) or set(fields) - allowed[section]:
             raise ValueError(f'Unknown configuration key in {section}')
@@ -89,8 +89,16 @@ def load_config(path):
     home = path.parent
     if ':' in str(home) or (external and ':' in external):
         raise ValueError('Installation and model paths cannot contain a colon')
+    ai = data.get('ai', {})
+    budget = ai.get('budget_usd', 10)
+    if type(budget) not in {int, float} or not 0 <= budget <= 1000:
+        raise ValueError('ai.budget_usd must be 0..1000 USD')
+    key = ai.get('key_file')
+    if key is not None and (mode == 'worker' or not isinstance(key, str) or not key.strip() or any(c in key for c in ':,\x00\n\r')):
+        raise ValueError('ai.key_file requires a coordinator/local role and a safe nonempty local path')
+    ai_key_file = home / key if key is not None else None
     turbo = (home / external).resolve() if external else home / 'models' / 'turbo'
-    return dict(mode=mode, transport=transport, workers=count, chunk_seconds=chunk_seconds, overlap_seconds=overlap, api_cpus=api_cpus, api_memory=api_memory, allow_totp=allow_totp, auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
+    return dict(ai_key_file=ai_key_file, ai_budget=budget, mode=mode, transport=transport, workers=count, chunk_seconds=chunk_seconds, overlap_seconds=overlap, api_cpus=api_cpus, api_memory=api_memory, allow_totp=allow_totp, auth_mode=auth_mode, public_url=public_url.rstrip('/'), config_path=path, max_upload_mb=max_upload_mb, timeout=timeout, port=port, name=name, embedding=embedding, cpus=cpus, memory=memory, sudo=sudo,
                 home=home, turbo=turbo, external=bool(external), identity=hashlib.sha256(str(home).encode()).hexdigest()[:16])
 
 
