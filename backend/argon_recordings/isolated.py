@@ -92,6 +92,8 @@ def api():
 
 
 def worker(remote=False):
+    logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+    logging.getLogger('argon_recordings.worker').setLevel(logging.INFO)
     from .worker import Turbo, run_once
     work = Path('/work')
     if not work.is_dir():

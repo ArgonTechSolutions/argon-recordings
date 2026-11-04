@@ -68,6 +68,13 @@ def install(app, store, worker_auth, receive, embeddings):
         db.execute('INSERT INTO job_progress VALUES(?,?,?) ON CONFLICT(job_id) DO UPDATE SET payload=excluded.payload,updated=excluded.updated',
                    (jid,json.dumps(payload),now))
 
+    def chunk_stage(db, row, phase, progress=None):
+        total = db.execute('SELECT count(*) FROM chunks WHERE job_id=?', (row['job_id'],)).fetchone()[0]
+        stage = f"{phase} chunk {row['ordinal']+1}/{total} · attempt {row['attempts']}/3"
+        if progress is not None:
+            stage += f' · {int(progress*100)}%'
+        db.execute('UPDATE jobs SET stage=? WHERE id=?', (stage,row['job_id']))
+
     @app.post('/api/worker/tasks/claim', dependencies=[Depends(worker_auth)])
     def claim(request: Request):
         worker = getattr(request.state, 'worker_id', None)
@@ -83,6 +90,7 @@ def install(app, store, worker_auth, receive, embeddings):
             if row:
                 token = identity()
                 db.execute("UPDATE chunks SET state='running',worker=?,lease_id=?,lease_until=?,attempts=attempts+1 WHERE id=?", (worker, token, time.time()+120, row['id']))
+                chunk_stage(db, dict(row, attempts=row['attempts']+1), 'Starting')
                 return {**dict(row), 'kind': 'chunk', 'lease_id': token, 'lease_seconds': 120, 'path': None, 'result': None}
         # Store.claim repeats the capacity check transactionally.
         job = store().claim(worker)
@@ -224,6 +232,10 @@ def install(app, store, worker_auth, receive, embeddings):
             db.execute('BEGIN IMMEDIATE')
             row = child(db,cid,x_lease_id,request)
             db.execute('UPDATE chunks SET lease_until=? WHERE id=?', (time.time()+120,cid))
+            phase = {'Downloading chunk audio':'Downloading audio for',
+                     'Transcribing chunk':'Transcribing',
+                     'Recovering chunk timestamps':'Recovering timestamps for'}.get(body.stage, 'Processing')
+            chunk_stage(db, row, phase, body.progress)
             aggregate(db,row['job_id'])
         return {'lease_seconds': 120}
 
@@ -233,6 +245,8 @@ def install(app, store, worker_auth, receive, embeddings):
             db.execute('BEGIN IMMEDIATE')
             row = child(db,cid,x_lease_id,request)
             db.execute("UPDATE chunks SET state=?,error=?,lease_until=NULL WHERE id=?", ('queued' if row['attempts']<3 else 'failed',body.message,cid))
+            if row['attempts']<3:
+                chunk_stage(db, dict(row, attempts=row['attempts']+1), 'Waiting to retry')
             if row['attempts']>=3:
                 db.execute("UPDATE jobs SET state='failed',stage='Chunk failed' WHERE id=?", (row['job_id'],))
                 db.execute("UPDATE recordings SET status='failed',error=? WHERE id=(SELECT recording_id FROM jobs WHERE id=?)", (body.message,row['job_id']))
