@@ -9,6 +9,8 @@ import pytest
 from fastapi import HTTPException
 
 from scripts.check_ai_connection import check
+from test_report_generation import reading_response
+from argon_recordings.report_reading import READER_MODEL
 
 
 @pytest.mark.parametrize('provider_status',[200,401])
@@ -30,15 +32,13 @@ def test_checker_uses_data_filesystem_and_cleans_only_scratch(tmp_path,monkeypat
     def respond(request):
         payload=json.loads(request.content)
         if provider_status!=200: return httpx.Response(provider_status,json={'error':'synthetic'})
-        if not any(i.get('type')=='function_call_output' for i in payload['input']):
-            output=[{'type':'function_call','call_id':'read','name':'read_transcript','arguments':'{"offset":0}'}]
-        else:
-            first=json.loads(payload['input'][0]['content'])
-            segment=json.loads(payload['input'][-1]['output'])['items'][0]
-            report={'reference':first['reference'],'scope':first['scope'],'language':'en','coverage':'complete','limitations':[],
-                    'citations':[{'id':'source','kind':'transcript','evidence_id':segment['id'],'interval':{'start':segment['start'],'end':segment['end']}}],
-                    'items':[{'id':'summary','kind':'summary','basis':'explicit','text':'Review the mobile layout.','citation_ids':['source']}]}
-            output=[{'type':'message','role':'assistant','content':[{'type':'output_text','text':json.dumps(report)}]}]
+        if payload['model']==READER_MODEL: return reading_response(payload)
+        first=json.loads(payload['input'][0]['content'])
+        segment=first['evidence'][0]
+        report={'reference':first['reference'],'scope':first['scope'],'language':'en','coverage':'complete','limitations':[],
+                'citations':[{'id':'source','kind':'transcript','evidence_id':segment['id'],'interval':{'start':segment['start'],'end':segment['end']}}],
+                'items':[{'id':'summary','kind':'summary','basis':'explicit','text':'Review the mobile layout.','citation_ids':['source']}]}
+        output=[{'type':'message','role':'assistant','content':[{'type':'output_text','text':json.dumps(report)}]}]
         return httpx.Response(200,json={'status':'completed','output':output,'usage':{'input_tokens':100,'output_tokens':100}})
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original_client(**kwargs,transport=httpx.MockTransport(respond)))
     if provider_status==200:

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from argon_recordings.api import Settings, create_app
 from argon_recordings.embeddings import Embeddings
-from argon_recordings.report_generation import Generation, GenerateReport, RESERVATION
+from argon_recordings.report_generation import Generation, GenerateReport, RESERVATION, MODEL, READER_MODEL
 from argon_recordings.reports import current_reference, install as install_reports
 from argon_recordings.store import Store, identity
 
@@ -32,8 +32,8 @@ async def check():
         app.state.accounts=SimpleNamespace(enabled=False)
         persist=install_reports(app,lambda:store,0)
         engine=Generation(app,settings,persist,{})
-        if not engine.key or engine.budget<RESERVATION:
-            raise HTTPException(503,'Configure a private API key and an allowance of at least two USD before checking')
+        if not engine.key or engine.budget<=0:
+            raise HTTPException(503,'Configure a private API key and an enabled AI allowance before checking')
         pid,rid,sid,jid=(identity() for _ in range(4));now=time.time()
         text='Synthetic deployment check: the team decided to review the mobile layout tomorrow. No owner was assigned.'
         with store.db() as db:
@@ -52,7 +52,7 @@ async def check():
             report=db.execute('SELECT status,payload FROM reports WHERE id=?',(job['report_id'],)).fetchone()
             if job['state']!='completed' or not report or report['status']!='draft' or not json.loads(report['payload'])['citations']:
                 raise HTTPException(502,'Synthetic cited draft was not completed')
-            print(json.dumps({'synthetic_openai_check':'passed','model':'gpt-6.1-sol','review_state':'draft','estimated_cost_usd':round(job['cost'],6),'production_data_used':False}))
+            print(json.dumps({'synthetic_openai_check':'passed','model':MODEL,'reader_model':READER_MODEL,'review_state':'draft','estimated_cost_usd':round(job['cost'],6),'production_data_used':False}))
 
 
 if __name__=='__main__':

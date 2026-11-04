@@ -17,6 +17,7 @@ type Reports = components["schemas"]["ReportsList"]
 type Detail = components["schemas"]["ReportDetail"]
 type Generation = components["schemas"]["GenerationState"]
 type Job = components["schemas"]["GenerationJob"]
+type Estimate = components["schemas"]["GenerationEstimate"]
 const stamp = (t: number) =>
   `${Math.floor(t / 60)}:${Math.floor(t % 60)
     .toString()
@@ -139,7 +140,7 @@ export function RecordingReports({
   const [language, setLanguage] = useState(
     recording.language === "es" ? "es" : "en"
   )
-  const [visuals, setVisuals] = useState(true)
+  const [visuals, setVisuals] = useState(false)
   const [start, setStart] = useState(0)
   const [end, setEnd] = useState(recording.duration ?? 0)
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null)
@@ -190,6 +191,25 @@ export function RecordingReports({
     end > (recording.duration ?? 0)
       ? "Choose a time range inside the recording, with the end after the start."
       : ""
+  const estimate = useQuery({
+    queryKey: [
+      "report-estimate",
+      recording.id,
+      kind,
+      language,
+      visuals,
+      start,
+      end,
+    ],
+    queryFn: () =>
+      request<Estimate>(`${generationBase}/estimate`, {
+        method: "POST",
+        body: JSON.stringify({ kind, language, visuals, start, end }),
+      }),
+    enabled: createOpen && !rangeError,
+    staleTime: 0,
+    retry: false,
+  })
   const rememberJob = (job: Job) => {
     cache.setQueryData<Generation>(
       ["report-generation", recording.id],
@@ -691,7 +711,10 @@ export function RecordingReports({
                 label="Report type"
                 value={kind}
                 disabled={generate.isPending}
-                onChange={setKind}
+                onChange={(value) => {
+                  setKind(value)
+                  setVisuals(value === "report")
+                }}
                 items={[
                   { value: "summary", label: "Summary" },
                   { value: "actions", label: "Action list" },
@@ -783,6 +806,38 @@ export function RecordingReports({
               Selected transcript passages and inspected images are sent to
               OpenAI. The result is saved as a draft.
             </p>
+            <div className="report-notice" role="status" aria-live="polite">
+              {estimate.isFetching ? (
+                "Estimating cost…"
+              ) : estimate.data ? (
+                <>
+                  <strong>
+                    Estimated cost: $
+                    {estimate.data.estimated_cost_usd.toFixed(3)}
+                  </strong>
+                  <p className="muted">
+                    Typical range ${estimate.data.low_usd.toFixed(3)}–$
+                    {estimate.data.high_usd.toFixed(3)}. Actual usage may vary.
+                    This estimate is not a spending cap.
+                  </p>
+                  {estimate.data.cached_batches > 0 && (
+                    <p className="muted">
+                      Reusing saved transcript readings to reduce cost.
+                    </p>
+                  )}
+                  {estimate.data.allowance_warning && (
+                    <p>
+                      This may exceed the server’s monthly cost guideline.
+                      Generation can still continue.
+                    </p>
+                  )}
+                </>
+              ) : estimate.error ? (
+                "Cost estimate unavailable. You can still generate a draft; actual usage will be shown."
+              ) : (
+                "Choose a valid time range to estimate cost."
+              )}
+            </div>
             {formError && <p role="alert">{formError}</p>}
             {generate.error && (
               <p role="alert">

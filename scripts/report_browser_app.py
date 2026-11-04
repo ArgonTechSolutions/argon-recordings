@@ -6,6 +6,7 @@ import os
 import httpx
 
 from argon_recordings.api import create_app
+from argon_recordings.report_reading import READER_MODEL
 
 _original_client = httpx.AsyncClient
 
@@ -14,15 +15,18 @@ async def synthetic_response(request):
     await asyncio.sleep(.5)
     payload=json.loads(request.content)
     first=json.loads(payload['input'][0]['content'])
+    if payload['model']==READER_MODEL:
+        passages=first.get('passages',first.get('notes'))
+        ids=list(dict.fromkeys(sid for item in passages for sid in item.get('segment_ids',[item.get('id')])))[:4]
+        reading={'notes':[{'text':'Review the mobile workflow and permission decisions.','segment_ids':ids}]}
+        return httpx.Response(200,json={'status':'completed','output':[{'type':'message','role':'assistant','content':[{'type':'output_text','text':json.dumps(reading)}]}],'usage':{'input_tokens':100,'output_tokens':100}})
     outputs={item['call_id']:item['output'] for item in payload['input'] if item.get('type')=='function_call_output'}
-    if first.get('request')=='TEST_PROVIDER_FAILURE' and 'transcript' in outputs:
-        return httpx.Response(401,json={'error':'synthetic upstream rejection'})
-    if 'transcript' not in outputs:
-        output=[{'type':'function_call','call_id':'transcript','name':'read_transcript','arguments':'{"offset":0}'}]
-    elif first['kind']=='report' and 'screen' not in outputs:
+    if first.get('request')=='TEST_PROVIDER_FAILURE':
+        return httpx.Response(500,json={'error':'synthetic upstream rejection'})
+    if first['kind']=='report' and 'screen' not in outputs:
         output=[{'type':'function_call','call_id':'screen','name':'inspect_image','arguments':'{"image_id":"frame:frame-0000.jpg"}'}]
     else:
-        segments=json.loads(outputs['transcript'])['items']
+        segments=first['evidence']
         reference=json.loads(payload['instructions'].split('\nCurrent reference: ')[1].split('\nScope: ')[0])
         citations=[{'id':'source','kind':'transcript','evidence_id':segments[0]['id'],
                     'interval':{'start':segments[0]['start'],'end':segments[0]['end']}}]

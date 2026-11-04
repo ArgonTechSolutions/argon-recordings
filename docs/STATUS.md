@@ -1,5 +1,11 @@
 # Foundation status
 
+## Luna/Terra report cost tuning (2026-11-04; REC-33)
+
+Luna now reads the entire selected transcript in cached internal batches, compacts long notes and passes them with canonical evidence to Terra for the final report. Sol is no longer called. The form shows an advisory cost estimate; duration/page-count and application cost hard stops are removed. Optional visual work finishes with available evidence instead of failing at the old evidence-step ceiling. Text-only reports default to no visuals.
+
+**361 backend tests passed, one opt-in test skipped**; OpenAPI/types, frontend build/lint and integrated report Chromium checks passed. A 1,200-passage/hour fixture verifies all passages are read, long notes compact, subsequent generation reuses cached readings and changed source invalidates reuse. Real OpenAI verification on a synthetic 600-passage hour produced a cited draft through seven Luna calls and one Terra call: **$0.022606 estimated measured usage**, versus the form estimate of $0.0356. This is synthetic-input cost/API evidence, not representative private-recording quality. The tuning awaits operator deployment; the preceding a4b9da3 update receipt confirmed both hosts installed successfully, with its final health verification pending sudo authentication.
+
 ## Report submission and timing correction (2026-11-04; REC-33)
 
 Operator receipts verified the initial OpenAI deployment on Vesta/Philemon with one online worker and a successful synthetic API draft. Subsequent report diagnostics showed no persisted user generation jobs. Chromium reproduced the blocker: a fractional recording duration violated a collapsed number input's 0.1-second step, preventing submission without visible feedback.

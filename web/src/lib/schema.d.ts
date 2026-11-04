@@ -1789,6 +1789,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recordings/{rid}/report-generation/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Estimate */
+        post: operations["estimate_api_recordings__rid__report_generation_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings/{rid}/report-generation/{jid}/cancel": {
         parameters: {
             query?: never;
@@ -2488,7 +2505,7 @@ export interface components {
             language: string;
             /**
              * Visuals
-             * @default true
+             * @default false
              */
             visuals: boolean;
             /** Previous Report Id */
@@ -2500,6 +2517,33 @@ export interface components {
             start: number;
             /** End */
             end?: number | null;
+        };
+        /** GenerationEstimate */
+        GenerationEstimate: {
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number;
+            /** Low Usd */
+            low_usd: number;
+            /** High Usd */
+            high_usd: number;
+            /** Reading Batches */
+            reading_batches: number;
+            /** Cached Batches */
+            cached_batches: number;
+            /** Passages */
+            passages: number;
+            /**
+             * Reader Model
+             * @default gpt-6-luna
+             */
+            reader_model: string;
+            /**
+             * Writer Model
+             * @default gpt-6.1-terra
+             */
+            writer_model: string;
+            /** Allowance Warning */
+            allowance_warning: boolean;
         };
         /** GenerationJob */
         GenerationJob: {
@@ -2531,6 +2575,17 @@ export interface components {
             enabled: boolean;
             /** Model */
             model: string;
+            /**
+             * Reader Model
+             * @default gpt-6-luna
+             */
+            reader_model: string;
+            /**
+             * Budget Mode
+             * @default advisory
+             * @constant
+             */
+            budget_mode: "advisory";
             /** Budget Usd */
             budget_usd: number;
             /** Committed Usd */
@@ -7530,6 +7585,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerationJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    estimate_api_recordings__rid__report_generation_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationEstimate"];
                 };
             };
             /** @description Validation Error */

@@ -9,7 +9,8 @@ from fastapi import HTTPException
 from test_workflow import client
 from test_reports import draft, save, unpack
 from test_accounts import team, login, invited
-from argon_recordings.report_generation import Generation, strict_schema
+from argon_recordings.report_generation import Generation, GenerateReport, strict_schema
+from argon_recordings.report_reading import READER_MODEL, WRITER_MODEL
 from argon_recordings.report_contract import Report
 
 
@@ -30,13 +31,25 @@ def queue(client,rid,**body):
     return jid
 
 
+def reading_response(payload):
+    source=json.loads(payload['input'][0]['content'])
+    items=source.get('passages',source.get('notes',[]))
+    ids=list(dict.fromkeys(sid for item in items for sid in item.get('segment_ids',[item.get('id')])))[:4]
+    value={'notes':[{'text':'Internal source summary: '+items[0].get('text','Source notes'),'segment_ids':ids}]}
+    # Keep the structured response within its real field bounds.
+    value['notes'][0]['text']=value['notes'][0]['text'][:600]
+    return httpx.Response(200,json={'status':'completed','output':[{'type':'message','role':'assistant','content':[{'type':'output_text','text':json.dumps(value)}]}],
+                                    'usage':{'input_tokens':100,'output_tokens':80}})
+
+
 def transport(monkeypatch,client,body,*,images=True,alter=None,hook=None):
     original=httpx.AsyncClient; sent=[]
     def respond(request):
         payload=json.loads(request.content); sent.append(payload)
-        assert payload['store'] is False and payload['model']=='gpt-6.1-sol'
-        index=len(sent)
-        if index==1:
+        assert payload['store'] is False and payload['model'] in {READER_MODEL,WRITER_MODEL}
+        if payload['model']==READER_MODEL: return reading_response(payload)
+        index=sum(p['model']==WRITER_MODEL for p in sent)
+        if images and index==1:
             output=[{'type':'function_call','call_id':'read','name':'read_transcript','arguments':'{"offset":0}'}]
         elif images and index==2:
             output=[{'type':'function_call','call_id':'pixels','name':'inspect_image','arguments':'{"image_id":"frame:frame-0000.jpg"}'}]
@@ -54,16 +67,16 @@ def transport(monkeypatch,client,body,*,images=True,alter=None,hook=None):
 
 
 def test_generation_uses_real_pixels_and_saves_unreviewed_cited_draft(client,tmp_path,monkeypatch):
-    rid,body,_=draft(client,tmp_path); jid=queue(client,rid)
+    rid,body,_=draft(client,tmp_path); jid=queue(client,rid,visuals=True)
     sent=transport(monkeypatch,client,body)
     client.portal.call(client.app.state.generation.run,jid)
     state=client.get(f'/api/recordings/{rid}/report-generation').json()
     job=state['jobs'][0]
-    assert job['state']=='completed' and job['input_tokens']==300 and job['estimated_cost_usd']>0
-    assert 0<state['committed_usd']<state['reservation_usd']
+    assert job['state']=='completed' and job['input_tokens']==400 and job['estimated_cost_usd']>0
+    assert state['committed_usd']>0 and state['reservation_usd']==0
     report=client.get(f'/api/recordings/{rid}/reports/{job["report_id"]}').json()
     assert report['status']=='draft' and report['selected_image_count']==1
-    assert report['generator']['model']=='gpt-6.1-sol'
+    assert report['generator']['model']==WRITER_MODEL
     image=sent[-1]['input'][-1]['output'][1]
     assert image['type']=='input_image' and image['image_url'].startswith('data:image/jpeg;base64,')
     with client.app.state.store.db() as db:
@@ -95,15 +108,16 @@ def test_source_change_and_cancel_during_paid_call_prevent_publication(client,tm
     assert e.value.status_code==409
 
 
-def test_atomic_budget_reservations_queue_cancel_and_range(client,tmp_path):
+def test_advisory_estimate_queue_cancel_and_range(client,tmp_path):
     rid,_,_=draft(client,tmp_path); engine=client.app.state.generation
-    engine.budget=1
+    engine.budget=.001
     base=f'/api/recordings/{rid}/report-generation'
-    assert client.post(base,json={}).status_code==429
-    engine.budget=2
+    estimate=client.post(base+'/estimate',json={})
+    assert estimate.status_code==200 and estimate.json()['allowance_warning']
     r=client.post(base,json={'start':.2,'end':.8}); assert r.status_code==202
     assert client.post(base,json={}).status_code in {409,429}
-    assert client.get(base).json()['committed_usd']==2
+    assert client.get(base).json()['budget_mode']=='advisory'
+    assert client.get(base).json()['committed_usd']>engine.budget
     jid=r.json()['id']
     with engine.store.db() as db:
         body=json.loads(db.execute('SELECT request FROM report_generation WHERE id=?',(jid,)).fetchone()[0])
@@ -194,7 +208,7 @@ def test_refinement_preserves_old_report_and_creates_a_new_draft(client,tmp_path
     jid=queue(client,rid,previous_report_id=previous['id'],kind='custom',instruction='Make this concise',visuals=False)
     sent=transport(monkeypatch,client,body,images=False)
     client.portal.call(client.app.state.generation.run,jid)
-    assert json.loads(sent[0]['input'][0]['content'])['previous_report']['items']==previous['report']['items']
+    assert json.loads(next(p for p in sent if p['model']==WRITER_MODEL)['input'][0]['content'])['previous_report']['items']==previous['report']['items']
     rows=client.get(f'/api/recordings/{rid}/reports').json()['reports']
     assert len(rows)==2 and rows[0]['title']=='Refined report' and rows[0]['status']=='draft'
     assert client.get(f'/api/recordings/{rid}/reports/{previous["id"]}').json()['report']==previous['report']
@@ -226,7 +240,7 @@ def test_visual_request_reuses_real_worker_queue_and_inspects_registered_result(
     from test_visual_jobs import manifest
     from test_reports import JPEG
     from test_workflow import AUTH
-    rid,body,_=draft(client,tmp_path); jid=queue(client,rid)
+    rid,body,_=draft(client,tmp_path); jid=queue(client,rid,visuals=True)
     g=client.app.state.generation; original_schedule=g.visual_actions['schedule']; original=httpx.AsyncClient; requests=[]
     import asyncio
     tasks=[]
@@ -245,7 +259,9 @@ def test_visual_request_reuses_real_worker_queue_and_inspects_registered_result(
         return job
     monkeypatch.setitem(g.visual_actions,'schedule',schedule)
     def respond(request):
-        payload=json.loads(request.content);requests.append(payload); count=len(requests)
+        payload=json.loads(request.content);requests.append(payload)
+        if payload['model']==READER_MODEL: return reading_response(payload)
+        count=sum(p['model']==WRITER_MODEL for p in requests)
         if count==1: output=[{'type':'function_call','call_id':'read','name':'read_transcript','arguments':'{"offset":0}'}]
         elif count==2: output=[{'type':'function_call','call_id':'extract','name':'request_visual','arguments':'{"kind":"image","start":0,"end":0}'}]
         elif count==3:
@@ -261,7 +277,7 @@ def test_visual_request_reuses_real_worker_queue_and_inspects_registered_result(
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original(**kwargs,transport=httpx.MockTransport(respond)))
     client.portal.call(g.run,jid)
     jobs=client.get(f'/api/recordings/{rid}/report-generation').json()['jobs']
-    assert jobs[0]['state']=='completed' and len(requests)==4
+    assert jobs[0]['state']=='completed' and len(requests)==5
     for task in tasks:
         assert task.done()
         task.result()
@@ -294,7 +310,7 @@ def test_custom_request_requires_a_task_and_focus_is_separate(client,tmp_path,mo
     jid=queue(client,rid,kind='custom',instruction='Write an implementation guide',focus='Mobile accessibility',visuals=False)
     sent=transport(monkeypatch,client,body,images=False)
     client.portal.call(client.app.state.generation.run,jid)
-    payload=json.loads(sent[0]['input'][0]['content'])
+    payload=json.loads(next(p for p in sent if p['model']==WRITER_MODEL)['input'][0]['content'])
     assert payload['request']=='Write an implementation guide'
     assert payload['focus']=='Mobile accessibility'
     assert client.get(base).json()['jobs'][0]['state']=='completed'
@@ -310,3 +326,72 @@ def test_scope_expansion_preserves_requested_fractional_video_bounds(client,tmp_
     with client.app.state.store.db() as db:
         request=json.loads(db.execute('SELECT request FROM report_generation WHERE id=?',(response.json()['id'],)).fetchone()[0])
     assert request['start']==.03 and request['end']==1.037
+
+
+def test_hour_long_reading_is_batched_cached_and_never_pages_with_the_writer(client,tmp_path,monkeypatch):
+    from argon_recordings.report_reading import price
+    rid,body,_=draft(client,tmp_path)
+    with client.app.state.store.db() as db:
+        db.execute('UPDATE recordings SET duration=3600 WHERE id=?',(rid,))
+        for index in range(1,1200):
+            db.execute('INSERT INTO segments(id,recording_id,start,end,text,words) VALUES(?,?,?,?,?,?)',
+                       (f'source-{index}',rid,index*3,index*3+1,'Synthetic meeting context about decisions and follow-up actions. '*8,'[]'))
+    body['report']['scope']['end']=3600
+    # Source checksum remains unchanged, transcript revision is computed from all passages.
+    with client.app.state.store.db() as db:
+        body['report']['reference']=client.app.state.generation.source(db,rid,GenerateReport())[0].model_dump()
+    jid=queue(client,rid,visuals=False)
+    sent=transport(monkeypatch,client,body,images=False)
+    client.portal.call(client.app.state.generation.run,jid)
+    readers=[p for p in sent if p['model']==READER_MODEL]
+    writers=[p for p in sent if p['model']==WRITER_MODEL]
+    observed=[s['id'] for p in readers for s in json.loads(p['input'][0]['content']).get('passages',[])]
+    assert len(readers)>12 and len(writers)==1 and writers[0]['tools']==[]
+    assert len(observed)==1200 and len(set(observed))==1200
+    assert all(len(json.dumps(p['input']).encode())<35000 for p in readers)
+    state=client.get(f'/api/recordings/{rid}/report-generation').json()
+    assert state['jobs'][0]['state']=='completed'
+    assert state['jobs'][0]['estimated_cost_usd']==pytest.approx(len(readers)*price(READER_MODEL,100,80)+price(WRITER_MODEL,100,80))
+    cached_estimate=client.post(f'/api/recordings/{rid}/report-generation/estimate',json={}).json()
+    assert cached_estimate['cached_batches']==sum('passages' in json.loads(p['input'][0]['content']) for p in readers)
+    next_job=queue(client,rid,visuals=False)
+    sent.clear()
+    client.portal.call(client.app.state.generation.run,next_job)
+    assert [p['model'] for p in sent]==[WRITER_MODEL]
+    with client.app.state.store.db() as db: db.execute("UPDATE segments SET text='Changed source content' WHERE recording_id=? AND start=0",(rid,))
+    refreshed=client.post(f'/api/recordings/{rid}/report-generation/estimate',json={}).json()
+    assert refreshed['cached_batches']==0
+
+
+def test_reader_cannot_invent_canonical_source_ids(client,tmp_path,monkeypatch):
+    rid,_,_=draft(client,tmp_path);jid=queue(client,rid)
+    original=httpx.AsyncClient
+    def respond(request):
+        response=reading_response(json.loads(request.content));data=response.json()
+        value=json.loads(data['output'][0]['content'][0]['text']);value['notes'][0]['segment_ids']=['unknown-source']
+        data['output'][0]['content'][0]['text']=json.dumps(value)
+        return httpx.Response(200,json=data)
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original(**kwargs,transport=httpx.MockTransport(respond)))
+    with pytest.raises(HTTPException) as error:client.portal.call(client.app.state.generation.run,jid)
+    assert 'unknown transcript passages' in error.value.detail
+    with client.app.state.store.db() as db:assert not db.execute('SELECT 1 FROM report_readings').fetchone()
+
+
+def test_optional_tool_rounds_finalize_instead_of_failing_on_step_limit(client,tmp_path,monkeypatch):
+    from argon_recordings.report_generation import VISUAL_ROUNDS
+    rid,body,_=draft(client,tmp_path);jid=queue(client,rid,visuals=True)
+    original=httpx.AsyncClient;sent=[]
+    def respond(request):
+        payload=json.loads(request.content);sent.append(payload)
+        if payload['model']==READER_MODEL:return reading_response(payload)
+        if payload['tools']:
+            output=[{'type':'function_call','call_id':f'read-{len(sent)}','name':'read_transcript','arguments':'{"offset":0}'}]
+        else:
+            report=copy.deepcopy(body['report']);report['citations']=report['citations'][:1]
+            report['items'][0]['citation_ids']=['speech']
+            output=[{'type':'message','role':'assistant','content':[{'type':'output_text','text':json.dumps(report)}]}]
+        return httpx.Response(200,json={'status':'completed','output':output,'usage':{'input_tokens':100,'output_tokens':100}})
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original(**kwargs,transport=httpx.MockTransport(respond)))
+    client.portal.call(client.app.state.generation.run,jid)
+    assert len(sent)==VISUAL_ROUNDS+2 and sent[-1]['tools']==[]
+    assert client.get(f'/api/recordings/{rid}/report-generation').json()['jobs'][0]['state']=='completed'

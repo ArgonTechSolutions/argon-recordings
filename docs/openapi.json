@@ -5838,6 +5838,55 @@
         }
       }
     },
+    "/api/recordings/{rid}/report-generation/estimate": {
+      "post": {
+        "summary": "Estimate",
+        "operationId": "estimate_api_recordings__rid__report_generation_estimate_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationEstimate"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/recordings/{rid}/report-generation/{jid}/cancel": {
       "post": {
         "summary": "Cancel",
@@ -7903,7 +7952,7 @@
           "visuals": {
             "type": "boolean",
             "title": "Visuals",
-            "default": true
+            "default": false
           },
           "previous_report_id": {
             "anyOf": [
@@ -7939,6 +7988,60 @@
         "additionalProperties": false,
         "type": "object",
         "title": "GenerateReport"
+      },
+      "GenerationEstimate": {
+        "properties": {
+          "estimated_cost_usd": {
+            "type": "number",
+            "title": "Estimated Cost Usd"
+          },
+          "low_usd": {
+            "type": "number",
+            "title": "Low Usd"
+          },
+          "high_usd": {
+            "type": "number",
+            "title": "High Usd"
+          },
+          "reading_batches": {
+            "type": "integer",
+            "title": "Reading Batches"
+          },
+          "cached_batches": {
+            "type": "integer",
+            "title": "Cached Batches"
+          },
+          "passages": {
+            "type": "integer",
+            "title": "Passages"
+          },
+          "reader_model": {
+            "type": "string",
+            "title": "Reader Model",
+            "default": "gpt-6-luna"
+          },
+          "writer_model": {
+            "type": "string",
+            "title": "Writer Model",
+            "default": "gpt-6.1-terra"
+          },
+          "allowance_warning": {
+            "type": "boolean",
+            "title": "Allowance Warning"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "estimated_cost_usd",
+          "low_usd",
+          "high_usd",
+          "reading_batches",
+          "cached_batches",
+          "passages",
+          "allowance_warning"
+        ],
+        "title": "GenerationEstimate"
       },
       "GenerationJob": {
         "properties": {
@@ -8024,6 +8127,17 @@
           "model": {
             "type": "string",
             "title": "Model"
+          },
+          "reader_model": {
+            "type": "string",
+            "title": "Reader Model",
+            "default": "gpt-6-luna"
+          },
+          "budget_mode": {
+            "type": "string",
+            "const": "advisory",
+            "title": "Budget Mode",
+            "default": "advisory"
           },
           "budget_usd": {
             "type": "number",
