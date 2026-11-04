@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from argon_recordings.api import Settings, create_app
 from argon_recordings.chunk_audio import plan, reconcile
 from argon_recordings.contracts import Segment
-from argon_recordings.worker import crop_audio, run_once
+from argon_recordings.worker import _check_chunk_completion, crop_audio, run_once
 from test_workflow import project, upload
 
 TOKENS = {'one':'synthetic-one','two':'synthetic-two'}
@@ -67,6 +67,56 @@ def claim(client,worker):
     response=client.post('/api/worker/tasks/claim',headers=auth(worker))
     assert response.status_code==200,response.text
     return response.json()
+
+
+def test_worker_persists_safe_chunk_rejection_and_preserves_completed_work(prepared, tmp_path):
+    client, rid, jid, _, _ = prepared
+    first = claim(client, 'one')
+    assert client.post(f"/api/worker/chunks/{first['id']}/complete",
+                       headers=auth('one', first['lease_id']), json=result(0, 1, 'valid')).status_code == 200
+
+    class OverlappingWords:
+        def transcribe(self, audio, language, advance):
+            return [Segment(start=0, end=2, text='private transcript',
+                            words=[word(0, 1, 'private'), word(.5, 1.5, 'transcript')])]
+
+    def forward(request):
+        return client.request(request.method, str(request.url), headers=dict(request.headers), content=request.read())
+
+    message = 'Chunk result rejected (HTTP 422): Word timeline overlaps excessively or is unordered'
+    with httpx.Client(base_url='http://testserver', headers=auth('one'),
+                      transport=httpx.MockTransport(forward)) as transport:
+        for _ in range(3):
+            with pytest.raises(RuntimeError, match='Word timeline overlaps excessively or is unordered'):
+                run_once(transport, OverlappingWords(), tmp_path)
+    with client.app.state.store.db() as db:
+        assert db.execute('SELECT state FROM chunks WHERE id=?', (first['id'],)).fetchone()['state'] == 'completed'
+        failed = db.execute("SELECT error,attempts FROM chunks WHERE job_id=? AND state='failed'", (jid,)).fetchone()
+        assert failed['error'] == message and failed['attempts'] == 3
+    recording = client.get(f'/api/recordings/{rid}').json()
+    assert recording['status'] == 'failed' and recording['error'] == message
+
+
+@pytest.mark.parametrize('body, expected', [
+    ({'detail': 'Chunk timestamps must be local and ordered'}, 'Chunk timestamps must be local and ordered'),
+    ({'detail': [{'input': 'private transcript', 'msg': 'private credential'}]}, 'Transcript schema validation failed'),
+    ({'detail': 'private credential'}, 'Unrecognized validation response'),
+    (['private transcript'], 'Unrecognized validation response'),
+    ('not JSON: private credential', 'Unrecognized validation response'),
+])
+def test_chunk_rejection_does_not_reflect_arbitrary_response(body, expected):
+    kwargs = {'content': body} if isinstance(body, str) else {'json': body}
+    response = httpx.Response(422, request=httpx.Request('POST', 'http://testserver/complete'), **kwargs)
+    with pytest.raises(RuntimeError) as error:
+        _check_chunk_completion(response)
+    assert str(error.value) == 'Chunk result rejected (HTTP 422): ' + expected
+
+
+def test_chunk_completion_keeps_other_http_errors_and_success():
+    request = httpx.Request('POST', 'http://testserver/complete')
+    _check_chunk_completion(httpx.Response(200, request=request))
+    with pytest.raises(httpx.HTTPStatusError):
+        _check_chunk_completion(httpx.Response(409, request=request))
 
 
 def test_parallel_capacity_fencing_atomic_publication(prepared):

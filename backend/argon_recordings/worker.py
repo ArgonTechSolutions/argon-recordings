@@ -198,6 +198,33 @@ def run_once(client, transcriber, work_root=None):
         thread.join(timeout=5)
 
 
+def _check_chunk_completion(response):
+    if response.status_code == 422:
+        # These are fixed coordinator messages. Never persist arbitrary response
+        # bodies, validation inputs, transcript text, or credentials as errors.
+        reasons = {
+            'Chunk timestamps must be local and ordered',
+            'Chunk word timestamps must be local and ordered',
+            'Word timestamps required for safe reconciliation',
+            'Chunk word count exceeds bounded speech density',
+            'Word timestamp outside plausible chunk interval',
+            'Word timeline overlaps excessively or is unordered',
+            'Word timeline exceeds bounded speech density',
+        }
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        detail = payload.get('detail') if isinstance(payload, dict) else None
+        reason = 'Unrecognized validation response'
+        if isinstance(detail, str) and detail in reasons:
+            reason = detail
+        elif isinstance(detail, list):
+            reason = 'Transcript schema validation failed'
+        raise RuntimeError('Chunk result rejected (HTTP 422): ' + reason)
+    response.raise_for_status()
+
+
 def run_chunk(client, transcriber, job, work_root=None):
     base = f"/api/worker/chunks/{job['id']}"
     headers = {'X-Lease-Id': job['lease_id']}
@@ -235,7 +262,8 @@ def run_chunk(client, transcriber, job, work_root=None):
             segments = transcriber.transcribe(audio,job['language'],advance)
             if lost.is_set():
                 raise RuntimeError('Worker lease lost')
-            client.post(base+'/complete',headers=headers,json={'segments':[s.model_dump() for s in segments]}).raise_for_status()
+            response = client.post(base+'/complete',headers=headers,json={'segments':[s.model_dump() for s in segments]})
+            _check_chunk_completion(response)
         return True
     except Exception as exc:
         if not lost.is_set():
