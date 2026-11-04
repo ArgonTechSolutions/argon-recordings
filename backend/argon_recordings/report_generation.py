@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import stat
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,7 @@ from .report_contract import Report, Segment, Interval, InspectedImage, Contract
 from .reports import SaveReport, current_reference, checked_image, image_record, speaker_snapshot
 from .store import identity
 from .visual_jobs import VisualRequest
+from .ai_settings import controls, read_key
 from .report_reading import (READER_MODEL, WRITER_MODEL, Reading, READING_SYSTEM, NOTES_BYTES,
                              GenerationEstimate, encode, batches, transcript_batches, cache_key, price)
 
@@ -66,13 +68,14 @@ class GenerationJob(Strict):
     estimated_cost_usd: float
     input_tokens: int
     output_tokens: int
+    warning: str | None = None
 
 
 class GenerationState(Strict):
     enabled: bool
     model: str
     reader_model: str = READER_MODEL
-    budget_mode: Literal['advisory'] = 'advisory'
+    budget_mode: Literal['advisory','limited'] = 'advisory'
     budget_usd: float
     committed_usd: float
     reservation_usd: float
@@ -113,6 +116,7 @@ class Generation:
     def __init__(self, app, settings, save_report, visual_actions):
         self.app, self.settings, self.save_report, self.visual_actions = app, settings, save_report, visual_actions
         self.task = None
+        self._key_lock=threading.Lock()
         # Credentials are explicitly supplied by the server environment or secret file.
         self.key = os.environ.get('OPENAI_API_KEY', '').strip()
         path = os.environ.get('RECORDINGS_OPENAI_KEY_FILE')
@@ -127,6 +131,28 @@ class Generation:
             self.key=value
         self.budget = float(os.environ.get('RECORDINGS_AI_BUDGET_USD', '10'))
         if not 0 <= self.budget <= 1000: raise ValueError('AI budget must be 0..1000 USD')
+        self._managed_key=read_key(self.store.root)
+
+    @property
+    def key(self): return getattr(self,'_managed_key','') or self._deployment_key
+
+    @key.setter
+    def key(self,value): self._deployment_key=value
+
+    def month_cost(self,db,period=None):
+        period=period or self.period()
+        # Retain pre-ledger charges in their original month; new calls belong to
+        # their own admission month even when a job crosses midnight/month end.
+        legacy=db.execute('SELECT coalesce(sum(max(0,g.cost-coalesce((SELECT sum(a.cost) FROM ai_call_costs a WHERE a.job_id=g.id),0))),0) FROM report_generation g WHERE g.period=?',(period,)).fetchone()[0]
+        return legacy+db.execute('SELECT coalesce(sum(cost),0) FROM ai_call_costs WHERE period=?',(period,)).fetchone()[0]
+
+    def soft_reached(self,db,jid):
+        config=controls(db,self.budget)
+        row=db.execute('SELECT cost FROM report_generation WHERE id=?',(jid,)).fetchone()
+        pending=db.execute("SELECT coalesce(sum(cost),0) FROM ai_call_costs WHERE job_id=? AND status='pending'",(jid,)).fetchone()[0]
+        month_pending=db.execute("SELECT coalesce(sum(cost),0) FROM ai_call_costs WHERE period=? AND status='pending'",(self.period(),)).fetchone()[0]
+        return bool((config.report_soft_usd is not None and row and row['cost']-pending>=config.report_soft_usd)
+            or (config.monthly_soft_usd is not None and self.month_cost(db)-month_pending>=config.monthly_soft_usd))
 
     @property
     def store(self): return self.app.state.store
@@ -134,17 +160,19 @@ class Generation:
     def period(self): return datetime.now(timezone.utc).strftime('%Y-%m')
 
     def committed(self, db):
-        return db.execute('SELECT coalesce(sum(cost+reserved),0) FROM report_generation WHERE period=?',(self.period(),)).fetchone()[0]
+        return self.month_cost(db)+db.execute('SELECT coalesce(sum(reserved),0) FROM report_generation WHERE period=?',(self.period(),)).fetchone()[0]
 
     def view(self, row):
-        return GenerationJob(**{k:row[k] for k in ('id','state','stage','report_id','error','created','input_tokens','output_tokens')},estimated_cost_usd=row['cost'])
+        with self.store.db() as db:soft=self.soft_reached(db,row['id'])
+        return GenerationJob(**{k:row[k] for k in ('id','state','stage','report_id','error','created','input_tokens','output_tokens')},estimated_cost_usd=row['cost'],
+            warning='Soft cost limit reached. Finishing concisely with available evidence.' if soft else None)
 
     def start(self):
         with self.store.db() as db:
             # Preserve conservative reservations on uncertain in-flight calls across restart.
             db.execute("UPDATE report_generation SET state='failed',stage='Interrupted',reserved=0,error='Generation was interrupted; start a new draft. Estimated cost includes uncertain API charges.' WHERE state='running'")
-        if self.key and self.budget:
-            self.task=asyncio.create_task(self.loop())
+            db.execute("UPDATE ai_call_costs SET status='uncertain' WHERE status='pending'")
+        self.task=asyncio.create_task(self.loop())
 
     async def stop(self):
         if self.task:
@@ -209,25 +237,41 @@ class Generation:
         reading+=price(READER_MODEL,len(chunks)*1400, max(0,len(chunks)-3)*300)
         writing=price(MODEL,min(18000,2500+len(chunks)*900),2400)
         expected=reading+writing+(0.018 if body.visuals else 0)
+        config=controls(db,self.budget)
+        hard=((config.report_hard_usd is not None and expected>config.report_hard_usd)
+            or (config.monthly_hard_usd is not None and self.month_cost(db)+expected>config.monthly_hard_usd))
         return GenerationEstimate(estimated_cost_usd=round(expected,4),low_usd=round(expected*.5,4),
             high_usd=round(expected*2,4),reading_batches=len(chunks),cached_batches=cached,passages=len(passages),
-            allowance_warning=self.committed(db)+expected>self.budget)
+            allowance_warning=bool(config.monthly_soft_usd is not None and self.month_cost(db)+expected>config.monthly_soft_usd),hard_limit_warning=hard)
 
     def stage(self,jid,text):
         self.check(jid)
         with self.store.db() as db:
             db.execute('UPDATE report_generation SET stage=?,updated=? WHERE id=?',(text,time.time(),jid))
 
-    async def complete(self,client,jid,model,instructions,inputs,schema,output_tokens,tools=None):
+    async def complete(self,client,jid,model,instructions,inputs,schema,output_tokens,tools=None,*,recovering=False):
         self.check(jid)
+        with self.store.db() as db: soft=self.soft_reached(db,jid)
+        if soft:
+            instructions+='\nThe soft cost limit has been reached. Finish concisely with available evidence. Do not perform additional research or request tools. Preserve evidence accuracy and disclose omissions.'
+            tools=[]
         wire=encode(inputs)
         text_bytes=len(wire.encode())-sum(len(v) for v in self.image_payloads(inputs))
         image_count=wire.count('data:image/jpeg;base64,')
-        bound=price(model,text_bytes+len(instructions.encode())+image_count*12000,output_tokens)
-        # Advisory costs never abort an admitted run. Precharge uncertain calls so
-        # failures and cancellations do not hide possible provider usage.
+        bound=price(model,text_bytes+len(instructions.encode())+len(encode(strict_schema(schema)).encode())+image_count*12000,output_tokens)
+        # Reserve the conservative call bound atomically against every other run.
         with self.store.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            period=self.period()
+            config=controls(db,self.budget)
+            if not config.enabled or not self.key:raise HTTPException(503,'AI generation was disabled or its API key was removed by an administrator')
+            spent=db.execute('SELECT cost FROM report_generation WHERE id=?',(jid,)).fetchone()[0]
+            if ((config.report_hard_usd is not None and spent+bound>config.report_hard_usd)
+                    or (config.monthly_hard_usd is not None and self.month_cost(db,period)+bound>config.monthly_hard_usd)):
+                raise HTTPException(429,'Hard cost limit would be exceeded by the next API call. No further paid call was made. Ask an administrator to adjust the limit before retrying.')
             db.execute('UPDATE report_generation SET cost=cost+?,reserved=max(0,reserved-?),updated=? WHERE id=?',(bound,bound,time.time(),jid))
+            call_id=identity()
+            db.execute('INSERT INTO ai_call_costs VALUES(?,?,?,?,?,?,NULL,?)',(call_id,jid,period,model,bound,'pending',time.time()))
         try:
             async with client.stream('POST','https://api.openai.com/v1/responses',
                 headers={'Authorization':'Bearer '+self.key},json={'model':model,'store':False,'service_tier':'default',
@@ -237,26 +281,45 @@ class Generation:
                 'strict':True,'schema':strict_schema(schema)}}}) as response:
                 if response.status_code!=200:
                     if response.status_code in {400,401,403,404,429}:
-                        with self.store.db() as db: db.execute('UPDATE report_generation SET cost=max(0,cost-?) WHERE id=?',(bound,jid))
+                        with self.store.db() as db:
+                            db.execute('UPDATE report_generation SET cost=max(0,cost-?) WHERE id=?',(bound,jid))
+                            db.execute("UPDATE ai_call_costs SET cost=0,status='rejected',reason=? WHERE id=?",(str(response.status_code),call_id))
                     raise HTTPException(502,'OpenAI rejected the request. Check model access, quota and connection settings.')
                 raw=bytearray()
                 async for block in response.aiter_bytes():
                     raw.extend(block)
                     if len(raw)>2*1024**2: raise HTTPException(502,'OpenAI response exceeded the safe size limit')
             result=json.loads(raw)
-        except httpx.HTTPError: raise HTTPException(502,'OpenAI connection failed. This run was not retried automatically.') from None
+        except BaseException as exc:
+            with self.store.db() as db:db.execute("UPDATE ai_call_costs SET status='uncertain' WHERE id=? AND status='pending'",(call_id,))
+            if isinstance(exc,httpx.HTTPError):raise HTTPException(502,'OpenAI connection failed. This run was not retried automatically.') from None
+            raise
         usage=result.get('usage',{});it=usage.get('input_tokens');ot=usage.get('output_tokens')
-        if type(it) is not int or type(ot) is not int or it<0 or ot<0: raise HTTPException(502,'Invalid OpenAI usage response')
+        if type(it) is not int or type(ot) is not int or it<0 or ot<0:
+            with self.store.db() as db:db.execute("UPDATE ai_call_costs SET status='uncertain' WHERE id=?",(call_id,))
+            raise HTTPException(502,'Invalid OpenAI usage response')
         cost=price(model,it,ot)
+        reason=(result.get('incomplete_details') or {}).get('reason')
+        safe_reason=reason if reason in {'max_output_tokens','content_filter'} else None
         with self.store.db() as db:
             db.execute('UPDATE report_generation SET cost=max(0,cost-?)+?,input_tokens=input_tokens+?,output_tokens=output_tokens+?,updated=? WHERE id=?',
                        (bound,cost,it,ot,time.time(),jid))
+            db.execute('UPDATE ai_call_costs SET cost=?,status=?,reason=? WHERE id=?',(cost,'completed' if result.get('status')=='completed' else 'incomplete',safe_reason,call_id))
         self.check(jid)
+        if result.get('status')=='incomplete' and reason=='max_output_tokens' and not recovering:
+            self.stage(jid,'Completing output after its token allowance was exhausted')
+            return await self.complete(client,jid,model,instructions+'\nThe earlier response exhausted its output allowance. Return compact complete JSON, omitting repetitive wording. Preserve required evidence and scope.',
+                inputs,schema,min(output_tokens*2,32768),tools,recovering=True)
         return result
 
     @staticmethod
     def output_text(result):
-        if result.get('status')!='completed': raise HTTPException(502,'OpenAI returned incomplete output. No draft was saved; this call was not retried.')
+        if result.get('status')!='completed':
+            reason=(result.get('incomplete_details') or {}).get('reason')
+            message='OpenAI exhausted the output allowance again while completing the report.' if reason=='max_output_tokens' else 'OpenAI could not complete this request because of content filtering.' if reason=='content_filter' else 'OpenAI returned incomplete output without a recoverable reason.'
+            raise HTTPException(502,message+' No draft was saved; completed transcript readings are retained.')
+        if any(c.get('type')=='refusal' for o in result.get('output',[]) if o.get('type')=='message' for c in o.get('content',[])):
+            raise HTTPException(502,'OpenAI declined this request. No draft was saved and it was not retried.')
         return ''.join(c['text'] for o in result.get('output',[]) if o.get('type')=='message'
                        for c in o.get('content',[]) if c.get('type')=='output_text')
 
@@ -265,14 +328,24 @@ class Generation:
         with self.store.db() as db:
             cached=db.execute('SELECT notes FROM report_readings WHERE cache_key=? AND recording_id=?',(key,rid)).fetchone()
         if cached: return Reading.model_validate_json(cached['notes']).notes
-        result=await self.complete(client,jid,READER_MODEL,READING_SYSTEM,
-            [{'role':'user','content':encode({'language':language,'notes' if consolidate else 'passages':batch})}],
-            Reading.model_json_schema(),2200)
-        try: reading=Reading.model_validate_json(self.output_text(result))
-        except ValidationError: raise HTTPException(502,'Internal transcript reading was invalid. No draft was saved.') from None
-        allowed={sid for item in batch for sid in (item['segment_ids'] if consolidate else [item['id']])}
-        if any(not set(note.segment_ids)<=allowed for note in reading.notes):
-            raise HTTPException(502,'Internal summary referenced unknown transcript passages')
+        canonical=list(dict.fromkeys(sid for item in batch for sid in (item['segment_ids'] if consolidate else [item['id']])))
+        short={sid:f'p{index}' for index,sid in enumerate(canonical)}
+        reverse={value:key for key,value in short.items()}
+        supplied=[{**item,'segment_ids':[short[sid] for sid in item['segment_ids']]} if consolidate
+                  else {**item,'id':short[item['id']]} for item in batch]
+        inputs=[{'role':'user','content':encode({'language':language,'notes' if consolidate else 'passages':supplied})}]
+        for attempt in range(2):
+            result=await self.complete(client,jid,READER_MODEL,READING_SYSTEM,inputs,Reading.model_json_schema(),8192)
+            try:
+                reading=Reading.model_validate_json(self.output_text(result))
+                if any(not set(note.segment_ids)<=reverse.keys() for note in reading.notes):
+                    raise ValueError('Unknown source reference')
+                break
+            except (ValidationError,ValueError):
+                if attempt:raise HTTPException(502,'Internal summary could not use valid transcript references. No draft was saved.') from None
+                self.stage(jid,'Correcting internal transcript references')
+                inputs.append({'role':'developer','content':'Return valid internal notes JSON. Use only the short passage IDs in this request: '+', '.join(reverse)+'. Do not invent or copy UUIDs. Every note must have at least one valid supporting ID.'})
+        reading=reading.model_copy(update={'notes':[note.model_copy(update={'segment_ids':[reverse[sid] for sid in note.segment_ids]}) for note in reading.notes]})
         self.check(jid)
         with self.store.db() as db:
             db.execute('INSERT OR IGNORE INTO report_readings VALUES(?,?,?,?)',(key,rid,reading.model_dump_json(),time.time()))
@@ -328,11 +401,12 @@ class Generation:
                 # Refresh extraction revision after this run's own derivations.
                 instructions=SYSTEM+'\nCurrent reference: '+reference.model_dump_json()+'\nScope: '+json.dumps(scope)
                 self.stage(jid,'Writing report' if turn==0 else 'Checking evidence and writing report')
-                finalizing=turn>=VISUAL_ROUNDS or repairs>0
+                with self.store.db() as db: soft=self.soft_reached(db,jid)
+                finalizing=turn>=VISUAL_ROUNDS or repairs>0 or soft
                 active_tools=[] if finalizing else tools
                 if finalizing:
                     instructions+='\nFinish the report now using the supplied evidence. Do not request more tools. Disclose unavailable visual evidence as a limitation.'
-                result=await self.complete(client,jid,MODEL,instructions,inputs,Report.model_json_schema(),6000,active_tools)
+                result=await self.complete(client,jid,MODEL,instructions,inputs,Report.model_json_schema(),12000,active_tools)
                 output=result.get('output',[])
                 calls=[o for o in output if o.get('type')=='function_call']
                 if calls:
@@ -456,13 +530,17 @@ class Generation:
 
 
 def install(app, settings, save_report, visual_actions):
+    from .ai_settings import install as install_ai
+    install_ai(app)
     def engine(): return app.state.generation
 
     @app.get('/api/recordings/{rid}/report-generation',response_model=GenerationState)
     def status(rid: str):
         g=engine()
         with g.store.db() as db:
-            return GenerationState(enabled=bool(g.key) and g.budget>0,model=MODEL,budget_usd=g.budget,committed_usd=g.committed(db),reservation_usd=RESERVATION,
+            config=controls(db,g.budget)
+            return GenerationState(enabled=bool(g.key) and config.enabled,model=MODEL,budget_usd=config.monthly_soft_usd or 0,committed_usd=g.committed(db),reservation_usd=RESERVATION,
+                budget_mode='limited' if config.report_hard_usd or config.monthly_hard_usd else 'advisory',
                 jobs=[g.view(r) for r in db.execute('SELECT * FROM report_generation WHERE recording_id=? ORDER BY created DESC LIMIT 20',(rid,))])
 
     @app.post('/api/recordings/{rid}/report-generation/estimate',response_model=GenerationEstimate)
@@ -475,7 +553,8 @@ def install(app, settings, save_report, visual_actions):
         g=engine()
         if body.kind=='custom' and not body.instruction.strip():
             raise HTTPException(422,'Describe what the custom report should do')
-        if not g.key or not g.budget: raise HTTPException(503,'Report generation has not been configured')
+        with g.store.db() as db: enabled=controls(db,g.budget).enabled
+        if not g.key or not enabled: raise HTTPException(503,'Report generation is disabled or has no API key configured')
         with g.store.db() as db:
             db.execute('BEGIN IMMEDIATE')
             reference,body,_=g.source(db,rid,body)

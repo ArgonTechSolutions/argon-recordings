@@ -1771,6 +1771,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/ai": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_admin_ai_get"];
+        /** Update */
+        put: operations["update_api_admin_ai_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/ai/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace */
+        put: operations["replace_api_admin_ai_key_put"];
+        post?: never;
+        /** Remove */
+        delete: operations["remove_api_admin_ai_key_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recordings/{rid}/report-generation": {
         parameters: {
             query?: never;
@@ -2066,6 +2102,44 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AIAdminState */
+        AIAdminState: {
+            controls: components["schemas"]["AIControls"];
+            /** Key Configured */
+            key_configured: boolean;
+            /** Key Source */
+            key_source: string;
+            /** Month Cost Usd */
+            month_cost_usd: number;
+            /** Reader Model */
+            reader_model: string;
+            /** Writer Model */
+            writer_model: string;
+        };
+        /** AIControls */
+        AIControls: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Report Soft Usd */
+            report_soft_usd?: number | null;
+            /** Report Hard Usd */
+            report_hard_usd?: number | null;
+            /** Monthly Soft Usd */
+            monthly_soft_usd?: number | null;
+            /** Monthly Hard Usd */
+            monthly_hard_usd?: number | null;
+        };
+        /** APIKeyInput */
+        APIKeyInput: {
+            /**
+             * Api Key
+             * Format: password
+             */
+            api_key: string;
+        };
         /** Accept */
         Accept: {
             /** Token */
@@ -2544,6 +2618,11 @@ export interface components {
             writer_model: string;
             /** Allowance Warning */
             allowance_warning: boolean;
+            /**
+             * Hard Limit Warning
+             * @default false
+             */
+            hard_limit_warning: boolean;
         };
         /** GenerationJob */
         GenerationJob: {
@@ -2568,6 +2647,8 @@ export interface components {
             input_tokens: number;
             /** Output Tokens */
             output_tokens: number;
+            /** Warning */
+            warning?: string | null;
         };
         /** GenerationState */
         GenerationState: {
@@ -2583,9 +2664,9 @@ export interface components {
             /**
              * Budget Mode
              * @default advisory
-             * @constant
+             * @enum {string}
              */
-            budget_mode: "advisory";
+            budget_mode: "advisory" | "limited";
             /** Budget Usd */
             budget_usd: number;
             /** Committed Usd */
@@ -7528,6 +7609,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_admin_ai_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAdminState"];
+                };
+            };
+        };
+    };
+    update_api_admin_ai_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIControls"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAdminState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_api_admin_ai_key_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIKeyInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAdminState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_api_admin_ai_key_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIAdminState"];
                 };
             };
         };

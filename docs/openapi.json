@@ -5752,6 +5752,114 @@
         }
       }
     },
+    "/api/admin/ai": {
+      "get": {
+        "summary": "Status",
+        "operationId": "status_api_admin_ai_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAdminState"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update",
+        "operationId": "update_api_admin_ai_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIControls"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAdminState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/ai/key": {
+      "put": {
+        "summary": "Replace",
+        "operationId": "replace_api_admin_ai_key_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIKeyInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAdminState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove",
+        "operationId": "remove_api_admin_ai_key_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAdminState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/recordings/{rid}/report-generation": {
       "get": {
         "summary": "Status",
@@ -6744,6 +6852,126 @@
   },
   "components": {
     "schemas": {
+      "AIAdminState": {
+        "properties": {
+          "controls": {
+            "$ref": "#/components/schemas/AIControls"
+          },
+          "key_configured": {
+            "type": "boolean",
+            "title": "Key Configured"
+          },
+          "key_source": {
+            "type": "string",
+            "title": "Key Source"
+          },
+          "month_cost_usd": {
+            "type": "number",
+            "title": "Month Cost Usd"
+          },
+          "reader_model": {
+            "type": "string",
+            "title": "Reader Model"
+          },
+          "writer_model": {
+            "type": "string",
+            "title": "Writer Model"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "controls",
+          "key_configured",
+          "key_source",
+          "month_cost_usd",
+          "reader_model",
+          "writer_model"
+        ],
+        "title": "AIAdminState"
+      },
+      "AIControls": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "report_soft_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Soft Usd"
+          },
+          "report_hard_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Hard Usd"
+          },
+          "monthly_soft_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Soft Usd"
+          },
+          "monthly_hard_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Hard Usd"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AIControls"
+      },
+      "APIKeyInput": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 20,
+            "format": "password",
+            "title": "Api Key",
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "api_key"
+        ],
+        "title": "APIKeyInput"
+      },
       "Accept": {
         "properties": {
           "token": {
@@ -8028,6 +8256,11 @@
           "allowance_warning": {
             "type": "boolean",
             "title": "Allowance Warning"
+          },
+          "hard_limit_warning": {
+            "type": "boolean",
+            "title": "Hard Limit Warning",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -8101,6 +8334,17 @@
           "output_tokens": {
             "type": "integer",
             "title": "Output Tokens"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
           }
         },
         "additionalProperties": false,
@@ -8135,7 +8379,10 @@
           },
           "budget_mode": {
             "type": "string",
-            "const": "advisory",
+            "enum": [
+              "advisory",
+              "limited"
+            ],
             "title": "Budget Mode",
             "default": "advisory"
           },

@@ -390,6 +390,11 @@ export function RecordingReports({
             )}
           </div>
         )}
+        {latest?.warning && (
+          <p className="report-notice" role="status">
+            {latest.warning}
+          </p>
+        )}
         {!active && latest?.state === "completed" && (
           <div
             className="report-progress"
@@ -829,6 +834,12 @@ export function RecordingReports({
                     <p>
                       This may exceed the server’s monthly cost guideline.
                       Generation can still continue.
+                    </p>
+                  )}
+                  {estimate.data.hard_limit_warning && (
+                    <p>
+                      A configured hard limit may prevent this report from
+                      finishing. Ask an administrator to review the limits.
                     </p>
                   )}
                 </>

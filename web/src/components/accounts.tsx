@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { ValueSelect } from "@/components/value-select"
 import { AdminSecurity } from "./admin-security"
+import { AdminAI } from "./admin-ai"
 import { AgentAccess } from "./agent-access"
 import "./accounts.css"
 
@@ -452,6 +453,7 @@ export function AdminPanel() {
           </Button>
         </section>
       )}
+      <AdminAI />
       <section className="admin-card">
         <h2>Registration</h2>
         {settings.data && (

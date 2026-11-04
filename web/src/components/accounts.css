@@ -28,3 +28,9 @@
 .agent-access ul { list-style: none; padding: 0; display: grid; gap: 8px; }
 .agent-access li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .agent-access li span { overflow-wrap: anywhere; min-width: 0; }
+
+.admin-ai-form { display: grid; gap: 16px; min-width: 0; }
+.admin-ai-limits { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.admin-card .admin-ai-enabled { display: flex; gap: 10px; align-items: center; }
+.admin-ai-form input { min-width: 0; }
+@media(max-width: 600px) { .admin-ai-limits { grid-template-columns: minmax(0,1fr); } }

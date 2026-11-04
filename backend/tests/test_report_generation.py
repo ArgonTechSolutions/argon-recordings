@@ -345,7 +345,7 @@ def test_hour_long_reading_is_batched_cached_and_never_pages_with_the_writer(cli
     client.portal.call(client.app.state.generation.run,jid)
     readers=[p for p in sent if p['model']==READER_MODEL]
     writers=[p for p in sent if p['model']==WRITER_MODEL]
-    observed=[s['id'] for p in readers for s in json.loads(p['input'][0]['content']).get('passages',[])]
+    observed=[s['start'] for p in readers for s in json.loads(p['input'][0]['content']).get('passages',[])]
     assert len(readers)>12 and len(writers)==1 and writers[0]['tools']==[]
     assert len(observed)==1200 and len(set(observed))==1200
     assert all(len(json.dumps(p['input']).encode())<35000 for p in readers)
@@ -373,7 +373,7 @@ def test_reader_cannot_invent_canonical_source_ids(client,tmp_path,monkeypatch):
         return httpx.Response(200,json=data)
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original(**kwargs,transport=httpx.MockTransport(respond)))
     with pytest.raises(HTTPException) as error:client.portal.call(client.app.state.generation.run,jid)
-    assert 'unknown transcript passages' in error.value.detail
+    assert 'valid transcript references' in error.value.detail
     with client.app.state.store.db() as db:assert not db.execute('SELECT 1 FROM report_readings').fetchone()
 
 
@@ -394,4 +394,68 @@ def test_optional_tool_rounds_finalize_instead_of_failing_on_step_limit(client,t
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs: original(**kwargs,transport=httpx.MockTransport(respond)))
     client.portal.call(client.app.state.generation.run,jid)
     assert len(sent)==VISUAL_ROUNDS+2 and sent[-1]['tools']==[]
+    assert client.get(f'/api/recordings/{rid}/report-generation').json()['jobs'][0]['state']=='completed'
+
+
+@pytest.mark.parametrize('limited_model',[READER_MODEL,WRITER_MODEL])
+def test_known_output_token_exhaustion_expands_once_and_preserves_usage(client,tmp_path,monkeypatch,limited_model):
+    rid,body,_=draft(client,tmp_path);jid=queue(client,rid,visuals=False)
+    sent=transport(monkeypatch,client,body,images=False)
+    transport_factory=httpx.AsyncClient;limited=[]
+    # Wrap only the synthetic upstream handler, keeping real HTTPX behavior.
+    # The original fixture factory already contains the real successful handler.
+    def factory(**kwargs):
+        http=transport_factory(**kwargs)
+        handler=http._transport.handler
+        def respond(request):
+            payload=json.loads(request.content)
+            if payload['model']==limited_model and not limited:
+                limited.append(payload)
+                return httpx.Response(200,json={'status':'incomplete','incomplete_details':{'reason':'max_output_tokens'},'output':[],
+                                               'usage':{'input_tokens':100,'output_tokens':200}})
+            return handler(request)
+        http._transport=httpx.MockTransport(respond)
+        return http
+    monkeypatch.setattr(httpx,'AsyncClient',factory)
+    client.portal.call(client.app.state.generation.run,jid)
+    retried=next(p for p in sent if p['model']==limited_model)
+    assert retried['max_output_tokens']==limited[0]['max_output_tokens']*2
+    job=client.get(f'/api/recordings/{rid}/report-generation').json()['jobs'][0]
+    assert job['state']=='completed' and job['input_tokens']==300
+    with client.app.state.store.db() as db:
+        assert db.execute("SELECT count(*) FROM ai_call_costs WHERE reason='max_output_tokens'").fetchone()[0]==1
+
+
+def test_unrecoverable_incomplete_response_is_not_replayed(client,tmp_path,monkeypatch):
+    rid,_,_=draft(client,tmp_path);jid=queue(client,rid)
+    original=httpx.AsyncClient;calls=[]
+    def respond(request):
+        calls.append(True)
+        return httpx.Response(200,json={'status':'incomplete','incomplete_details':{'reason':'content_filter'},'output':[],
+                                       'usage':{'input_tokens':100,'output_tokens':100}})
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:original(**kwargs,transport=httpx.MockTransport(respond)))
+    with pytest.raises(HTTPException) as error:client.portal.call(client.app.state.generation.run,jid)
+    assert len(calls)==1 and 'content filtering' in error.value.detail
+
+
+def test_invalid_short_reader_reference_is_corrected_before_caching(client,tmp_path,monkeypatch):
+    rid,body,_=draft(client,tmp_path);jid=queue(client,rid,visuals=False)
+    sent=transport(monkeypatch,client,body,images=False);factory=httpx.AsyncClient;attempts=[]
+    def corrected(**kwargs):
+        http=factory(**kwargs);handler=http._transport.handler
+        def respond(request):
+            payload=json.loads(request.content)
+            if payload['model']==READER_MODEL and not attempts:
+                attempts.append(True)
+                return httpx.Response(200,json={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':json.dumps({'notes':[{'text':'Source summary','segment_ids':['invented']}]})}]}],
+                                               'usage':{'input_tokens':100,'output_tokens':80}})
+            return handler(request)
+        http._transport=httpx.MockTransport(respond);return http
+    monkeypatch.setattr(httpx,'AsyncClient',corrected)
+    client.portal.call(client.app.state.generation.run,jid)
+    with client.app.state.store.db() as db:
+        cached=json.loads(db.execute('SELECT notes FROM report_readings').fetchone()[0])
+        expected={r[0] for r in db.execute('SELECT id FROM segments WHERE recording_id=?',(rid,))}
+    assert set(cached['notes'][0]['segment_ids'])<=expected
+    assert 'invented' not in json.dumps(cached)
     assert client.get(f'/api/recordings/{rid}/report-generation').json()['jobs'][0]['state']=='completed'

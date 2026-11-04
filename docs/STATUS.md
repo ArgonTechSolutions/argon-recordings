@@ -1,5 +1,11 @@
 # Foundation status
 
+## Admin AI controls and report recovery (2026-11-04; REC-33)
+
+Administration now supports a write-only API key override, an enable switch and optional per-report/monthly soft and hard cost limits. Key storage is a private coordinator data-volume file with existing admin MFA/CSRF protection; values never enter SQLite, responses or audit events. Soft limits warn and finish concisely, while hard limits atomically gate the next conservatively reserved call. The per-call UTC ledger accounts correctly for runs crossing month-end and retains uncertain charges.
+
+Incomplete output now reports known reasons and supports one accounted recovery for explicit output-token exhaustion; ambiguous failures are not replayed. Reading/writing allowances are larger. A real Spanish test exposed copied source-ID errors; Luna now uses short allowlisted IDs which the server maps back to canonical IDs, with one bounded correction attempt. The corrected synthetic Spanish hour saved a cited draft at **$0.032321** estimated measured usage. **372 backend tests passed, one opt-in test skipped**, with additional credential-validation checks passing; OpenAPI/types, build/lint, admin MFA/key/limit and report Chromium checks passed. Admin layouts fit 320/390/1440 px, reports fit 320–1440 px. Independent source/security review found no remaining actionable findings after the month-rollover fix. This is local/synthetic validation; installation and private-recording acceptance remain operator checks. No production key or cost controls were changed.
+
 ## Luna/Terra report cost tuning (2026-11-04; REC-33)
 
 Luna now reads the entire selected transcript in cached internal batches, compacts long notes and passes them with canonical evidence to Terra for the final report. Sol is no longer called. The form shows an advisory cost estimate; duration/page-count and application cost hard stops are removed. Optional visual work finishes with available evidence instead of failing at the old evidence-step ceiling. Text-only reports default to no visuals.

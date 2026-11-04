@@ -8,7 +8,7 @@ import { chromium } from '/opt/browser/node_modules/playwright-core/index.mjs'
 const evidence = process.env.EVIDENCE_DIR ?? '/evidence'
 fs.mkdirSync(evidence,{recursive:true})
 const data = fs.mkdtempSync(path.join(evidence,'accounts-data-'))
-const env = {...process.env,PYTHONPATH:'/workspace/backend',RECORDINGS_DATA:data,RECORDINGS_AUTH_MODE:'accounts',RECORDINGS_STATIC:'/workspace/web/dist',RECORDINGS_WORKER_TOKEN:'synthetic-browser-only'}
+const env = {...process.env,PYTHONPATH:'/workspace/backend',RECORDINGS_DATA:data,RECORDINGS_AUTH_MODE:'accounts',OPENAI_API_KEY:'synthetic-browser-only',RECORDINGS_STATIC:'/workspace/web/dist',RECORDINGS_WORKER_TOKEN:'synthetic-browser-only'}
 const enrollmentCode = execFileSync('python',['-c',`from pathlib import Path
 from argon_recordings.accounts import Accounts
 from argon_recordings.store import Store
@@ -56,6 +56,29 @@ try {
   await signIn(page,'owner@example.com')
   await page.getByRole('button',{name:'Continue with passkey',exact:true}).click()
   await page.getByLabel('Invitation email').waitFor()
+
+  const ai = page.getByRole('region',{name:'AI reports configuration',exact:true})
+  await ai.getByLabel('Per report soft limit (USD)',{exact:true}).fill('0.05')
+  await ai.getByLabel('Per report hard limit (USD)',{exact:true}).fill('0.2')
+  await ai.getByLabel('Monthly soft limit (USD)',{exact:true}).fill('5')
+  await ai.getByLabel('Monthly hard limit (USD)',{exact:true}).fill('10')
+  await ai.getByRole('button',{name:'Save AI limits',exact:true}).click()
+  await ai.getByText('AI limits saved. They apply before the next paid call.',{exact:true}).waitFor()
+  await ai.getByText('OpenAI API key',{exact:true}).click()
+  await ai.getByLabel('New OpenAI API key',{exact:true}).fill('synthetic-browser-admin-key-only')
+  await ai.getByRole('button',{name:'Save API key',exact:true}).click()
+  await ai.getByText('API key configuration saved. The key is never displayed.',{exact:true}).waitFor()
+  assert.equal(await ai.getByLabel('New OpenAI API key',{exact:true}).inputValue(),'')
+  assert.equal((await(await owner.request.get(base+'/api/admin/ai')).json()).key_source,'administration')
+  for(const width of [320,390,1440]) {
+    await page.setViewportSize({width,height:1000})
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth))
+    await ai.scrollIntoViewIfNeeded()
+    await page.screenshot({path:path.join(evidence,`admin-ai-${width}.png`),fullPage:true})
+  }
+  await ai.getByRole('button',{name:'Remove administrator key',exact:true}).click()
+  await ai.getByText('A key is configured through the deployment.',{exact:true}).waitFor()
+
   await page.getByRole('button',{name:'Sign out',exact:true}).click()
   await signIn(page,'owner@example.com')
   await page.getByRole('button',{name:'Use a recovery code',exact:true}).click()
@@ -93,13 +116,13 @@ try {
   await guestPage.locator('.recording-card').filter({hasText:'Viewer speaker fixture'}).click()
   const viewerSpeakers=guestPage.getByRole('region',{name:'Speakers',exact:true})
   await viewerSpeakers.waitFor()
+  assert.equal(await viewerSpeakers.locator('summary').count(),0)
+  assert.equal(await viewerSpeakers.getByRole('button',{name:'Assign range',exact:true}).count(),0)
+  await guestPage.getByRole('tab',{name:'Reports',exact:true}).click()
   const viewerReports=guestPage.locator('.recording-reports')
-  await viewerReports.locator('summary').click()
   assert.equal(await viewerReports.getByLabel('Import report draft',{exact:true}).count(),0)
   assert.equal(await viewerReports.getByRole('button',{name:'Save draft',exact:true}).count(),0)
   assert.equal(await viewerReports.getByRole('button',{name:'Mark reviewed',exact:true}).count(),0)
-  assert.equal(await viewerSpeakers.locator('summary').count(),0)
-  assert.equal(await viewerSpeakers.getByRole('button',{name:'Assign range',exact:true}).count(),0)
   const viewerSession=await(await guest.request.get(base+'/api/auth/session')).json()
   assert.equal((await guest.request.put(base+`/api/recordings/${viewerFixture.id}/speakers/speaker-0`,{headers:{'X-CSRF-Token':viewerSession.csrf},data:{}})).status(),403)
   const layout=await guestPage.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}))
