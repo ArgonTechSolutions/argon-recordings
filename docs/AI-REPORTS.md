@@ -2,6 +2,10 @@
 
 Argon Recordings has a separate **Reports** tab for each ready recording. A selector opens one saved document at a time. **New** offers Summary, Action list, Visual report and Custom request, with optional focus, language, visuals and source range. **Refine** supplies the selected draft as context and creates a separate report; it never overwrites or automatically reviews the original. Stale reports require fresh generation.
 
+Custom request requires **What should this report do?**, independently of the optional **Anything to focus on?** field. Submission shows Sending, then queued/running status; completion opens the saved draft. Rejected submissions keep the modal and its inputs with an error. Background failures remain visible with the estimated API usage and an explicit edit/retry action; they do not automatically repeat paid calls. Loading and action failures are shown in the Reports panel.
+
+Time inputs accept fractional source seconds without rounding the recording duration. The form reports invalid ranges visibly, including when the range controls are collapsed. This avoids native hidden-field validation silently blocking recordings whose duration is not a multiple of 0.1 seconds. The same precision applies to speaker ranges, marks, visual extraction and analysis ranges. Passage-boundary expansion preserves the requested video bounds, including silence before or after speech.
+
 Desktop shows a compact source panel beside the document. Mobile starts with the source collapsed above the document; a citation opens it at the referenced moment. Source audio and report clips pause each other. Screenshots appear alongside the sections that cite them. Existing transcript correction, speakers and visual tools remain in the Transcript tab. Import is under More options.
 
 ## Execution and evidence

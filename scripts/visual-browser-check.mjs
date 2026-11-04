@@ -29,6 +29,8 @@ try {
  assert.equal(await page.locator('.frame-strip button').count(),26)
  const panel=page.locator('.visual-evidence')
  await page.getByRole('button',{name:'Visual tools',exact:true}).click()
+ await panel.getByLabel('Evidence start',{exact:true}).fill('0.367')
+ assert.ok(await panel.getByLabel('Evidence start',{exact:true}).evaluate(input=>input.validity.valid))
  await panel.getByLabel('Evidence start',{exact:true}).fill('0.36')
  await panel.getByRole('button',{name:'Extract',exact:true}).click()
  await panel.getByText('Visual queued',{exact:true}).waitFor()
@@ -49,6 +51,9 @@ try {
  assert.ok(await panel.locator('img.zoomed-evidence').isVisible())
  await panel.getByRole('combobox',{name:'Evidence type',exact:true}).click()
  await page.getByRole('option',{name:'Motion clip',exact:true}).click()
+ await panel.getByLabel('Evidence start',{exact:true}).fill('2.137')
+ await panel.getByLabel('Evidence end',{exact:true}).fill('4.137')
+ assert.ok(await panel.getByLabel('Evidence end',{exact:true}).evaluate(input=>input.validity.valid))
  await panel.getByLabel('Evidence start',{exact:true}).fill('2')
  await panel.getByLabel('Evidence end',{exact:true}).fill('4')
  await panel.getByRole('button',{name:'Extract',exact:true}).click()
@@ -92,6 +97,8 @@ try {
 
  const runAnalysis=()=>execFileSync('python',['-c',
   "import httpx; from types import SimpleNamespace; from argon_recordings.analysis_worker import run; client=httpx.Client(base_url='http://127.0.0.1:8765',headers={'Authorization':'Bearer synthetic-browser-only'},trust_env=False); assert run(client,SimpleNamespace(model=None)); client.close()"],{env,stdio:'inherit',timeout:30000})
+ await analysis.getByLabel('Analysis end',{exact:true}).fill('6.137')
+ assert.ok(await analysis.getByLabel('Analysis end',{exact:true}).evaluate(input=>input.validity.valid))
  await analysis.getByLabel('Analysis end',{exact:true}).fill('6')
  await analysis.getByRole('button',{name:'Analyze visuals',exact:true}).click()
  await analysis.getByText('Queued',{exact:true}).waitFor();runAnalysis()

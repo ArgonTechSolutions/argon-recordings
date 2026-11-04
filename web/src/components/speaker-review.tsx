@@ -346,7 +346,7 @@ export function SpeakerReview({
                       aria-label="Speaker range start"
                       type="number"
                       min={0}
-                      step=".1"
+                      step="any"
                       value={start}
                       onChange={(e) => setStart(Number(e.target.value))}
                     />
@@ -370,7 +370,7 @@ export function SpeakerReview({
                       type="number"
                       min={start}
                       max={recording.duration ?? 0}
-                      step=".1"
+                      step="any"
                       value={end}
                       onChange={(e) => setEnd(Number(e.target.value))}
                     />

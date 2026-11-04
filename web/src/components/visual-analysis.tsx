@@ -102,7 +102,7 @@ export function VisualAnalysis({
                 type="number"
                 min={0}
                 max={recording.duration ?? 0}
-                step="0.1"
+                step="any"
                 value={start}
                 onChange={(event) => setStart(Number(event.target.value))}
               />
@@ -114,7 +114,7 @@ export function VisualAnalysis({
                 type="number"
                 min={start}
                 max={recording.duration ?? 0}
-                step="0.1"
+                step="any"
                 value={end}
                 onChange={(event) => setEnd(Number(event.target.value))}
               />

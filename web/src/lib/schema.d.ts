@@ -2477,6 +2477,11 @@ export interface components {
              */
             instruction: string;
             /**
+             * Focus
+             * @default
+             */
+            focus: string;
+            /**
              * Language
              * @default en
              */

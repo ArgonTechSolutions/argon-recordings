@@ -166,7 +166,7 @@ export function VisualEvidence({
                   type="number"
                   min={0}
                   max={recording.duration ?? 0}
-                  step="0.01"
+                  step="any"
                   value={start}
                   onChange={(e) => setStart(Number(e.target.value))}
                   required
@@ -180,7 +180,7 @@ export function VisualEvidence({
                     type="number"
                     min={start + 0.01}
                     max={Math.min(start + 30, recording.duration ?? 0)}
-                    step="0.01"
+                    step="any"
                     value={end}
                     onChange={(e) => setEnd(Number(e.target.value))}
                     required

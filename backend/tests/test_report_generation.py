@@ -282,3 +282,31 @@ def test_private_key_file_contract_and_rejected_file_types(client,tmp_path,monke
     with pytest.raises(ValueError): Generation(client.app,None,None,None)
     monkeypatch.setenv('RECORDINGS_OPENAI_KEY_FILE',str(key));key.write_text('x'*4097)
     with pytest.raises(ValueError): Generation(client.app,None,None,None)
+
+
+def test_custom_request_requires_a_task_and_focus_is_separate(client,tmp_path,monkeypatch):
+    rid,body,_=draft(client,tmp_path)
+    base=f'/api/recordings/{rid}/report-generation'
+    for instruction in ['', '   ']:
+        response=client.post(base,json={'kind':'custom','instruction':instruction,'focus':'Deployment details'})
+        assert response.status_code==422 and response.json()['detail']=='Describe what the custom report should do'
+    assert client.get(base).json()['jobs']==[]
+    jid=queue(client,rid,kind='custom',instruction='Write an implementation guide',focus='Mobile accessibility',visuals=False)
+    sent=transport(monkeypatch,client,body,images=False)
+    client.portal.call(client.app.state.generation.run,jid)
+    payload=json.loads(sent[0]['input'][0]['content'])
+    assert payload['request']=='Write an implementation guide'
+    assert payload['focus']=='Mobile accessibility'
+    assert client.get(base).json()['jobs'][0]['state']=='completed'
+
+
+def test_scope_expansion_preserves_requested_fractional_video_bounds(client,tmp_path):
+    rid,_,_=draft(client,tmp_path)
+    with client.app.state.store.db() as db:
+        db.execute('UPDATE recordings SET duration=1.037 WHERE id=?',(rid,))
+        db.execute('UPDATE segments SET start=.137,end=.9 WHERE recording_id=?',(rid,))
+    response=client.post(f'/api/recordings/{rid}/report-generation',json={'start':.03,'end':1.037})
+    assert response.status_code==202,response.text
+    with client.app.state.store.db() as db:
+        request=json.loads(db.execute('SELECT request FROM report_generation WHERE id=?',(response.json()['id'],)).fetchone()[0])
+    assert request['start']==.03 and request['end']==1.037

@@ -1940,7 +1940,7 @@ h1 {
   text-align: center;
   color: var(--muted-foreground);
 }
-.report-empty svg {
+.report-empty > svg {
   margin: 0 auto 18px;
 }
 .report-empty h2 {

@@ -180,7 +180,7 @@ export function VisualMarks({
                 type="number"
                 min={0}
                 max={duration}
-                step="0.1"
+                step="any"
                 value={start}
                 onChange={(e) => setStart(Number(e.target.value))}
               />
@@ -202,7 +202,7 @@ export function VisualMarks({
                 type="number"
                 min={start}
                 max={duration}
-                step="0.1"
+                step="any"
                 value={end}
                 onChange={(e) => setEnd(Number(e.target.value))}
               />

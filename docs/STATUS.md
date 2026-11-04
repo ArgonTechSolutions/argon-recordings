@@ -1,5 +1,11 @@
 # Foundation status
 
+## Report submission and timing correction (2026-11-04; REC-33)
+
+Operator receipts verified the initial OpenAI deployment on Vesta/Philemon with one online worker and a successful synthetic API draft. Subsequent report diagnostics showed no persisted user generation jobs. Chromium reproduced the blocker: a fractional recording duration violated a collapsed number input's 0.1-second step, preventing submission without visible feedback.
+
+The correction accepts fractional source times across report, speaker, mark, extraction and analysis inputs; preserves requested video bounds when expanding transcript scope; separates the required custom task from optional focus; and adds sending, queued/running, completion, cancellation and visible failure/retry feedback. The button icon's inherited empty-state margin is corrected. **358 backend tests passed, one opt-in test skipped**; OpenAPI check, production build/lint and main/visual/report Chromium checks passed. Browser checks cover rejected submissions, usage-bearing background failures, explicit retries and 320–1440 px layouts; real media checks retain source-offset/seek/speed coverage. This correction awaits operator deployment; local tests use synthetic data and make no paid API requests.
+
 ## OpenAI reports checkpoint (local, 2026-11-03; REC-33)
 
 A separate mobile-ready Reports tab now generates summaries, actions, custom/visual reports and independent refinements through OpenAI. Actual supplied image IDs/hashes and canonical source citations are checked before saving a draft. Clip references play in the app; exports include reference text rather than video bytes. Generation is durable, cancellable and bounded by application-wide estimated-cost reservations. See [AI-REPORTS.md](AI-REPORTS.md).

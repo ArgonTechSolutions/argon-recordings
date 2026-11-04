@@ -15,6 +15,8 @@ async def synthetic_response(request):
     payload=json.loads(request.content)
     first=json.loads(payload['input'][0]['content'])
     outputs={item['call_id']:item['output'] for item in payload['input'] if item.get('type')=='function_call_output'}
+    if first.get('request')=='TEST_PROVIDER_FAILURE' and 'transcript' in outputs:
+        return httpx.Response(401,json={'error':'synthetic upstream rejection'})
     if 'transcript' not in outputs:
         output=[{'type':'function_call','call_id':'transcript','name':'read_transcript','arguments':'{"offset":0}'}]
     elif first['kind']=='report' and 'screen' not in outputs:

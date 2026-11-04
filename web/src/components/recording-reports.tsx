@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { FileText, Plus, Sparkles } from "lucide-react"
+import { Check, FileText, LoaderCircle, Plus, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ValueSelect } from "@/components/value-select"
@@ -130,6 +130,12 @@ export function RecordingReports({
   const [kind, setKind] = useState("summary")
   const [previousReportId, setPreviousReportId] = useState<string | null>(null)
   const [instruction, setInstruction] = useState("")
+  const [focus, setFocus] = useState("")
+  const [formError, setFormError] = useState("")
+  const [submitted, setSubmitted] = useState<Job | null>(null)
+  const instructionInput = useRef<HTMLTextAreaElement>(null)
+  const rangeDetails = useRef<HTMLDetailsElement>(null)
+  const statusPanel = useRef<HTMLDivElement>(null)
   const [language, setLanguage] = useState(
     recording.language === "es" ? "es" : "en"
   )
@@ -153,18 +159,52 @@ export function RecordingReports({
         ? 1500
         : 10000,
   })
-  const active = generation.data?.jobs.find((j) =>
-    ["queued", "running"].includes(j.state)
-  )
-  const latest = generation.data?.jobs[0]
-  const completedId = generation.data?.jobs.find(
-    (j) => j.state === "completed"
-  )?.report_id
+  const latest = submitted
+    ? (generation.data?.jobs.find((job) => job.id === submitted.id) ??
+      submitted)
+    : generation.data?.jobs[0]
+  const active =
+    latest && ["queued", "running"].includes(latest.state)
+      ? latest
+      : generation.data?.jobs.find((job) =>
+          ["queued", "running"].includes(job.state)
+        )
+  const completedId = latest?.state === "completed" ? latest.report_id : null
   useEffect(() => {
     if (completedId)
       void cache.invalidateQueries({ queryKey: ["reports", recording.id] })
   }, [cache, completedId, recording.id])
-  const selectedId = selected ?? reports.data?.reports[0]?.id
+  useEffect(() => {
+    if (submitted)
+      statusPanel.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      })
+  }, [submitted])
+  const selectedId = selected ?? completedId ?? reports.data?.reports[0]?.id
+  const rangeError =
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    start < 0 ||
+    end <= start ||
+    end > (recording.duration ?? 0)
+      ? "Choose a time range inside the recording, with the end after the start."
+      : ""
+  const rememberJob = (job: Job) => {
+    cache.setQueryData<Generation>(
+      ["report-generation", recording.id],
+      (previous) =>
+        previous
+          ? {
+              ...previous,
+              jobs: [
+                job,
+                ...previous.jobs.filter((item) => item.id !== job.id),
+              ],
+            }
+          : previous
+    )
+  }
   const detail = useQuery({
     queryKey: ["report", recording.id, selectedId],
     queryFn: () => request<Detail>(`${base}/${selectedId}`),
@@ -181,14 +221,22 @@ export function RecordingReports({
         body: JSON.stringify({
           previous_report_id: previousReportId,
           kind,
-          instruction,
+          instruction: kind === "custom" ? instruction.trim() : "",
+          focus: focus.trim(),
           language,
           visuals,
           start,
           end,
         }),
       }),
-    onSuccess: () => {
+    onMutate: async () => {
+      await cache.cancelQueries({
+        queryKey: ["report-generation", recording.id],
+      })
+    },
+    onSuccess: (job) => {
+      setSubmitted(job)
+      rememberJob(job)
       setCreateOpen(false)
       setSelected(null)
       refresh()
@@ -199,7 +247,11 @@ export function RecordingReports({
       request<Job>(`${generationBase}/${active!.id}/cancel`, {
         method: "POST",
       }),
-    onSuccess: refresh,
+    onSuccess: (job) => {
+      rememberJob(job)
+      if (submitted?.id === job.id) setSubmitted(job)
+      refresh()
+    },
   })
   const review = useMutation({
     mutationFn: async () => {
@@ -280,6 +332,7 @@ export function RecordingReports({
               disabled={!generation.data?.enabled || !!active}
               onClick={() => {
                 generate.reset()
+                setFormError("")
                 setPreviousReportId(null)
                 setCreateOpen(true)
               }}
@@ -289,9 +342,22 @@ export function RecordingReports({
           )}
         </div>
         {active && (
-          <div className="report-progress" role="status">
-            <Sparkles size={16} />
-            <span>{active.stage}… You can leave this tab.</span>
+          <div
+            className="report-progress"
+            role="status"
+            aria-live="polite"
+            ref={statusPanel}
+          >
+            <LoaderCircle className="spin" size={16} aria-hidden="true" />
+            <span>
+              <strong>
+                {active.state === "queued"
+                  ? "Report queued"
+                  : "Generating report"}
+              </strong>
+              <br />
+              {active.stage}. Your draft will appear here when it is ready.
+            </span>
             {canEdit && (
               <Button
                 size="sm"
@@ -299,15 +365,66 @@ export function RecordingReports({
                 disabled={cancel.isPending}
                 onClick={() => cancel.mutate()}
               >
-                Cancel
+                {cancel.isPending ? "Cancelling…" : "Cancel"}
               </Button>
             )}
           </div>
         )}
+        {!active && latest?.state === "completed" && (
+          <div
+            className="report-progress"
+            role="status"
+            aria-live="polite"
+            ref={statusPanel}
+          >
+            <Check size={16} aria-hidden="true" />
+            <span>
+              <strong>Your draft is ready.</strong> Review it before marking it
+              reviewed.
+            </span>
+            {latest.report_id && selectedId !== latest.report_id && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelected(latest.report_id)}
+              >
+                Open draft
+              </Button>
+            )}
+          </div>
+        )}
+        {!active && latest?.state === "cancelled" && (
+          <div className="report-notice" role="status" ref={statusPanel}>
+            Generation cancelled. No new draft was saved.
+          </div>
+        )}
         {latest?.state === "failed" && (
-          <p className="report-notice" role="alert">
-            {latest.error}
-          </p>
+          <div className="report-notice" role="alert" ref={statusPanel}>
+            <strong>Report could not be created.</strong>
+            <p>
+              {latest.error ?? "Generation stopped before a draft was saved."}
+            </p>
+            {latest.estimated_cost_usd > 0 && (
+              <p>
+                Estimated API usage: ${latest.estimated_cost_usd.toFixed(4)}. No
+                draft was saved.
+              </p>
+            )}
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!!active}
+                onClick={() => {
+                  generate.reset()
+                  setFormError("")
+                  setCreateOpen(true)
+                }}
+              >
+                Edit request
+              </Button>
+            )}
+          </div>
         )}
         {[
           reports.error,
@@ -439,6 +556,7 @@ export function RecordingReports({
                   disabled={!!active || saved.stale}
                   onClick={() => {
                     generate.reset()
+                    setFormError("")
                     setKind("custom")
                     setInstruction("")
                     setPreviousReportId(saved.id)
@@ -483,26 +601,39 @@ export function RecordingReports({
         ) : (
           <div className="report-empty">
             <FileText size={32} />
-            <h2>Turn this recording into something useful.</h2>
+            <h2>
+              {active
+                ? "Your report is being created."
+                : latest?.state === "failed"
+                  ? "No draft was saved."
+                  : "Turn this recording into something useful."}
+            </h2>
             <p>
-              Create a summary, an action list, or a report with supporting
-              visuals.
+              {active
+                ? "You can leave this tab and return while generation continues."
+                : latest?.state === "failed"
+                  ? "You can edit your request above and try again when you are ready."
+                  : "Create a summary, an action list, or a report with supporting visuals."}
             </p>
             {!generation.data?.enabled && canEdit && (
               <p>Report generation is not configured on this server yet.</p>
             )}
             {!canEdit && <p>Reports created by your team will appear here.</p>}
-            {canEdit && generation.data?.enabled && !active && (
-              <Button
-                onClick={() => {
-                  generate.reset()
-                  setPreviousReportId(null)
-                  setCreateOpen(true)
-                }}
-              >
-                <Sparkles size={15} /> Create a report
-              </Button>
-            )}
+            {canEdit &&
+              generation.data?.enabled &&
+              !active &&
+              latest?.state !== "failed" && (
+                <Button
+                  onClick={() => {
+                    generate.reset()
+                    setFormError("")
+                    setPreviousReportId(null)
+                    setCreateOpen(true)
+                  }}
+                >
+                  <Sparkles size={15} /> Create a report
+                </Button>
+              )}
           </div>
         )}
         {canEdit && (
@@ -522,7 +653,12 @@ export function RecordingReports({
         )}
       </section>
       {source}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          if (!generate.isPending) setCreateOpen(open)
+        }}
+      >
         <DialogContent className="report-create">
           <DialogHeader>
             <DialogTitle>
@@ -530,8 +666,22 @@ export function RecordingReports({
             </DialogTitle>
           </DialogHeader>
           <form
+            noValidate
+            aria-busy={generate.isPending}
             onSubmit={(e) => {
               e.preventDefault()
+              if (generate.isPending) return
+              setFormError("")
+              if (kind === "custom" && !instruction.trim()) {
+                setFormError("Describe what this report should do.")
+                instructionInput.current?.focus()
+                return
+              }
+              if (rangeError) {
+                setFormError(rangeError)
+                if (rangeDetails.current) rangeDetails.current.open = true
+                return
+              }
               generate.mutate()
             }}
           >
@@ -540,6 +690,7 @@ export function RecordingReports({
               <ValueSelect
                 label="Report type"
                 value={kind}
+                disabled={generate.isPending}
                 onChange={setKind}
                 items={[
                   { value: "summary", label: "Summary" },
@@ -549,13 +700,31 @@ export function RecordingReports({
                 ]}
               />
             </label>
+            {kind === "custom" && (
+              <label>
+                What should this report do?
+                <textarea
+                  ref={instructionInput}
+                  aria-label="What should this report do?"
+                  required
+                  maxLength={2000}
+                  rows={4}
+                  value={instruction}
+                  disabled={generate.isPending}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  placeholder="For example: write a step-by-step implementation guide with decisions, trade-offs, and unresolved questions."
+                />
+              </label>
+            )}
             <label>
               Anything to focus on? <span className="muted">Optional</span>
               <textarea
+                aria-label="Anything to focus on?"
                 maxLength={2000}
                 rows={3}
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
+                value={focus}
+                disabled={generate.isPending}
+                onChange={(e) => setFocus(e.target.value)}
                 placeholder="For example: explain the demo and highlight next steps…"
               />
             </label>
@@ -564,6 +733,7 @@ export function RecordingReports({
               <ValueSelect
                 label="Report language"
                 value={language}
+                disabled={generate.isPending}
                 onChange={setLanguage}
                 items={[
                   { value: "en", label: "English" },
@@ -575,11 +745,12 @@ export function RecordingReports({
               <input
                 type="checkbox"
                 checked={visuals}
+                disabled={generate.isPending}
                 onChange={(e) => setVisuals(e.target.checked)}
               />{" "}
               Include relevant screenshots and video references
             </label>
-            <details>
+            <details ref={rangeDetails}>
               <summary>Choose a time range</summary>
               <div className="report-range">
                 <label>
@@ -588,7 +759,8 @@ export function RecordingReports({
                     type="number"
                     min={0}
                     max={recording.duration ?? 0}
-                    step="0.1"
+                    step="any"
+                    disabled={generate.isPending}
                     value={start}
                     onChange={(e) => setStart(Number(e.target.value))}
                   />
@@ -599,7 +771,8 @@ export function RecordingReports({
                     type="number"
                     min={start}
                     max={recording.duration ?? 0}
-                    step="0.1"
+                    step="any"
+                    disabled={generate.isPending}
                     value={end}
                     onChange={(e) => setEnd(Number(e.target.value))}
                   />
@@ -610,12 +783,23 @@ export function RecordingReports({
               Selected transcript passages and inspected images are sent to
               OpenAI. The result is saved as a draft.
             </p>
-            {generate.error && <p role="alert">{generate.error.message}</p>}
-            <Button
-              type="submit"
-              disabled={generate.isPending || !(end > start)}
-            >
-              {generate.isPending ? "Queuing…" : "Generate draft"}
+            {formError && <p role="alert">{formError}</p>}
+            {generate.error && (
+              <p role="alert">
+                Could not queue the report: {generate.error.message}. Your
+                request has been kept.
+              </p>
+            )}
+            {generate.isPending && (
+              <p role="status" aria-live="polite">
+                Sending your request…
+              </p>
+            )}
+            <Button type="submit" disabled={generate.isPending || !!active}>
+              {generate.isPending && (
+                <LoaderCircle className="spin" size={15} aria-hidden="true" />
+              )}
+              {generate.isPending ? "Sending…" : "Generate draft"}
             </Button>
           </form>
         </DialogContent>

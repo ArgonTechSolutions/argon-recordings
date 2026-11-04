@@ -7887,6 +7887,12 @@
             "title": "Instruction",
             "default": ""
           },
+          "focus": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Focus",
+            "default": ""
+          },
           "language": {
             "type": "string",
             "maxLength": 35,
