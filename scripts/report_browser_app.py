@@ -9,6 +9,7 @@ from argon_recordings.api import create_app
 from argon_recordings.report_reading import READER_MODEL
 
 _original_client = httpx.AsyncClient
+_failed_requests = set()
 
 
 async def synthetic_response(request):
@@ -21,7 +22,8 @@ async def synthetic_response(request):
         reading={'notes':[{'text':'Review the mobile workflow and permission decisions.','segment_ids':ids}]}
         return httpx.Response(200,json={'status':'completed','output':[{'type':'message','role':'assistant','content':[{'type':'output_text','text':json.dumps(reading)}]}],'usage':{'input_tokens':100,'output_tokens':100}})
     outputs={item['call_id']:item['output'] for item in payload['input'] if item.get('type')=='function_call_output'}
-    if first.get('request')=='TEST_PROVIDER_FAILURE':
+    if first.get('request')=='TEST_PROVIDER_FAILURE' and first['request'] not in _failed_requests:
+        _failed_requests.add(first['request'])
         return httpx.Response(500,json={'error':'synthetic upstream rejection'})
     if first['kind']=='report' and 'screen' not in outputs:
         output=[{'type':'function_call','call_id':'screen','name':'inspect_image','arguments':'{"image_id":"frame:frame-0000.jpg"}'}]

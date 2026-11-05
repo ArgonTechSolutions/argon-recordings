@@ -159,12 +159,16 @@ def test_membership_removed_before_tool_prevents_provider_call(team,tmp_path,mon
         assert viewer.post(base,json={},headers=vh).status_code==403
         queued=owner.post(base,json={},headers=headers); assert queued.status_code==202,queued.text
         jid=queued.json()['id']
+        with manager.store.db() as db:db.execute("UPDATE report_generation SET state='failed' WHERE id=?",(jid,))
+        assert viewer.post(f'{base}/{jid}/retry',headers=vh).status_code==403
+        assert owner.post(f'{base}/{jid}/retry').status_code==403  # CSRF is still required.
         with manager.store.db() as db:
             db.execute("UPDATE report_generation SET state='running' WHERE id=?",(jid,))
             db.execute('DELETE FROM memberships WHERE project_id=? AND user_id=?',(pid,uid))
         with pytest.raises(HTTPException) as exc: owner.portal.call(app.state.generation.run,jid)
         assert exc.value.status_code==403
         assert owner.get(base).status_code==404
+        assert owner.post(f'{base}/{jid}/retry',headers=headers).status_code==404
     finally: viewer.close()
 
 
@@ -542,3 +546,52 @@ def test_interruption_retains_phase_and_accurate_uncertain_warning(client,tmp_pa
         row=db.execute('SELECT error,cost FROM report_generation WHERE id=?',(jid2,)).fetchone()
         assert 'uncertain API' in row['error'] and row['cost']==.02
         assert db.execute('SELECT status FROM ai_call_costs WHERE job_id=?',(jid2,)).fetchone()[0]=='uncertain'
+
+
+def test_retry_uses_saved_parameters_and_preserves_failed_attempt(client,tmp_path):
+    rid,body,_=draft(client,tmp_path)
+    previous=save(client,rid,body)
+    jid=queue(client,rid,kind='custom',instruction='Write a delivery guide.',focus='Mobile layouts.',
+              language='es-PE',visuals=True,start=0,end=1,previous_report_id=previous['id'])
+    store=client.app.state.store
+    with store.db() as db:
+        db.execute("UPDATE report_generation SET state='failed',stage='Interrupted',error='Interrupted while seeking',cost=.013,input_tokens=100,output_tokens=50,reserved=0 WHERE id=?",(jid,))
+        original=dict(db.execute('SELECT * FROM report_generation WHERE id=?',(jid,)).fetchone())
+        db.execute("INSERT INTO report_readings VALUES('retained',?,'[]',0)",(rid,))
+    base=f'/api/recordings/{rid}/report-generation'
+    response=client.post(f'{base}/{jid}/retry',json={'kind':'summary','language':'en'})
+    assert response.status_code==202,response.text
+    retry=response.json()
+    assert retry['id']!=jid and retry['state']=='queued' and retry['estimated_cost_usd']==0
+    with store.db() as db:
+        new=dict(db.execute('SELECT * FROM report_generation WHERE id=?',(retry['id'],)).fetchone())
+        assert new['request']==original['request']
+        assert dict(db.execute('SELECT * FROM report_generation WHERE id=?',(jid,)).fetchone())==original
+        assert db.execute("SELECT 1 FROM report_readings WHERE cache_key='retained'").fetchone()
+    assert client.post(f'{base}/{jid}/retry').status_code==409
+    assert len(client.get(base).json()['jobs'])==2
+    assert client.post(f'/api/recordings/{"0"*32}/report-generation/{jid}/retry').status_code==404
+
+
+@pytest.mark.parametrize('state',['queued','running','completed','cancelled'])
+def test_retry_rejects_unfailed_attempts(client,tmp_path,state):
+    rid,_,_=draft(client,tmp_path);jid=queue(client,rid)
+    with client.app.state.store.db() as db:db.execute('UPDATE report_generation SET state=? WHERE id=?',(state,jid))
+    response=client.post(f'/api/recordings/{rid}/report-generation/{jid}/retry')
+    assert response.status_code==409
+    assert len(client.get(f'/api/recordings/{rid}/report-generation').json()['jobs'])==1
+
+
+def test_retry_rechecks_current_configuration_and_source(client,tmp_path):
+    rid,_,_=draft(client,tmp_path);jid=queue(client,rid)
+    g=client.app.state.generation
+    with g.store.db() as db:db.execute("UPDATE report_generation SET state='failed',reserved=0 WHERE id=?",(jid,))
+    endpoint=f'/api/recordings/{rid}/report-generation/{jid}/retry'
+    g.key=''
+    assert client.post(endpoint).status_code==503
+    g.key='synthetic-test-only'
+    with g.store.db() as db:db.execute('UPDATE recordings SET duration=.5 WHERE id=?',(rid,))
+    assert client.post(endpoint).status_code==422
+    with g.store.db() as db:db.execute("UPDATE report_generation SET request='{} invalid' WHERE id=?",(jid,))
+    response=client.post(endpoint)
+    assert response.status_code==422 and 'Saved settings' in response.json()['detail']

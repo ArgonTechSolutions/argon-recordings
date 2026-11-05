@@ -1965,6 +1965,12 @@ h1 {
 .report-progress span {
   flex: 1;
 }
+.report-retry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
 .report-notice,
 .report-limitation {
   padding: 12px 18px;

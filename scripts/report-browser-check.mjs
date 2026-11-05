@@ -149,11 +149,29 @@ try {
  for(const width of [390,320]){await page.setViewportSize({width,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(evidence,`generation-error-${width}.png`),fullPage:true})}
  await page.getByRole('button',{name:'Edit request',exact:true}).click()
  assert.equal(await page.getByLabel('What should this report do?',{exact:true}).inputValue(),'TEST_PROVIDER_FAILURE')
- await page.getByLabel('What should this report do?',{exact:true}).fill('Write a concise implementation guide.')
- await page.getByRole('button',{name:'Generate draft',exact:true}).click()
+ await page.keyboard.press('Escape')
+ await page.reload();await page.locator('.recording-card').first().click();await page.getByRole('tab',{name:'Reports',exact:true}).click()
+ await page.getByRole('button',{name:'Retry',exact:true}).waitFor()
+ let rejectRetry=true,retryRequests=0
+ await page.route('**/report-generation/*/retry',async route=>{
+  retryRequests++
+  if(rejectRetry){rejectRetry=false;await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Synthetic retry unavailable'})});return}
+  await new Promise(r=>setTimeout(r,900));await route.continue()
+ })
+ await page.getByRole('button',{name:'Retry',exact:true}).click()
+ await page.getByRole('alert').filter({hasText:'Synthetic retry unavailable'}).waitFor()
+ assert.equal((await(await page.request.get(base+`/api/recordings/${rid}/report-generation`)).json()).jobs.length,4)
+ await page.getByRole('button',{name:'Retry',exact:true}).click()
+ const retrying=page.getByRole('button',{name:'Retrying…',exact:true})
+ await retrying.waitFor();assert.equal(await retrying.isDisabled(),true)
+ await page.screenshot({path:path.join(evidence,'retrying-mobile.png'),fullPage:true})
  await page.getByText('Your draft is ready.',{exact:true}).waitFor({timeout:30000})
+ assert.equal(retryRequests,2,'Submission errors must not automatically repeat a paid action')
+ const retried=JSON.parse(execFileSync('python',['-c',"import sqlite3,json,sys; c=sqlite3.connect(sys.argv[1]); c.row_factory=sqlite3.Row; print(json.dumps([dict(r) for r in c.execute('SELECT state,request FROM report_generation WHERE recording_id=? ORDER BY created DESC LIMIT 2',(sys.argv[2],))]))",path.join(data,'recordings.sqlite'),rid],{env,encoding:'utf8'}))
+ assert.equal(retried[0].state,'completed');assert.equal(retried[1].state,'failed')
+ assert.deepEqual(JSON.parse(retried[0].request),JSON.parse(retried[1].request),'Retry after reload must use the original saved parameters')
  assert.equal((await(await page.request.get(base+`/api/recordings/${rid}/reports`)).json()).reports.length,4)
- result.checks.push('background provider failure is visible with estimated usage; explicit edit/retry preserves request and creates a new visible draft')
+ result.checks.push('failure with usage, Edit request, retry after reload preserves saved parameters, visible retry errors/loading, duplicate suppression and new draft without overwriting failed history')
  await page.getByRole('button',{name:'Refine',exact:true}).click()
  await page.getByLabel('What should this report do?',{exact:true}).fill('Make the next steps more concise.')
  await page.getByRole('button',{name:'Generate draft',exact:true}).click()

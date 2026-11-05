@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Check, FileText, LoaderCircle, Plus, Sparkles } from "lucide-react"
+import {
+  Check,
+  FileText,
+  LoaderCircle,
+  Plus,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react"
 import { ReportBlocks } from "@/components/report-blocks"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -252,6 +259,13 @@ export function RecordingReports({
     for (const key of ["reports", "report", "report-generation"])
       void cache.invalidateQueries({ queryKey: [key, recording.id] })
   }
+  const generationQueued = (job: Job) => {
+    setSubmitted(job)
+    rememberJob(job)
+    setCreateOpen(false)
+    setSelected(null)
+    refresh()
+  }
   const generate = useMutation({
     mutationFn: () =>
       request<Job>(generationBase, {
@@ -272,13 +286,18 @@ export function RecordingReports({
         queryKey: ["report-generation", recording.id],
       })
     },
-    onSuccess: (job) => {
-      setSubmitted(job)
-      rememberJob(job)
-      setCreateOpen(false)
-      setSelected(null)
-      refresh()
+    onSuccess: generationQueued,
+  })
+  const retryGeneration = useMutation({
+    mutationFn: (id: string) =>
+      request<Job>(`${generationBase}/${id}/retry`, { method: "POST" }),
+    retry: false,
+    onMutate: async () => {
+      await cache.cancelQueries({
+        queryKey: ["report-generation", recording.id],
+      })
     },
+    onSuccess: generationQueued,
   })
   const cancel = useMutation({
     mutationFn: () =>
@@ -520,7 +539,11 @@ export function RecordingReports({
           {canEdit && (
             <Button
               size="sm"
-              disabled={!generation.data?.enabled || !!active}
+              disabled={
+                !generation.data?.enabled ||
+                !!active ||
+                retryGeneration.isPending
+              }
               onClick={() => {
                 generate.reset()
                 setFormError("")
@@ -627,18 +650,45 @@ export function RecordingReports({
               </p>
             )}
             {canEdit && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!!active}
-                onClick={() => {
-                  generate.reset()
-                  setFormError("")
-                  setCreateOpen(true)
-                }}
-              >
-                Edit request
-              </Button>
+              <>
+                <div className="report-retry-actions">
+                  <Button
+                    size="sm"
+                    disabled={
+                      !!active ||
+                      retryGeneration.isPending ||
+                      !generation.data?.enabled
+                    }
+                    onClick={() => retryGeneration.mutate(latest.id)}
+                  >
+                    {retryGeneration.isPending ? (
+                      <LoaderCircle
+                        className="spin"
+                        size={15}
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <RotateCcw size={15} aria-hidden="true" />
+                    )}
+                    {retryGeneration.isPending ? "Retrying…" : "Retry"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!active || retryGeneration.isPending}
+                    onClick={() => {
+                      generate.reset()
+                      setFormError("")
+                      setCreateOpen(true)
+                    }}
+                  >
+                    Edit request
+                  </Button>
+                </div>
+                <p>
+                  Retry uses the same settings. Additional API usage may apply.
+                </p>
+              </>
             )}
           </div>
         )}
@@ -650,6 +700,7 @@ export function RecordingReports({
           archive.error,
           exportReport.error,
           cancel.error,
+          retryGeneration.error,
         ]
           .filter(Boolean)
           .map((e, i) => (

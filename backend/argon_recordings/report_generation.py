@@ -617,6 +617,19 @@ def install(app, settings, save_report, visual_actions):
                 (jid,rid,user['id'] if user else None,body.model_dump_json(),reference.model_dump_json(),'queued','Queued',now,now,g.period(),estimate.estimated_cost_usd))
             return g.view(db.execute('SELECT * FROM report_generation WHERE id=?',(jid,)).fetchone())
 
+    @app.post('/api/recordings/{rid}/report-generation/{jid}/retry',response_model=GenerationJob,status_code=202)
+    def retry(rid: str,jid: str,request: Request):
+        with engine().store.db() as db:
+            row=db.execute('SELECT state,request FROM report_generation WHERE id=? AND recording_id=?',(jid,rid)).fetchone()
+            if not row:raise HTTPException(404,'Generation not found')
+            if row['state']!='failed':raise HTTPException(409,'Only failed report generations can be retried')
+            try:body=GenerateReport.model_validate_json(row['request'])
+            except ValidationError:
+                raise HTTPException(422,'Saved settings are no longer supported. Use Edit request to create a new request.') from None
+        # A retry is a new explicit job with the saved settings, current source
+        # and the same admission checks. Keep the failed job and its usage intact.
+        return generate(rid,body,request)
+
     @app.post('/api/recordings/{rid}/report-generation/{jid}/cancel',response_model=GenerationJob)
     def cancel(rid: str,jid: str):
         g=engine()
