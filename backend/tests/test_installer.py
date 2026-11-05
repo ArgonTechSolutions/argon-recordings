@@ -168,3 +168,24 @@ def test_ai_secret_is_coordinator_only_private_mount(tmp_path):
 @pytest.mark.parametrize('body', ['[ai]\nbudget_usd=true','[ai]\nbudget_usd=-1', '[ai]\nkey_file="a,b"', '[ai]\nkey_file=""', '[ai]\nkey_file=2'])
 def test_ai_invalid_config_fails_before_docker(tmp_path, body):
     with pytest.raises(ValueError): config(tmp_path, body)
+
+
+def test_failed_nonroot_image_check_does_not_publish_installation_metadata(tmp_path,monkeypatch):
+    import subprocess
+    settings=config(tmp_path)
+    monkeypatch.setitem(installer.sys.modules,installer.__name__,installer)
+    monkeypatch.setattr(installer,'doctor',lambda c:None)
+    monkeypatch.setattr(installer.shutil,'disk_usage',lambda path:type('Disk',(),{'free':20*1024**3})())
+    from scripts import worker_stack
+    monkeypatch.setattr(worker_stack,'stack_items',lambda *args:[])
+    calls=[]
+    def docker(c,*args,**kwargs):
+        calls.append(args)
+        if args[0]=='run':raise subprocess.CalledProcessError(1,args)
+    monkeypatch.setattr(installer,'docker',docker)
+    with pytest.raises(subprocess.CalledProcessError):installer._install(settings)
+    assert calls[0][0]=='build'
+    check=calls[1]
+    assert check[0]=='run' and check[check.index('--user')+1]=='10001:10001'
+    assert '--network' in check and 'none' in check and '-v' not in check
+    assert not installer.state_path(settings).exists()

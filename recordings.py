@@ -203,6 +203,15 @@ def _install(config):
     revision = source_id()
     image = 'argon-recordings:install-' + revision
     docker(config, 'build', '--label', 'com.argon.recordings.source=' + revision, '-f', ROOT / 'Dockerfile.install', '-t', image, ROOT)
+    # Prove the actual image user can import app modules and read shipped assets
+    # before publishing installation metadata. No production volumes or secrets.
+    docker(config, 'run', '--rm', '--network', 'none', '--cpus=1', '--memory=512m', '--memory-swap=512m',
+           '--user', '10001:10001', '--entrypoint', 'python', image, '-c',
+           "import os; from pathlib import Path; from argon_recordings.api import create_app; "
+           "from argon_recordings.reports import install; from argon_recordings.report_generation import Generation; "
+           "paths=list(Path('/app').rglob('*')); "
+           "assert all(os.access(p,os.R_OK | (os.X_OK if p.is_dir() else 0)) for p in paths), 'Unreadable application files'; "
+           "assert Path('/app/static/index.html').read_bytes(); print('Nonroot application image check passed')")
     models = config['home'] / 'models'
     models.mkdir(exist_ok=True)
     if config['mode'] != 'coordinator':
