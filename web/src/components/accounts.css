@@ -34,3 +34,34 @@
 .admin-card .admin-ai-enabled { display: flex; gap: 10px; align-items: center; }
 .admin-ai-form input { min-width: 0; }
 @media(max-width: 600px) { .admin-ai-limits { grid-template-columns: minmax(0,1fr); } }
+
+.admin-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 28px; align-items: start; }
+.admin-sidebar { position: sticky; top: 24px; display: grid; gap: 16px; }
+.admin-navigation { display: grid; gap: 8px; }
+.admin-navigation button { justify-content: flex-start; width: 100%; }
+.admin-screen .admin-menu-trigger { display: none; }
+.admin-screen { max-width: 1380px; }
+.admin-menu-dialog { top: 0; left: 0; translate: 0 0; transform: none; width: min(320px, calc(100vw - 32px)); height: 100dvh; max-height: 100dvh; border-radius: 0; align-content: start; overflow-y: auto; }
+@media(max-width: 760px) { .admin-layout { grid-template-columns: minmax(0, 1fr); } .admin-sidebar { display: none; } .admin-screen .admin-menu-trigger { display: inline-flex; } .admin-screen header h1 { font-size: 21px; } .admin-screen { padding: 20px 16px; } }
+.admin-content { display: grid; gap: 20px; min-width: 0; }
+.budget-user { border-top: 1px solid var(--border); padding-top: 20px; display: grid; gap: 12px; }
+.monthly-usage { display: grid; gap: 8px; border: 1px solid var(--border); padding: 16px; }
+
+.operational-logs { list-style: none; padding: 0; display: grid; gap: 12px; }
+.log-entry { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--border); }
+.log-entry > div { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+.log-entry time { color: var(--muted-foreground); font-size: 12px; }
+.log-error { border-inline-start: 3px solid var(--destructive); }
+
+.admin-mobile-brand, .admin-mobile-title { display: none; }
+.admin-menu-dialog { display: flex; flex-direction: column; gap: 24px; }
+.admin-menu-account { margin-top: auto; display: grid; gap: 10px; min-width: 0; overflow-wrap: anywhere; padding-top: 20px; border-top: 1px solid var(--border); }
+.admin-menu-account span { color: var(--muted-foreground); font-size: 13px; }
+@media(max-width: 760px) {
+  .admin-screen .admin-desktop-control { display: none; }
+  .admin-screen header h1 { min-width: 0; margin: 0; font-size: 16px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .admin-mobile-title { display: inline; }
+  .admin-screen header { height: 44px; flex-wrap: nowrap; justify-content: space-between; gap: 12px; }
+  .admin-screen header .admin-menu-trigger { width: 36px; height: 36px; padding: 0; flex-shrink: 0; }
+  .admin-mobile-brand { display: flex; width: 36px; height: 36px; align-items: center; justify-content: center; flex-shrink: 0; background: var(--primary); color: var(--primary-foreground); }
+}

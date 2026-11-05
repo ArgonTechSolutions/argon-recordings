@@ -91,6 +91,18 @@ def api():
             listener.close()
 
 
+def report_operational_event(remote,kind,error_type=None):
+    # Best effort: diagnostics must not turn a completed task into a failed task.
+    try:
+        headers={}
+        if not remote:
+            credential=json.loads(Path('/run/worker-credentials/self/credential.json').read_text())
+            headers['Authorization']='Bearer '+credential['token']
+        with httpx.Client(base_url='http://api:8001',headers=headers,timeout=10,trust_env=False) as client:
+            client.post('/api/worker/logs',json={'kind':kind,'error_type':error_type}).raise_for_status()
+    except Exception:pass
+
+
 def worker(remote=False):
     logging.basicConfig(level=logging.WARNING, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
     logging.getLogger('argon_recordings.worker').setLevel(logging.INFO)
@@ -129,6 +141,7 @@ def worker(remote=False):
                     raise RuntimeError('Worker requires 1GiB free workspace')
                 worked = run_once(client, transcriber, work)
             if worked:
+                report_operational_event(remote,'summary')
                 last_work = time.monotonic()
             else:
                 if transcriber.model is not None and time.monotonic() - last_work > 120:
@@ -140,6 +153,7 @@ def worker(remote=False):
             stopping.wait(3)
         except Exception as exc:
             logging.error('Isolated worker task failed (%s)', type(exc).__name__)
+            report_operational_event(remote,'error',type(exc).__name__)
             stopping.wait(3)
         finally:
             if watchdog:

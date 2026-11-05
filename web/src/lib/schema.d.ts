@@ -4,6 +4,108 @@
  */
 
 export interface paths {
+    "/api/admin/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_admin_system_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/system/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue */
+        post: operations["queue_api_admin_system_updates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/system/updates/{jid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel */
+        delete: operations["cancel_api_admin_system_updates__jid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/management": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Worker Exchange */
+        post: operations["worker_exchange_api_worker_management_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Logs */
+        get: operations["logs_api_admin_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/worker/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Worker Log */
+        post: operations["worker_log_api_worker_logs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/worker/inference/claim": {
         parameters: {
             query?: never;
@@ -1771,6 +1873,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Own Usage */
+        get: operations["own_usage_api_account_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/ai/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Budgets */
+        get: operations["budgets_api_admin_ai_budgets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/ai/budgets/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Default Cap */
+        put: operations["default_cap_api_admin_ai_budgets_default_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/ai/budgets/users/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Cap */
+        put: operations["set_cap_api_admin_ai_budgets_users__uid__put"];
+        post?: never;
+        /** Inherit Cap */
+        delete: operations["inherit_cap_api_admin_ai_budgets_users__uid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/ai": {
         parameters: {
             query?: never;
@@ -2743,6 +2914,34 @@ export interface components {
             stage: string;
             transcription?: components["schemas"]["TranscriptionProgress"] | null;
         };
+        /** HostMessage */
+        HostMessage: {
+            /** Revision */
+            revision: string;
+            /** Result Id */
+            result_id?: string | null;
+            /** Result */
+            result?: ("completed" | "failed") | null;
+            proof?: components["schemas"]["HostProof"] | null;
+        };
+        /** HostProof */
+        HostProof: {
+            /** Issued At */
+            issued_at: number;
+            /** Nonce */
+            nonce: string;
+            /** Signature */
+            signature: string;
+        };
+        /** HostView */
+        HostView: {
+            /** Target */
+            target: string;
+            /** Online */
+            online: boolean;
+            /** Source Revision */
+            source_revision: string;
+        };
         /** ImageAcknowledgement */
         ImageAcknowledgement: {
             /** Id */
@@ -2828,6 +3027,32 @@ export interface components {
             transcription?: components["schemas"]["TranscriptionProgress"] | null;
             /** Updated At */
             updated_at?: number | null;
+        };
+        /** LogEntry */
+        LogEntry: {
+            /** Id */
+            id: number;
+            /** Created */
+            created: number;
+            /** Source */
+            source: string;
+            /** Category */
+            category: string;
+            /** Level */
+            level: string;
+            /** Event */
+            event: string;
+            /** Summary */
+            summary: string;
+            /** Occurrences */
+            occurrences: number;
+        };
+        /** LogPage */
+        LogPage: {
+            /** Entries */
+            entries: components["schemas"]["LogEntry"][];
+            /** Next Before */
+            next_before: number | null;
         };
         /** Login */
         Login: {
@@ -2915,6 +3140,21 @@ export interface components {
              * @enum {string}
              */
             role: "owner" | "editor" | "viewer";
+        };
+        /** MonthlyUsage */
+        MonthlyUsage: {
+            /** User Id */
+            user_id: string;
+            /** Period */
+            period: string;
+            /** Usage Usd */
+            usage_usd: number;
+            /** Pending Usd */
+            pending_usd: number;
+            /** Cap Usd */
+            cap_usd: number | null;
+            /** Cap Source */
+            cap_source: string;
         };
         /** OIDCStart */
         OIDCStart: {
@@ -3415,6 +3655,15 @@ export interface components {
             /** Next Turn Offset */
             next_turn_offset: number | null;
         };
+        /** SystemState */
+        SystemState: {
+            /** Workers */
+            workers: components["schemas"]["WorkerView"][];
+            /** Hosts */
+            hosts: components["schemas"]["HostView"][];
+            /** Updates */
+            updates: components["schemas"]["UpdateView"][];
+        };
         /** TimelineRange */
         TimelineRange: {
             /** Start */
@@ -3454,6 +3703,43 @@ export interface components {
             elapsed_seconds: number;
             /** Eta Seconds */
             eta_seconds?: number | null;
+        };
+        /** UpdateRequest */
+        UpdateRequest: {
+            /** Target */
+            target: string;
+            /**
+             * Confirm
+             * @constant
+             */
+            confirm: "update-latest-main";
+        };
+        /** UpdateView */
+        UpdateView: {
+            /** Id */
+            id: string;
+            /** Target */
+            target: string;
+            /** State */
+            state: string;
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Error */
+            error: string | null;
+        };
+        /** UserBudgetState */
+        UserBudgetState: {
+            /** Default Cap Usd */
+            default_cap_usd: number | null;
+            /** Users */
+            users: components["schemas"]["MonthlyUsage"][];
+        };
+        /** UserCap */
+        UserCap: {
+            /** Cap Usd */
+            cap_usd?: number | null;
         };
         /** UserUpdate */
         UserUpdate: {
@@ -3726,6 +4012,29 @@ export interface components {
             /** Embedding Model */
             embedding_model?: string | null;
         };
+        /** WorkerLog */
+        WorkerLog: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "error" | "summary";
+            /** Error Type */
+            error_type?: string | null;
+        };
+        /** WorkerView */
+        WorkerView: {
+            /** Id */
+            id: string;
+            /** Online */
+            online: boolean;
+            /** Last Contact Seconds */
+            last_contact_seconds: number | null;
+            /** Diarization Available */
+            diarization_available: boolean;
+            /** Active Tasks */
+            active_tasks: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -3735,6 +4044,194 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    status_api_admin_system_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemState"];
+                };
+            };
+        };
+    };
+    queue_api_admin_system_updates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_admin_system_updates__jid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_exchange_api_worker_management_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostMessage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logs_api_admin_logs_get: {
+        parameters: {
+            query?: {
+                category?: ("errors" | "usage" | "updates" | "system") | null;
+                source?: string | null;
+                before?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    worker_log_api_worker_logs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerLog"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     inference_claim_api_worker_inference_claim_post: {
         parameters: {
             query?: never;
@@ -7600,6 +8097,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    own_usage_api_account_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthlyUsage"];
+                };
+            };
+        };
+    };
+    budgets_api_admin_ai_budgets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserBudgetState"];
+                };
+            };
+        };
+    };
+    default_cap_api_admin_ai_budgets_default_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCap"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserBudgetState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_cap_api_admin_ai_budgets_users__uid__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCap"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserBudgetState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inherit_cap_api_admin_ai_budgets_users__uid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserBudgetState"];
                 };
             };
             /** @description Validation Error */

@@ -111,6 +111,8 @@ For the real embedding check, add a 3 GiB container memory limit and `-e TEST_EM
 
 `docs/openapi.json` is generated from the real FastAPI routes. To update it, run `PYTHONPATH=backend python scripts/export_contract.py`. Generate `web/src/lib/schema.d.ts` with isolated `openapi-typescript@7.13.0` and `typescript@5.9.3`; the frontend retains the preset's TypeScript 6. This avoids an incompatible code-generator peer override.
 
+The synthetic admin/account UI smoke is `scripts/admin-browser-check.mjs`; it covers desktop navigation, the mobile drawer, budgets, logs and update confirmation without a live deployment. It uses the same browser runtime below; `PLAYWRIGHT_MODULE` can override its default `/opt/browser/node_modules/playwright-core/index.mjs`.
+
 The disposable Chromium harness is `scripts/browser-check.mjs`, with its runtime in `scripts/Dockerfile.browser`. It runs a temporary loopback server entirely inside its container and terminates it on completion. Its live-API checks seed synthetic audio/transcripts and do not establish speech quality or deployment acceptance. Configure `EVIDENCE_DIR` to a writable, disk-backed directory; the root defaults to `/evidence`. Use a bounded container command such as `timeout 120s node scripts/browser-check.mjs`.
 
 The exact supplied frontend command was:
@@ -123,9 +125,51 @@ It resolved to shadcn 4.22.1 during initialization. Installed dependencies are r
 
 ## Updates
 
-Run `python3 recordings.py update` from a Git installation to fetch `main`, rebuild, and restart an already running app. See [the one-time archive conversion and update instructions](docs/INSTALL.md#git-updates). Public HTTPS pulls need no GitHub credentials.
+### Manual updates
 
-Use `python3 recordings.py update --keep-backups` to retain every previous backup after a successful update. This keeps the normal verified pre-update snapshot and skips automatic backup cleanup; configuration, models and data volumes remain preserved.
+From the existing Git installation, as its installation owner:
+
+```bash
+python3 recordings.py --config recordings.toml update
+python3 recordings.py --config recordings.toml status
+```
+
+The updater requires a clean checkout on `main` with the supported origin. It fetches `origin/main`, permits only a fast-forward, stops the selected host's services, creates a verified backup, rebuilds, and restarts services if they were running. Local deployments update the main app and all local workers together. A stopped installation stays stopped. Configuration, models, credentials and data volumes are preserved. See [archive conversion, update prerequisites and recovery](docs/INSTALL.md#git-updates).
+
+Use `python3 recordings.py --config recordings.toml update --keep-backups` to retain every previous backup after success. Without that flag, the existing verified-backup retention policy applies. On failure, read the terminal output and retain the backup path it prints. Backups are recovery artifacts: **there is no automatic database restore**. Inspect the host and follow the linked recovery instructions before restarting or retrying; never remove data volumes to repair an update.
+
+For a split installation, run the update on **both hosts**, one at a time: remote inference worker first, then the coordinator/main app. Wait for active processing to finish before updating. Verify the worker installation before proceeding to the coordinator, then verify worker reconnection in **Administration → System**. A coordinator update does not update a remote host. Protocol-specific release instructions take precedence over this normal order.
+
+### Updates from the admin panel using the host runner
+
+The admin panel uses the same manual updater through an opt-in host runner. The runner must execute outside the containers so it survives their replacement. Install this version manually on both hosts before enabling panel updates; an older app or worker image does not contain the runner bridge.
+
+On each installation host, as the installation owner, run:
+
+```bash
+python3 recordings.py --config recordings.toml admin-runner
+```
+
+This is a foreground, long-running process; keep its terminal open or have your normal host process supervisor run this exact command with an absolute config path and the installation directory as its working directory. Stop it with Ctrl+C to disable panel updates. It uses the installation's existing Docker permissions and existing worker transport credentials; remote host claims are additionally signed with the existing transport key and checked against a read-only public peer-certificate mount, with a two-minute freshness window and replay protection. Inference credentials alone cannot claim or complete host updates. Keep host clocks synchronized. It needs no new API key, SSH listener, Docker socket mount, or browser-held host credential. If `docker.sudo=true`, the runner requires working noninteractive `sudo -n` for the existing Docker commands; it cannot answer a password prompt. Do not enable a host service implicitly as part of an application update.
+
+1. Sign in to **Administration** with administrator MFA, then open **System**. Worker status shows last authenticated contact, online/offline state, active task leases, and speaker-identification availability. Offline means no authenticated contact for 130 seconds, not proof that the host has stopped. A host source revision identifies its checkout, not an independently verified running image.
+2. Check that the selected host's update runner is **Connected**. **Main app & local workers** updates the coordinator/local installation; **Remote worker-1** updates the separate worker installation. Runners become unavailable after 90 seconds without contact.
+3. Finish active work, choose **Update host**, and confirm. Requests always update the configured `origin/main`; the browser cannot supply a shell command, repository, or Git ref. Only one update may be queued or running at a time. For a split installation, update the remote worker first, verify it, then update the main app.
+4. Follow **Recent updates**: queued → running → completed/failed. Queued requests can be cancelled; running updates cannot. The app may become temporarily unavailable during its own update; keep the page open and it retries status automatically. Completion means the existing updater exited successfully; check host status and worker reconnection afterward.
+
+The runner polls about every ten seconds. It writes a private host log to `.recordings/admin-runner/update.log` and retains an outcome receipt in `.recordings/admin-runner/receipt.json` until the coordinator acknowledges it. Paths are relative to the config directory. Receipts survive app/worker container replacement, and reporting is retried after temporary connection failures. A claimed update is **never automatically rerun**. If the runner itself is interrupted, it reports the retained update as failed when restarted; inspect the log, host processes and retained backups before retrying. If services cannot restart, restore connectivity manually so the receipt can be delivered. A running entry with an offline runner requires host inspection; it is not evidence of continued progress.
+
+### Operational logs
+
+**Administration → Logs** shows categories for errors, usage summaries, updates and system events, filterable by the main app or individual worker. The panel uses a sidebar on desktop. Mobile has a compact single-row header with a menu button and logo; the drawer contains navigation, account details and sign-out. Logs refresh every ten seconds; use **Older logs** to page through retained entries.
+
+The app records startup, server errors, report-generation cost/token summaries and update outcomes. Workers report processing-cycle summaries and error types; accepted task-failure reports are recorded by the app as well. Repeated identical events within a minute are grouped with an occurrence count. Only the latest 10,000 entries are kept. These are curated operational events, not a live dump of Docker stdout: raw exceptions, request bodies, credentials, transcripts and media are excluded. Detailed diagnostics remain in the relevant host/container log. A disconnected worker cannot deliver new events until it reconnects, and events from before this version are not imported.
+
+### Monthly AI budgets
+
+**Administration → AI & budgets** sets a default monthly cap for each user, with optional user overrides. An override replaces the default; **Use default** removes it. Blank means unlimited, including an explicit unlimited override; zero blocks paid calls. Server-wide AI limits remain independent and can still stop generation. Caps are enforced atomically before every paid call against its conservative cost bound, including pending and uncertain charges. A report can therefore stop before a draft is saved.
+
+Users can open **Account → Monthly AI usage** to see their own estimated current-month spending, effective cap and remaining amount. Usage is attributed to the user who requested generation, across their projects, and resets on the first day of each UTC month. This is estimated API usage, separate from provider billing; existing local/unattributed jobs are not assigned to a user retroactively.
 
 Transcription progress reports source audio covered, passages produced, and elapsed time. An approximate transcription ETA appears after at least three passages, 30 seconds of covered audio, and 30 seconds elapsed. Silence, model loading, and changing host load can affect the estimate; publishing is a separate stage. Workers report every five seconds; the UI receives commit-driven server-sent events without recording-status polling. Preparation creates a concrete chunk plan; processing reports completed chunks out of that total. Whisper passages remain variable length.
 

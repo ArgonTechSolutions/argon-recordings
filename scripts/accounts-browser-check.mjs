@@ -52,11 +52,14 @@ try {
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth))
   // Do not capture recovery codes in screenshots or logs.
   await page.getByRole('button',{name:'I saved my codes',exact:true}).click()
+  await page.setViewportSize({width:1440,height:1000})
   await page.getByRole('button',{name:'Sign out',exact:true}).click()
   await signIn(page,'owner@example.com')
   await page.getByRole('button',{name:'Continue with passkey',exact:true}).click()
   await page.getByLabel('Invitation email').waitFor()
 
+  await page.setViewportSize({width:1440,height:1000})
+  await page.getByRole('navigation',{name:'Administration sections'}).getByRole('button',{name:'AI & budgets',exact:true}).click()
   const ai = page.getByRole('region',{name:'AI reports configuration',exact:true})
   await ai.getByLabel('Per report soft limit (USD)',{exact:true}).fill('0.05')
   await ai.getByLabel('Per report hard limit (USD)',{exact:true}).fill('0.2')
@@ -78,7 +81,9 @@ try {
   }
   await ai.getByRole('button',{name:'Remove administrator key',exact:true}).click()
   await ai.getByText('A key is configured through the deployment.',{exact:true}).waitFor()
+  await page.getByRole('navigation',{name:'Administration sections'}).getByRole('button',{name:'Users',exact:true}).click()
 
+  await page.setViewportSize({width:1440,height:1000})
   await page.getByRole('button',{name:'Sign out',exact:true}).click()
   await signIn(page,'owner@example.com')
   await page.getByRole('button',{name:'Use a recovery code',exact:true}).click()

@@ -51,6 +51,7 @@ def api_args(config, installed, label=None):
     for index in range(1, config['workers'] + 1):
         args += ['-v', credential_volume(config, index) + ':/run/worker-credentials/' + str(index)]
     if config.get('mode') == 'coordinator':
+        args += ['--mount', f"type=bind,src={config['transport']['peer_certificate'].absolute()},dst=/run/host-runner/peer.crt,readonly"]
         args += ['-e', 'RECORDINGS_TRANSPORT_GROUP=true']
         if config['embedding'] != 'off':
             args += ['-e', 'RECORDINGS_REMOTE_EMBEDDINGS=true', '-e', 'RECORDINGS_EMBEDDING_PROFILE=' + config['embedding']]

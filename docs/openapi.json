@@ -5,6 +5,307 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/admin/system": {
+      "get": {
+        "summary": "Status",
+        "operationId": "status_api_admin_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/system/updates": {
+      "post": {
+        "summary": "Queue",
+        "operationId": "queue_api_admin_system_updates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/system/updates/{jid}": {
+      "delete": {
+        "summary": "Cancel",
+        "operationId": "cancel_api_admin_system_updates__jid__delete",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/management": {
+      "post": {
+        "summary": "Worker Exchange",
+        "operationId": "worker_exchange_api_worker_management_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/logs": {
+      "get": {
+        "summary": "Logs",
+        "operationId": "logs_api_admin_logs_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "errors",
+                    "usage",
+                    "updates",
+                    "system"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(?:app|legacy|worker-[1-8])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/worker/logs": {
+      "post": {
+        "summary": "Worker Log",
+        "operationId": "worker_log_api_worker_logs_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerLog"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/worker/inference/claim": {
       "post": {
         "summary": "Inference Claim",
@@ -5752,6 +6053,166 @@
         }
       }
     },
+    "/api/account/usage": {
+      "get": {
+        "summary": "Own Usage",
+        "operationId": "own_usage_api_account_usage_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyUsage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/ai/budgets": {
+      "get": {
+        "summary": "Budgets",
+        "operationId": "budgets_api_admin_ai_budgets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserBudgetState"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/ai/budgets/default": {
+      "put": {
+        "summary": "Default Cap",
+        "operationId": "default_cap_api_admin_ai_budgets_default_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCap"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserBudgetState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/ai/budgets/users/{uid}": {
+      "put": {
+        "summary": "Set Cap",
+        "operationId": "set_cap_api_admin_ai_budgets_users__uid__put",
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Uid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCap"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserBudgetState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Inherit Cap",
+        "operationId": "inherit_cap_api_admin_ai_budgets_users__uid__delete",
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserBudgetState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/ai": {
       "get": {
         "summary": "Status",
@@ -8632,6 +9093,109 @@
         ],
         "title": "Heartbeat"
       },
+      "HostMessage": {
+        "properties": {
+          "revision": {
+            "type": "string",
+            "pattern": "^(?:[a-f0-9]{40,64}|unknown)$",
+            "title": "Revision"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "proof": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HostProof"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "title": "HostMessage"
+      },
+      "HostProof": {
+        "properties": {
+          "issued_at": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Issued At"
+          },
+          "nonce": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Nonce"
+          },
+          "signature": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{40,4096}$",
+            "title": "Signature"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "issued_at",
+          "nonce",
+          "signature"
+        ],
+        "title": "HostProof"
+      },
+      "HostView": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "source_revision": {
+            "type": "string",
+            "title": "Source Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target",
+          "online",
+          "source_revision"
+        ],
+        "title": "HostView"
+      },
       "ImageAcknowledgement": {
         "properties": {
           "id": {
@@ -8892,6 +9456,84 @@
         ],
         "title": "Job"
       },
+      "LogEntry": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created": {
+            "type": "number",
+            "title": "Created"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "occurrences": {
+            "type": "integer",
+            "title": "Occurrences"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "created",
+          "source",
+          "category",
+          "level",
+          "event",
+          "summary",
+          "occurrences"
+        ],
+        "title": "LogEntry"
+      },
+      "LogPage": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/LogEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "entries",
+          "next_before"
+        ],
+        "title": "LogPage"
+      },
       "Login": {
         "properties": {
           "email": {
@@ -9087,6 +9729,52 @@
           "role"
         ],
         "title": "Member"
+      },
+      "MonthlyUsage": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "usage_usd": {
+            "type": "number",
+            "title": "Usage Usd"
+          },
+          "pending_usd": {
+            "type": "number",
+            "title": "Pending Usd"
+          },
+          "cap_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Usd"
+          },
+          "cap_source": {
+            "type": "string",
+            "title": "Cap Source"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "period",
+          "usage_usd",
+          "pending_usd",
+          "cap_usd",
+          "cap_source"
+        ],
+        "title": "MonthlyUsage"
       },
       "OIDCStart": {
         "properties": {
@@ -10579,6 +11267,39 @@
         ],
         "title": "SpeakersSnapshot"
       },
+      "SystemState": {
+        "properties": {
+          "workers": {
+            "items": {
+              "$ref": "#/components/schemas/WorkerView"
+            },
+            "type": "array",
+            "title": "Workers"
+          },
+          "hosts": {
+            "items": {
+              "$ref": "#/components/schemas/HostView"
+            },
+            "type": "array",
+            "title": "Hosts"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateView"
+            },
+            "type": "array",
+            "title": "Updates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "workers",
+          "hosts",
+          "updates"
+        ],
+        "title": "SystemState"
+      },
       "TimelineRange": {
         "properties": {
           "start": {
@@ -10707,6 +11428,122 @@
           "elapsed_seconds"
         ],
         "title": "TranscriptionProgress"
+      },
+      "UpdateRequest": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "pattern": "^(?:app|worker-[1-8])$",
+            "title": "Target"
+          },
+          "confirm": {
+            "type": "string",
+            "const": "update-latest-main",
+            "title": "Confirm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target",
+          "confirm"
+        ],
+        "title": "UpdateRequest"
+      },
+      "UpdateView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "created": {
+            "type": "number",
+            "title": "Created"
+          },
+          "updated": {
+            "type": "number",
+            "title": "Updated"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "target",
+          "state",
+          "created",
+          "updated",
+          "error"
+        ],
+        "title": "UpdateView"
+      },
+      "UserBudgetState": {
+        "properties": {
+          "default_cap_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Cap Usd"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/MonthlyUsage"
+            },
+            "type": "array",
+            "title": "Users"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "default_cap_usd",
+          "users"
+        ],
+        "title": "UserBudgetState"
+      },
+      "UserCap": {
+        "properties": {
+          "cap_usd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Usd"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UserCap"
       },
       "UserUpdate": {
         "properties": {
@@ -11388,6 +12225,77 @@
         "additionalProperties": false,
         "type": "object",
         "title": "WorkerCapabilities"
+      },
+      "WorkerLog": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "error",
+              "summary"
+            ],
+            "title": "Kind"
+          },
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z_0-9]{0,79}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "WorkerLog"
+      },
+      "WorkerView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "last_contact_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Contact Seconds"
+          },
+          "diarization_available": {
+            "type": "boolean",
+            "title": "Diarization Available"
+          },
+          "active_tasks": {
+            "type": "integer",
+            "title": "Active Tasks"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "online",
+          "last_contact_seconds",
+          "diarization_available",
+          "active_tasks"
+        ],
+        "title": "WorkerView"
       }
     }
   }

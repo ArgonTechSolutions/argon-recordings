@@ -9,7 +9,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { request, preview } from "@/lib/api"
 import { setSessionTransport, type AccountSession } from "@/lib/account-session"
-import { UserRound, LogOut, Shield } from "lucide-react"
+import { UserRound, LogOut, Shield, Menu, Layers3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -21,6 +21,9 @@ import {
 import { ValueSelect } from "@/components/value-select"
 import { AdminSecurity } from "./admin-security"
 import { AdminAI } from "./admin-ai"
+import { AdminBudgets, MonthlyUsage } from "./usage-budgets"
+import { AdminSystem } from "./admin-system"
+import { AdminLogs } from "./admin-logs"
 import { AgentAccess } from "./agent-access"
 import "./accounts.css"
 
@@ -276,6 +279,7 @@ export function AccountControls() {
             <DialogTitle>Account</DialogTitle>
           </DialogHeader>
           <p>{session.user.email}</p>
+          {open && <MonthlyUsage />}
           <form
             className="account-form"
             onSubmit={async (event) => {
@@ -357,7 +361,22 @@ type Settings = {
   registration: "invite" | "closed"
   oidc: { issuer: string } | null
 }
+const adminTabs = [
+  "Users",
+  "AI & budgets",
+  "Security",
+  "System",
+  "Activity",
+  "Logs",
+] as const
+type AdminTab = (typeof adminTabs)[number]
+
 export function AdminPanel() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [tab, setTab] = useState<AdminTab>(() => {
+    const value = new URLSearchParams(location.search).get("tab")
+    return adminTabs.find((tab) => tab === value) ?? "Users"
+  })
   const session = useContext(Session)
   const cache = useQueryClient()
   const [error, setError] = useState("")
@@ -406,10 +425,32 @@ export function AdminPanel() {
   return (
     <main className="admin-screen">
       <header>
-        <h1>Instance administration</h1>
-        <a href="/">Recordings</a>
         <Button
           variant="outline"
+          className="admin-menu-trigger"
+          aria-label="Open admin navigation"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(true)}
+        >
+          <Menu size={20} />
+        </Button>
+        <h1>
+          <span className="admin-desktop-control">Instance administration</span>
+          <span className="admin-mobile-title">Administration</span>
+        </h1>
+        <a href="/" className="admin-desktop-control">
+          Recordings
+        </a>
+        <a
+          href="/"
+          className="admin-mobile-brand"
+          aria-label="Argon Recordings"
+        >
+          <Layers3 size={22} />
+        </a>
+        <Button
+          variant="outline"
+          className="admin-desktop-control"
           onClick={async () => {
             await request("/api/auth/logout", { method: "POST" })
             location.reload()
@@ -418,164 +459,272 @@ export function AdminPanel() {
           Sign out
         </Button>
       </header>
-      <p>{session?.user?.email}</p>
-      <details>
-        <summary className="admin-security-toggle">
-          Passkeys and recovery
-        </summary>
-        <AdminSecurity
-          onVerified={async () => {
-            await cache.refetchQueries({
-              queryKey: ["account-session", "admin"],
-            })
-          }}
-        />
-      </details>
-      {(error || users.isError || settings.isError) && (
-        <p role="alert">
-          {error ||
-            "Administration could not be loaded. Sign in again and retry."}
-        </p>
-      )}
-      {link && (
-        <section className="admin-card">
-          <label>
-            Share this one-time link
-            <Input
-              aria-label="One-time link"
-              value={link}
-              readOnly
-              onFocus={(event) => event.target.select()}
-            />
-          </label>
-          <Button variant="outline" onClick={() => setLink("")}>
-            Dismiss
-          </Button>
-        </section>
-      )}
-      <AdminAI />
-      <section className="admin-card">
-        <h2>Registration</h2>
-        {settings.data && (
-          <ValueSelect
-            label="Registration policy"
-            value={settings.data.registration}
-            onChange={(registration) =>
-              act("/api/admin/settings", "PATCH", { registration })
-            }
-            items={[
-              { value: "invite", label: "Invitation only" },
-              { value: "closed", label: "Closed" },
-            ]}
-          />
-        )}
-        <p>
-          {settings.data?.oidc
-            ? `Single sign-on: ${settings.data.oidc.issuer}`
-            : "Single sign-on is not configured."}
-        </p>
-      </section>
-      <section className="admin-card">
-        <h2>Invite a user</h2>
-        <form
-          className="admin-inline"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const form = new FormData(event.currentTarget)
-            void act("/api/admin/invitations", "POST", {
-              email: form.get("email"),
-            })
-          }}
-        >
-          <Input
-            aria-label="Invitation email"
-            name="email"
-            type="email"
-            placeholder="Email address"
-            required
-          />
-          <Button
-            type="submit"
-            disabled={settings.data?.registration !== "invite"}
+      <p className="admin-desktop-control">
+        {session?.user?.name} · {session?.user?.email}
+      </p>
+      <div className="admin-layout">
+        <aside className="admin-sidebar">
+          <p className="muted">Manage instance</p>
+          <nav
+            className="admin-navigation"
+            aria-label="Administration sections"
           >
-            Create invitation
-          </Button>
-        </form>
-        {invitations.data
-          ?.filter((invite) => !invite.used)
-          .map((invite) => (
-            <div className="admin-row" key={invite.email}>
-              <span>{invite.email}</span>
+            {adminTabs.map((value) => (
               <Button
-                variant="ghost"
-                onClick={() =>
-                  act("/api/admin/invitations", "DELETE", {
-                    email: invite.email,
-                  })
-                }
+                key={value}
+                variant={tab === value ? "default" : "outline"}
+                aria-current={tab === value ? "page" : undefined}
+                onClick={() => {
+                  setMenuOpen(false)
+                  setTab(value)
+                  const url = new URL(location.href)
+                  url.searchParams.set("tab", value)
+                  history.replaceState(null, "", url)
+                }}
               >
-                Revoke invitation
+                {value}
               </Button>
-            </div>
-          ))}
-      </section>
-      <section className="admin-card">
-        <h2>Users</h2>
-        {users.data?.map((user) => (
-          <article className="admin-row" key={user.id}>
-            <div>
-              <strong>{user.name}</strong>
-              <p>{user.email}</p>
-              <small>
-                {user.disabled
-                  ? "Suspended"
-                  : user.admin
-                    ? "Administrator"
-                    : "Member"}
-              </small>
-            </div>
-            <div className="admin-actions">
-              <Button
-                variant="outline"
-                onClick={() =>
-                  act(`/api/admin/users/${user.id}`, "PATCH", {
-                    admin: !user.admin,
-                    disabled: !!user.disabled,
-                  })
-                }
-              >
-                {user.admin ? "Remove admin" : "Make admin"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  act(`/api/admin/users/${user.id}`, "PATCH", {
-                    admin: !!user.admin,
-                    disabled: !user.disabled,
-                  })
-                }
-              >
-                {user.disabled ? "Reactivate" : "Suspend"}
-              </Button>
+            ))}
+          </nav>
+        </aside>
+        <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
+          <DialogContent
+            className="admin-menu-dialog"
+            style={{ top: 0, left: 0, translate: "0 0", transform: "none" }}
+          >
+            <DialogHeader>
+              <DialogTitle>Administration</DialogTitle>
+            </DialogHeader>
+            <nav
+              className="admin-navigation"
+              aria-label="Administration sections"
+            >
+              {adminTabs.map((value) => (
+                <Button
+                  key={value}
+                  variant={tab === value ? "default" : "outline"}
+                  aria-current={tab === value ? "page" : undefined}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    setTab(value)
+                    const url = new URL(location.href)
+                    url.searchParams.set("tab", value)
+                    history.replaceState(null, "", url)
+                  }}
+                >
+                  {value}
+                </Button>
+              ))}
+            </nav>
+            <div className="admin-menu-account">
+              <strong>{session?.user?.name}</strong>
+              <span>{session?.user?.email}</span>
+              <a href="/">Back to recordings</a>
               <Button
                 variant="outline"
-                onClick={() => act(`/api/admin/users/${user.id}/reset`, "POST")}
+                onClick={async () => {
+                  try {
+                    await request("/api/auth/logout", { method: "POST" })
+                    location.reload()
+                  } catch (error) {
+                    setError(message(error))
+                  }
+                }}
               >
-                Password reset
+                Sign out
               </Button>
+              {error && <p role="alert">{error}</p>}
             </div>
-          </article>
-        ))}
-      </section>
-      <details className="admin-card">
-        <summary>Recent account activity</summary>
-        {audit.data?.map((row) => (
-          <p key={row.id}>
-            {new Date(row.created * 1000).toLocaleString()} · {row.action}{" "}
-            {row.target}
-          </p>
-        ))}
-      </details>
+          </DialogContent>
+        </Dialog>
+        <section aria-label={`${tab} administration`} className="admin-content">
+          {tab === "Security" && (
+            <>
+              <section className="admin-card">
+                <h2>Passkeys and recovery</h2>
+                <AdminSecurity
+                  onVerified={async () => {
+                    await cache.refetchQueries({
+                      queryKey: ["account-session", "admin"],
+                    })
+                  }}
+                />
+              </section>
+            </>
+          )}
+          {tab === "System" && <AdminSystem />}
+          {tab === "Logs" && <AdminLogs />}
+          {(error || users.isError || settings.isError) && (
+            <p role="alert">
+              {error ||
+                "Administration could not be loaded. Sign in again and retry."}
+            </p>
+          )}
+          {link && (
+            <section className="admin-card">
+              <label>
+                Share this one-time link
+                <Input
+                  aria-label="One-time link"
+                  value={link}
+                  readOnly
+                  onFocus={(event) => event.target.select()}
+                />
+              </label>
+              <Button variant="outline" onClick={() => setLink("")}>
+                Dismiss
+              </Button>
+            </section>
+          )}
+          {tab === "AI & budgets" && (
+            <>
+              <AdminBudgets users={users.data ?? []} />
+              <AdminAI />
+            </>
+          )}
+          {tab === "Users" && (
+            <>
+              <section className="admin-card">
+                <h2>Registration</h2>
+                {settings.data && (
+                  <ValueSelect
+                    label="Registration policy"
+                    value={settings.data.registration}
+                    onChange={(registration) =>
+                      act("/api/admin/settings", "PATCH", { registration })
+                    }
+                    items={[
+                      { value: "invite", label: "Invitation only" },
+                      { value: "closed", label: "Closed" },
+                    ]}
+                  />
+                )}
+                <p>
+                  {settings.data?.oidc
+                    ? `Single sign-on: ${settings.data.oidc.issuer}`
+                    : "Single sign-on is not configured."}
+                </p>
+              </section>
+              <section className="admin-card">
+                <h2>Invite a user</h2>
+                <form
+                  className="admin-inline"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const form = new FormData(event.currentTarget)
+                    void act("/api/admin/invitations", "POST", {
+                      email: form.get("email"),
+                    })
+                  }}
+                >
+                  <Input
+                    aria-label="Invitation email"
+                    name="email"
+                    type="email"
+                    placeholder="Email address"
+                    required
+                  />
+                  <Button
+                    type="submit"
+                    disabled={settings.data?.registration !== "invite"}
+                  >
+                    Create invitation
+                  </Button>
+                </form>
+                {invitations.error && (
+                  <p role="alert">
+                    Could not load invitations: {invitations.error.message}
+                  </p>
+                )}
+                {invitations.data
+                  ?.filter((invite) => !invite.used)
+                  .map((invite) => (
+                    <div className="admin-row" key={invite.email}>
+                      <span>{invite.email}</span>
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          act("/api/admin/invitations", "DELETE", {
+                            email: invite.email,
+                          })
+                        }
+                      >
+                        Revoke invitation
+                      </Button>
+                    </div>
+                  ))}
+              </section>
+              <section className="admin-card">
+                <h2>Users</h2>
+                {users.data?.map((user) => (
+                  <article className="admin-row" key={user.id}>
+                    <div>
+                      <strong>{user.name}</strong>
+                      <p>{user.email}</p>
+                      <small>
+                        {user.disabled
+                          ? "Suspended"
+                          : user.admin
+                            ? "Administrator"
+                            : "Member"}
+                      </small>
+                    </div>
+                    <div className="admin-actions">
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          act(`/api/admin/users/${user.id}`, "PATCH", {
+                            admin: !user.admin,
+                            disabled: !!user.disabled,
+                          })
+                        }
+                      >
+                        {user.admin ? "Remove admin" : "Make admin"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          act(`/api/admin/users/${user.id}`, "PATCH", {
+                            admin: !!user.admin,
+                            disabled: !user.disabled,
+                          })
+                        }
+                      >
+                        {user.disabled ? "Reactivate" : "Suspend"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          act(`/api/admin/users/${user.id}/reset`, "POST")
+                        }
+                      >
+                        Password reset
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </section>
+            </>
+          )}
+          {tab === "Activity" && (
+            <section className="admin-card">
+              <h2>Recent account activity</h2>
+              {audit.isPending && <p>Loading activity…</p>}
+              {audit.error && (
+                <p role="alert">
+                  Could not load activity: {audit.error.message}
+                </p>
+              )}
+              {audit.data?.map((row) => (
+                <p key={row.id}>
+                  {new Date(row.created * 1000).toLocaleString()} · {row.action}{" "}
+                  {row.target}
+                </p>
+              ))}
+            </section>
+          )}
+        </section>
+      </div>
     </main>
   )
 }

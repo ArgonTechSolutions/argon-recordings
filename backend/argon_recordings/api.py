@@ -71,6 +71,8 @@ def create_app(settings=None):
         app.state.store.overlap_seconds = settings.overlap_seconds
         app.state.worker_seen = {}
         app.state.worker_capabilities = {}
+        from .operational_logs import record
+        with app.state.store.db() as db:record(db,'app','system','info','app-started','Main application started; worker contact state is being rebuilt.')
         app.state.accounts = Accounts(app.state.store, settings.auth_mode, settings.public_url, settings.allow_totp)
         if app.state.accounts.enabled:
             app.state.accounts.oidc_config()
@@ -95,6 +97,11 @@ def create_app(settings=None):
         if request.scope['path'] == '/api/auth/oidc/callback':
             from fastapi.responses import RedirectResponse
             return RedirectResponse('/?auth_error=oidc', status_code=303)
+        if exc.status_code>=500:
+            from .operational_logs import record
+            try:
+                with app.state.store.db() as db:record(db,'app','errors','error','request-failed',f'API request failed (HTTP {exc.status_code}).')
+            except Exception:pass  # Logging must not mask the original service error.
         return JSONResponse({'detail': exc.detail}, status_code=exc.status_code)
 
     @app.exception_handler(RequestValidationError)
@@ -151,7 +158,19 @@ def create_app(settings=None):
                 await asyncio.to_thread(manager.authorize, request)
             except HTTPException as exc:
                 return JSONResponse({'detail': exc.detail}, status_code=exc.status_code)
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            from .operational_logs import record
+            try:
+                with app.state.store.db() as db:record(db,'app','errors','error','unhandled-error','API request failed ('+type(exc).__name__+'). Inspect the app host log for details.')
+            except Exception:pass  # Preserve the original failure if log storage is unavailable.
+            raise
+        if path.startswith('/api/worker/') and path.endswith('/fail') and response.status_code<400:
+            from .operational_logs import record
+            try:
+                with app.state.store.db() as db:record(db,getattr(request.state,'worker_id',None) or 'legacy','errors','error','task-failed','Worker reported a task failure. Inspect the worker host log for details.')
+            except Exception:pass
         if manager.enabled and path.startswith('/api/'):
             response.headers['Cache-Control'] = 'no-store'
             response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -170,7 +189,8 @@ def create_app(settings=None):
             if worker_id is None:
                 raise HTTPException(401, 'Worker credentials required')
             request.state.worker_id = worker_id
-            app.state.worker_seen[worker_id] = time.monotonic()
+            if request.scope['path'] != '/api/worker/management':
+                app.state.worker_seen[worker_id] = time.monotonic()
             match = re.fullmatch(r'/api/worker/(jobs|corrections)/([^/]+)/.*', request.scope['path'])
             if match:
                 table = 'jobs' if match[1] == 'jobs' else 'corrections'
@@ -187,6 +207,11 @@ def create_app(settings=None):
     from .remote_embeddings import RemoteEmbeddings, InferenceResult
     if isinstance(settings.embeddings, RemoteEmbeddings):
         settings.embeddings.require_worker = True
+
+    from .admin_system import install as install_system
+    install_system(app,settings,worker_auth)
+    from .operational_logs import install as install_logs
+    install_logs(app,worker_auth)
 
     @app.post('/api/worker/inference/claim', dependencies=[Depends(worker_auth)])
     async def inference_claim(request: Request, body: WorkerCapabilities):

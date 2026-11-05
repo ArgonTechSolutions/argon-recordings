@@ -1,5 +1,11 @@
 # Foundation status
 
+## Combined admin/report integration (REC-34, REC-33)
+
+Integrated the admin handoff on top of the schema-constrained report fix: desktop/sidebar and compact mobile drawer, default/overridden per-user monthly caps and own usage, worker monitoring, categorized operational logs, and opt-in durable host updates. Remote host claims/results now require target-bound signatures from the existing transport private key, checked against the read-only public peer certificate and an atomic replay ledger; ordinary inference credentials cannot impersonate the host runner. No keys were replaced and no host runners/services were activated.
+
+The combined backend passed **391 tests with one opt-in skip**. OpenAPI/types, production build/lint, synthetic admin navigation/budgets/logs/mobile smoke and the real account/MFA/key/viewer browser workflow passed. Independent security re-review found no remaining material bypass after the host-proof fix. Deployment remains manual, Philemon first then Vesta; optional new worker logs tolerate the older coordinator during that transition. Existing config/key/data preservation and normal backup retention remain in the handoff. These checks are local/disposable evidence, not an installed two-host update or live acceptance.
+
 ## Schema-constrained reading references (2026-11-04; REC-33)
 
 The provider schema now enumerates each batch's exact allowed short source IDs for transcript reading and consolidation, and constrains note length with a supported string pattern. Canonical mapping and server-side evidence validation remain in place. Format/size errors are distinguished from unknown references; diagnostic traces retain only known field names, numeric indexes and type codes, with unexpected names redacted. Existing valid cached readings remain reusable.

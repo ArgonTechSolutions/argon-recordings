@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS ai_call_costs(
  model TEXT NOT NULL,cost REAL NOT NULL,status TEXT NOT NULL,reason TEXT,created REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS ai_call_job ON ai_call_costs(job_id);
 CREATE INDEX IF NOT EXISTS ai_call_month ON ai_call_costs(period);
+CREATE TABLE IF NOT EXISTS ai_user_caps(user_id TEXT PRIMARY KEY REFERENCES users(id),cap REAL);
+CREATE TABLE IF NOT EXISTS ai_user_defaults(id INTEGER PRIMARY KEY CHECK(id=1),cap REAL);
 '''
 
 
@@ -43,6 +45,39 @@ class AIAdminState(Strict):
     month_cost_usd: float
     reader_model: str
     writer_model: str
+
+
+class UserCap(Strict):
+    # Zero intentionally blocks paid calls; null explicitly means unlimited.
+    cap_usd: Annotated[float, Field(ge=0,le=1000000,allow_inf_nan=False)] | None = None
+
+
+class MonthlyUsage(Strict):
+    user_id: str
+    period: str
+    usage_usd: float
+    pending_usd: float
+    cap_usd: float | None
+    cap_source: str
+
+
+class UserBudgetState(Strict):
+    default_cap_usd: float | None
+    users: list[MonthlyUsage]
+
+
+def user_cap(db,uid):
+    row=db.execute('SELECT cap FROM ai_user_caps WHERE user_id=?',(uid,)).fetchone()
+    if row is not None:return row[0],'user'
+    row=db.execute('SELECT cap FROM ai_user_defaults WHERE id=1').fetchone()
+    return (row[0] if row else None),'default'
+
+
+def monthly_usage(g,db,uid):
+    cap,source=user_cap(db,uid)
+    pending=db.execute("SELECT coalesce(sum(a.cost),0) FROM ai_call_costs a JOIN report_generation g ON g.id=a.job_id WHERE a.period=? AND g.requester=? AND a.status='pending'",(g.period(),uid)).fetchone()[0]
+    return MonthlyUsage(user_id=uid,period=g.period(),usage_usd=g.month_cost(db,requester=uid),
+        pending_usd=pending,cap_usd=cap,cap_source=source)
 
 
 class APIKeyInput(Strict):
@@ -110,6 +145,49 @@ def install(app):
             return AIAdminState(controls=controls(db,g.budget),key_configured=bool(g.key),
                 key_source='administration' if g._managed_key else 'deployment' if g.key else 'none',
                 month_cost_usd=g.month_cost(db),reader_model=READER_MODEL,writer_model=WRITER_MODEL)
+
+    def budget_view(g):
+        with g.store.db() as db:
+            default=db.execute('SELECT cap FROM ai_user_defaults WHERE id=1').fetchone()
+            return UserBudgetState(default_cap_usd=default[0] if default else None,
+                users=[monthly_usage(g,db,r[0]) for r in db.execute('SELECT id FROM users ORDER BY email')])
+
+    @app.get('/api/account/usage',response_model=MonthlyUsage)
+    def own_usage(request: Request):
+        user=getattr(request.state,'account',None)
+        if not app.state.accounts.enabled or not user:raise HTTPException(401,'Sign in to view usage')
+        g=app.state.generation
+        with g.store.db() as db:return monthly_usage(g,db,user['id'])
+
+    @app.get('/api/admin/ai/budgets',response_model=UserBudgetState)
+    def budgets(request: Request):
+        _,g=require_admin(request);return budget_view(g)
+
+    @app.put('/api/admin/ai/budgets/default',response_model=UserBudgetState)
+    def default_cap(body: UserCap,request: Request):
+        manager,g=require_admin(request)
+        with g.store.db() as db:
+            db.execute('INSERT OR REPLACE INTO ai_user_defaults VALUES(1,?)',(body.cap_usd,))
+            manager.audit(db,request.state.account['id'],'ai-default-cap-updated')
+        return budget_view(g)
+
+    @app.put('/api/admin/ai/budgets/users/{uid}',response_model=UserBudgetState)
+    def set_cap(uid: str,body: UserCap,request: Request):
+        manager,g=require_admin(request)
+        with g.store.db() as db:
+            if not db.execute('SELECT 1 FROM users WHERE id=?',(uid,)).fetchone():raise HTTPException(404,'User not found')
+            db.execute('INSERT OR REPLACE INTO ai_user_caps VALUES(?,?)',(uid,body.cap_usd))
+            manager.audit(db,request.state.account['id'],'ai-user-cap-updated',uid)
+        return budget_view(g)
+
+    @app.delete('/api/admin/ai/budgets/users/{uid}',response_model=UserBudgetState)
+    def inherit_cap(uid: str,request: Request):
+        manager,g=require_admin(request)
+        with g.store.db() as db:
+            if not db.execute('SELECT 1 FROM users WHERE id=?',(uid,)).fetchone():raise HTTPException(404,'User not found')
+            db.execute('DELETE FROM ai_user_caps WHERE user_id=?',(uid,))
+            manager.audit(db,request.state.account['id'],'ai-user-cap-reset',uid)
+        return budget_view(g)
 
     @app.get('/api/admin/ai',response_model=AIAdminState)
     def status(request: Request):

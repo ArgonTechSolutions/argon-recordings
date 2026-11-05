@@ -24,7 +24,7 @@ from .report_contract import Report, Segment, Interval, InspectedImage, Contract
 from .reports import SaveReport, current_reference, checked_image, image_record, speaker_snapshot
 from .store import identity
 from .visual_jobs import VisualRequest
-from .ai_settings import controls, read_key
+from .ai_settings import controls, read_key, user_cap
 from .report_reading import (READER_MODEL, WRITER_MODEL, Reading, READING_SYSTEM, NOTES_BYTES, reading_schema,
                              GenerationEstimate, encode, batches, transcript_batches, cache_key, price)
 
@@ -139,12 +139,18 @@ class Generation:
     @key.setter
     def key(self,value): self._deployment_key=value
 
-    def month_cost(self,db,period=None):
+    def month_cost(self,db,period=None,requester=None):
         period=period or self.period()
-        # Retain pre-ledger charges in their original month; new calls belong to
-        # their own admission month even when a job crosses midnight/month end.
-        legacy=db.execute('SELECT coalesce(sum(max(0,g.cost-coalesce((SELECT sum(a.cost) FROM ai_call_costs a WHERE a.job_id=g.id),0))),0) FROM report_generation g WHERE g.period=?',(period,)).fetchone()[0]
-        return legacy+db.execute('SELECT coalesce(sum(cost),0) FROM ai_call_costs WHERE period=?',(period,)).fetchone()[0]
+        scope=' AND g.requester=?' if requester is not None else ''
+        args=(period,requester) if requester is not None else (period,)
+        # Pre-ledger costs remain attributed to the original job month and user.
+        legacy=db.execute('SELECT coalesce(sum(max(0,g.cost-coalesce((SELECT sum(a.cost) FROM ai_call_costs a WHERE a.job_id=g.id),0))),0) FROM report_generation g WHERE g.period=?'+scope,args).fetchone()[0]
+        return legacy+db.execute('SELECT coalesce(sum(a.cost),0) FROM ai_call_costs a JOIN report_generation g ON g.id=a.job_id WHERE a.period=?'+scope,args).fetchone()[0]
+
+    def user_limit_exceeded(self,db,uid,amount,period=None):
+        if uid is None:return False
+        cap,_=user_cap(db,uid)
+        return cap is not None and self.month_cost(db,period,requester=uid)+amount>cap
 
     def soft_reached(self,db,jid):
         config=controls(db,self.budget)
@@ -212,6 +218,15 @@ class Generation:
                 finally:
                     with self.store.db() as db:
                         db.execute("UPDATE report_generation SET reserved=0 WHERE id=? AND state IN ('failed','cancelled')",(row['id'],))
+                        final=db.execute('SELECT state,cost,input_tokens,output_tokens FROM report_generation WHERE id=?',(row['id'],)).fetchone()
+                    if final:
+                        try:
+                            with self.store.db() as db:
+                                from .operational_logs import record
+                                record(db,'app','usage','error' if final['state']=='failed' else 'info','report-generation-summary',
+                                    f"Report generation {final['state']}; estimated cost ${final['cost']:.6f}; input tokens {final['input_tokens']}; output tokens {final['output_tokens']}.")
+                                if final['state']=='failed':record(db,'app','errors','error','report-generation-failed','Report generation failed; review the report status and usage summary for details.')
+                        except Exception:pass  # Diagnostics must not stop the generation queue.
             else: await asyncio.sleep(.5)
 
     def source(self, db, rid, body):
@@ -223,7 +238,7 @@ class Generation:
         body=body.model_copy(update={'start':min(body.start,rows[0]['start']),'end':max(end,max(r['end'] for r in rows))})
         return reference,body,[dict(r) for r in rows]
 
-    def estimate(self, db, rid, body):
+    def estimate(self, db, rid, body, requester=None):
         reference,body,passages=self.source(db,rid,body)
         chunks=transcript_batches(passages)
         # Exclude extraction revisions: added images do not change transcript notes.
@@ -238,7 +253,7 @@ class Generation:
         writing=price(MODEL,min(18000,2500+len(chunks)*900),2400)
         expected=reading+writing+(0.018 if body.visuals else 0)
         config=controls(db,self.budget)
-        hard=((config.report_hard_usd is not None and expected>config.report_hard_usd)
+        hard=(self.user_limit_exceeded(db,requester,expected) or (config.report_hard_usd is not None and expected>config.report_hard_usd)
             or (config.monthly_hard_usd is not None and self.month_cost(db)+expected>config.monthly_hard_usd))
         return GenerationEstimate(estimated_cost_usd=round(expected,4),low_usd=round(expected*.5,4),
             high_usd=round(expected*2,4),reading_batches=len(chunks),cached_batches=cached,passages=len(passages),
@@ -265,7 +280,10 @@ class Generation:
             period=self.period()
             config=controls(db,self.budget)
             if not config.enabled or not self.key:raise HTTPException(503,'AI generation was disabled or its API key was removed by an administrator')
-            spent=db.execute('SELECT cost FROM report_generation WHERE id=?',(jid,)).fetchone()[0]
+            job=db.execute('SELECT cost,requester FROM report_generation WHERE id=?',(jid,)).fetchone()
+            spent=job['cost']
+            if self.user_limit_exceeded(db,job['requester'],bound,period):
+                raise HTTPException(429,'Your monthly AI cap would be exceeded by the next API call. No further paid call was made. Ask an administrator to adjust your cap.')
             if ((config.report_hard_usd is not None and spent+bound>config.report_hard_usd)
                     or (config.monthly_hard_usd is not None and self.month_cost(db,period)+bound>config.monthly_hard_usd)):
                 raise HTTPException(429,'Hard cost limit would be exceeded by the next API call. No further paid call was made. Ask an administrator to adjust the limit before retrying.')
@@ -552,9 +570,9 @@ def install(app, settings, save_report, visual_actions):
                 jobs=[g.view(r) for r in db.execute('SELECT * FROM report_generation WHERE recording_id=? ORDER BY created DESC LIMIT 20',(rid,))])
 
     @app.post('/api/recordings/{rid}/report-generation/estimate',response_model=GenerationEstimate)
-    def estimate(rid: str,body: GenerateReport):
+    def estimate(rid: str,body: GenerateReport,request: Request):
         g=engine()
-        with g.store.db() as db: return g.estimate(db,rid,body)
+        with g.store.db() as db: return g.estimate(db,rid,body,getattr(request.state,'account',{}).get('id'))
 
     @app.post('/api/recordings/{rid}/report-generation',response_model=GenerationJob,status_code=202)
     def generate(rid: str, body: GenerateReport, request: Request):
@@ -566,7 +584,10 @@ def install(app, settings, save_report, visual_actions):
         with g.store.db() as db:
             db.execute('BEGIN IMMEDIATE')
             reference,body,_=g.source(db,rid,body)
-            estimate=g.estimate(db,rid,body)
+            user=getattr(request.state,'account',None)
+            if user and g.user_limit_exceeded(db,user['id'],0.000000001):
+                raise HTTPException(429,'Your monthly AI cap has been reached. Ask an administrator to adjust your cap.')
+            estimate=g.estimate(db,rid,body,user['id'] if user else None)
             if db.execute("SELECT count(*) FROM report_generation WHERE state IN ('queued','running')").fetchone()[0]>=2: raise HTTPException(429,'Two generations are already queued; wait for a draft')
             if db.execute("SELECT 1 FROM report_generation WHERE recording_id=? AND state IN ('queued','running')",(rid,)).fetchone(): raise HTTPException(409,'This recording already has a generation in progress')
             jid=identity();now=time.time();user=getattr(request.state,'account',None)

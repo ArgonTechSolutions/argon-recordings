@@ -147,7 +147,7 @@ export function AdminAI() {
   })
   return (
     <section className="admin-card" aria-label="AI reports configuration">
-      <h2>AI reports</h2>
+      <h2>AI service & server-wide limits</h2>
       {state.isPending ? (
         <p>Loading AI settings…</p>
       ) : state.error ? (
