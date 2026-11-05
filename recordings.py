@@ -262,7 +262,7 @@ def _stop(config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT / 'recordings.toml')
-    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-boot-recovery', 'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa', 'admin-runner'])
+    parser.add_argument('command', choices=['init', 'doctor', 'install', 'up', 'start', 'stop', 'status', 'logs', 'evaluate', 'update', 'setup-boot-recovery', 'setup-admin', 'setup-oidc', 'recover-admin', 'setup-admin-mfa', 'recover-admin-mfa', 'admin-runner', 'setup-admin-runner'])
     parser.add_argument('--adopt-existing', action='store_true')
     parser.add_argument('--keep-backups', action='store_true', help='Keep all previous backups after a successful update')
     args = parser.parse_args()
@@ -286,6 +286,9 @@ def main():
         elif args.command == 'setup-boot-recovery':
             from scripts.boot_recovery import setup
             setup(sys.modules[__name__], config)
+        elif args.command == 'setup-admin-runner':
+            from scripts.admin_runner_service import setup
+            setup(sys.modules[__name__],config)
         elif args.command == 'admin-runner':
             from scripts.admin_runner import run
             run(sys.modules[__name__],config)

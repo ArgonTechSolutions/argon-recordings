@@ -23,6 +23,22 @@
         }
       }
     },
+    "/api/admin/system/check-updates": {
+      "post": {
+        "summary": "Check Updates",
+        "operationId": "check_updates_api_admin_system_check_updates_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/system/updates": {
       "post": {
         "summary": "Queue",
@@ -9229,6 +9245,16 @@
             ],
             "title": "Result"
           },
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "proof": {
             "anyOf": [
               {
@@ -9287,6 +9313,26 @@
           "source_revision": {
             "type": "string",
             "title": "Source Revision"
+          },
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checking": {
+            "type": "boolean",
+            "title": "Checking",
+            "default": false
+          },
+          "check_fresh": {
+            "type": "boolean",
+            "title": "Check Fresh",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -11616,6 +11662,49 @@
           "elapsed_seconds"
         ],
         "title": "TranscriptionProgress"
+      },
+      "UpdateCheck": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "up_to_date",
+              "available",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "latest_revision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Revision"
+          },
+          "checked_at": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Checked At"
+          },
+          "request_id": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Request Id",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "checked_at"
+        ],
+        "title": "UpdateCheck"
       },
       "UpdateRequest": {
         "properties": {

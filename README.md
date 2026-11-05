@@ -184,3 +184,18 @@ New installer configurations use invitation-only accounts. Run `python3 recordin
 ## Isolated workers
 
 The installer runs one API container and one worker by default. Workers have no account database or application data mount. Optional extra workers share a durable chunk queue and the configured aggregate CPU/RAM budget. See [worker architecture and configuration](docs/WORKERS.md). Smart visual retention and automatic scaling remain later work.
+
+### Persistent updater services and release checks
+
+After installing this version on both hosts, stop any idle foreground runners with Ctrl+C. As the installation owner on each host, run:
+
+```bash
+sudo -v
+python3 recordings.py --config recordings.toml setup-admin-runner
+```
+
+This explicit setup installs a root-owned systemd unit keyed to the absolute config path, runs the runner as the installation owner, enables it at boot, and restarts it on failure. SSH/Windows terminals may be closed afterward. After a successful panel update, the runner acknowledges its durable receipt and re-executes itself to load the new host code. For `docker.sudo=true` it also installs a dedicated root-owned sudoers drop-in granting that account passwordless `/usr/bin/docker`. **Docker access is effectively host-root access**; the installation owner and checked-out updater source are trusted. The service needs no new key and preserves the existing configuration/data. It refuses foreign files and rolls back its own artifacts if startup fails. It refuses setup while a foreground runner holds its lock or a retained update receipt needs investigation.
+
+The setup command prints the unit name. Inspect it with `sudo -n systemctl status UNIT` and `sudo -n journalctl -u UNIT -n 40`. To disable it, wait until no update is running and use `sudo systemctl disable --now UNIT`. Its dedicated sudoers file is `/etc/sudoers.d/UNIT_WITHOUT_SERVICE_SUFFIX`; removing that marked file revokes the Docker grant created by this setup (other existing Docker permissions remain independent).
+
+Each runner checks the configured trusted `origin/main` every five minutes; **Check for updates** requests a fresh check on the next polling cycle. The panel shows unknown/checking, up to date, update available, failed and expired states. It uses server time for freshness. Checks compare the checkout with the remote release and verify the installed runtime fingerprint against source; an inconsistent installation is a failed check, not proof of being current. No update or service stop occurs during a check. Only a fresh available result enables update admission, and queued/running/prepared work or live chunk leases block it. Continue to pause new work while deploying; this is not a global maintenance lock. Upgrade remote workers first, then the coordinator. Old runners still send authenticated heartbeats, but must be upgraded to supply release checks.

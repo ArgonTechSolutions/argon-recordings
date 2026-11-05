@@ -31,6 +31,13 @@ export function AdminSystem() {
       void cache.invalidateQueries({ queryKey: ["admin-audit"] })
     },
   })
+  const check = useMutation({
+    mutationFn: () =>
+      request("/api/admin/system/check-updates", { method: "POST" }),
+    onSuccess: () => {
+      void cache.invalidateQueries({ queryKey: ["admin-system"] })
+    },
+  })
   const cancel = useMutation({
     mutationFn: (id: string) =>
       request(`/api/admin/system/updates/${id}`, { method: "DELETE" }),
@@ -81,6 +88,19 @@ export function AdminSystem() {
       </section>
       <section className="admin-card">
         <h2>Application & worker updates</h2>
+        <Button
+          variant="outline"
+          disabled={check.isPending || !state.data?.hosts.some((h) => h.online)}
+          onClick={() => check.mutate()}
+        >
+          {check.isPending ? "Requesting check…" : "Check for updates"}
+        </Button>
+        {check.error && <p role="alert">{check.error.message}</p>}
+        {check.isSuccess && (
+          <p role="status">
+            Check requested. Connected hosts will report shortly.
+          </p>
+        )}
         <p>
           Update a host to the latest version on the main release branch. The
           main app and any workers on the same host update together. Remote
@@ -108,10 +128,36 @@ export function AdminSystem() {
                   : `Remote ${host.target}`}
               </h3>
               <p>Update runner: {host.online ? "Connected" : "Offline"}</p>
+              <p role="status">
+                {host.checking
+                  ? "Checking…"
+                  : !host.check
+                    ? "Update status unknown — check for updates"
+                    : !host.check_fresh
+                      ? "Update check expired — check again"
+                      : host.check.state === "up_to_date"
+                        ? "Up to date"
+                        : host.check.state === "available"
+                          ? "Update available"
+                          : "Check failed — verify host Git access and installed runtime"}
+              </p>
+              {host.check && (
+                <small>
+                  Last checked:{" "}
+                  {new Date(host.check.checked_at * 1000).toLocaleString()}
+                </small>
+              )}
               <small>Host source revision: {host.source_revision}</small>
             </div>
             <Button
-              disabled={!host.online || active || update.isPending}
+              disabled={
+                !host.online ||
+                active ||
+                update.isPending ||
+                host.checking ||
+                host.check?.state !== "available" ||
+                !host.check_fresh
+              }
               onClick={() => {
                 update.reset()
                 setTarget(host.target)

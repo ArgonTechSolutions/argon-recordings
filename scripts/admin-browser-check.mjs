@@ -20,6 +20,7 @@ const user={id:'a'.repeat(32),name:'Fixture owner',email:'owner@example.com',adm
 let budgets={default_cap_usd:5,users:[{user_id:user.id,period:'2026-11',usage_usd:1.25,pending_usd:0,cap_usd:5,cap_source:'default'}]}
 let updates=[]
 let confirmations=0
+let releaseState="available",fresh=true,checking=false
 try{
   browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']})
   const context=await browser.newContext({viewport:{width:1440,height:1000}})
@@ -43,7 +44,8 @@ try{
       value=budgets
     }
     else if(p==='/api/account/usage')value=budgets.users[0]
-    else if(p==='/api/admin/system')value={workers:[{id:'worker-1',online:true,last_contact_seconds:3,diarization_available:true,active_tasks:1},{id:'worker-2',online:false,last_contact_seconds:null,diarization_available:false,active_tasks:0}],hosts:[{target:'app',online:true,source_revision:'b'.repeat(40)},{target:'worker-1',online:false,source_revision:'c'.repeat(40)}],updates}
+    else if(p==='/api/admin/system')value={workers:[{id:'worker-1',online:true,last_contact_seconds:3,diarization_available:true,active_tasks:1},{id:'worker-2',online:false,last_contact_seconds:null,diarization_available:false,active_tasks:0}],hosts:[{target:'app',online:true,source_revision:'b'.repeat(40),check:{state:releaseState,latest_revision:'d'.repeat(40),checked_at:Date.now()/1000},checking,check_fresh:fresh},{target:'worker-1',online:false,source_revision:'c'.repeat(40)}],updates}
+    else if(p==='/api/admin/system/check-updates')value={status:'requested'}
     else if(p==='/api/admin/system/updates'){
       assert.equal(request.postDataJSON().confirm,'update-latest-main');confirmations++
       updates=[{id:'d'.repeat(32),target:'app',state:'queued',created:1,updated:1,error:null}];value=updates[0]
@@ -72,12 +74,23 @@ try{
   await nav.getByRole('button',{name:'System',exact:true}).click()
   await page.getByRole('heading',{name:'Worker status'}).waitFor()
   assert.equal(await page.getByRole('button',{name:'Update host'}).nth(1).isDisabled(),true)
+  await page.getByText('Update available',{exact:true}).waitFor()
+  await page.getByRole('button',{name:'Check for updates',exact:true}).click()
+  await page.getByText('Check requested. Connected hosts will report shortly.',{exact:true}).waitFor()
   await page.getByRole('button',{name:'Update host'}).nth(0).click()
   await page.getByRole('dialog').waitFor();assert.equal(confirmations,0)
   await page.getByRole('button',{name:'Confirm update',exact:true}).click()
   await page.getByRole('button',{name:'Cancel update',exact:true}).waitFor();assert.equal(confirmations,1)
   await page.getByRole('button',{name:'Cancel update',exact:true}).click()
   await page.getByText('app · cancelled',{exact:true}).waitFor()
+  for (const [status,isFresh,isChecking,label] of [['up_to_date',true,false,'Up to date'],['failed',true,false,'Check failed — verify host Git access and installed runtime'],['available',false,false,'Update check expired — check again'],['available',true,true,'Checking…']]) {
+    releaseState=status;fresh=isFresh;checking=isChecking
+    await page.reload()
+    await page.getByText(label,{exact:true}).waitFor()
+    assert.equal(await page.getByRole('button',{name:'Update host'}).first().isDisabled(),true)
+  }
+  releaseState='available';fresh=true;checking=false;await page.reload()
+  await page.getByText('Update available',{exact:true}).waitFor()
   await page.setViewportSize({width:390,height:844})
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
   assert.equal(await page.getByRole('heading',{name:'Administration',exact:true}).isVisible(),true)
@@ -108,5 +121,5 @@ try{
   await page.getByText('Monthly cap: $8.0000 · Instance default',{exact:true}).waitFor()
   await page.screenshot({path:path.join(evidence,'account-usage-mobile.png'),fullPage:true,animations:"disabled"})
   assert.deepEqual(errors,[])
-  console.log(JSON.stringify({result:'passed',coverage:['admin navigation and reload','default/zero/unlimited/inherit caps','worker states','update confirmation/cancel/offline host','mobile drawer and logs','mobile overflow','account usage'],api:'synthetic'}))
+  console.log(JSON.stringify({result:'passed',coverage:['admin navigation and reload','default/zero/unlimited/inherit caps','worker states','update availability/manual check/current/failed/expired/checking gating, confirmation/cancel/offline host','mobile drawer and logs','mobile overflow','account usage'],api:'synthetic'}))
 }finally{await browser?.close();await new Promise(resolve=>server.close(resolve))}

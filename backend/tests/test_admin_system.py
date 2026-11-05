@@ -9,7 +9,7 @@ from argon_recordings.host_runner_auth import sign
 
 
 def heartbeat(store,target='app',**kwargs):
-    with store.db() as db:return exchange(db,target,HostMessage(revision='a'*40,**kwargs))
+    with store.db() as db:return exchange(db,target,HostMessage(revision='a'*40,check={'state':'available','latest_revision':'b'*40,'checked_at':time.time()},**kwargs))
 
 
 def test_admin_update_confirmation_csrf_queue_claim_receipt(team):
@@ -41,7 +41,7 @@ def test_admin_update_confirmation_csrf_queue_claim_receipt(team):
 
 def test_worker_status_and_worker_control_are_scoped(tmp_path,runner_credentials):
     def signed(target="worker-1",**values):
-        value=HostMessage(revision="a"*40,**values).model_dump(exclude={"proof"})
+        value=HostMessage(revision="a"*40,check={"state":"available","latest_revision":"b"*40,"checked_at":time.time()},**values).model_dump(exclude={"proof"})
         return {**value,"proof":sign(target,value,runner_credentials).model_dump()}
     app=create_app(Settings(tmp_path,auth_mode='accounts',worker_tokens={'worker-1':'one','worker-2':'two'},reserve=0))
     with TestClient(app,base_url='http://localhost:8787') as c:
@@ -67,3 +67,19 @@ def test_worker_status_and_worker_control_are_scoped(tmp_path,runner_credentials
         assert c.get('/api/admin/system').json()['updates'][0]['state']=='completed'
         app.state.worker_seen['worker-1']=time.monotonic()-140
         assert not c.get('/api/admin/system').json()['workers'][0]['online']
+
+
+def test_check_requested_freshness_and_unknown_blocks_update(team):
+    app,owner,manager,uid=team;headers=login(owner,audience='admin');base='/api/admin/system'
+    with manager.store.db() as db:exchange(db,'app',HostMessage(revision='a'*40))
+    body={'target':'app','confirm':'update-latest-main'}
+    assert owner.post(base+'/updates',json=body,headers=headers).status_code==409
+    assert owner.post(base+'/check-updates').status_code==403
+    assert owner.post(base+'/check-updates',headers=headers).status_code==202
+    assert owner.get(base).json()['hosts'][0]['checking']
+    for state,age in [('up_to_date',0),('failed',0),('available',601)]:
+        with manager.store.db() as db:exchange(db,'app',HostMessage(revision='a'*40,check={'state':state,'checked_at':time.time()-age,'latest_revision':'b'*40,'request_id':1}))
+        assert owner.post(base+'/updates',json=body,headers=headers).status_code==409
+    with manager.store.db() as db:exchange(db,'app',HostMessage(revision='a'*40,check={'state':'available','checked_at':time.time(),'latest_revision':'b'*40,'request_id':1}))
+    assert not owner.get(base).json()['hosts'][0]['checking']
+    assert owner.post(base+'/updates',json=body,headers=headers).status_code==202

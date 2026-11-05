@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/system/check-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Updates */
+        post: operations["check_updates_api_admin_system_check_updates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/system/updates": {
         parameters: {
             query?: never;
@@ -2940,6 +2957,7 @@ export interface components {
             result_id?: string | null;
             /** Result */
             result?: ("completed" | "failed") | null;
+            check?: components["schemas"]["UpdateCheck"] | null;
             proof?: components["schemas"]["HostProof"] | null;
         };
         /** HostProof */
@@ -2959,6 +2977,17 @@ export interface components {
             online: boolean;
             /** Source Revision */
             source_revision: string;
+            check?: components["schemas"]["UpdateCheck"] | null;
+            /**
+             * Checking
+             * @default false
+             */
+            checking: boolean;
+            /**
+             * Check Fresh
+             * @default false
+             */
+            check_fresh: boolean;
         };
         /** ImageAcknowledgement */
         ImageAcknowledgement: {
@@ -3750,6 +3779,23 @@ export interface components {
             /** Eta Seconds */
             eta_seconds?: number | null;
         };
+        /** UpdateCheck */
+        UpdateCheck: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "up_to_date" | "available" | "failed";
+            /** Latest Revision */
+            latest_revision?: string | null;
+            /** Checked At */
+            checked_at: number;
+            /**
+             * Request Id
+             * @default 0
+             */
+            request_id: number;
+        };
         /** UpdateRequest */
         UpdateRequest: {
             /** Target */
@@ -4106,6 +4152,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemState"];
+                };
+            };
+        };
+    };
+    check_updates_api_admin_system_check_updates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
