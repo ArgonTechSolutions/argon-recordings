@@ -43,3 +43,14 @@ def test_failed_start_rolls_back_only_created_service_and_sudoers(tmp_path,monke
         return
     assert any(c[2:4]==['systemctl','stop'] for c in calls)
     assert any(c[2:4]==['systemctl','disable'] for c in calls)
+
+
+def test_working_directory_is_literal_absolute_not_argv_quoted(tmp_path):
+    root=tmp_path/'workspace with spaces%p'
+    body=service.definition(root,root/'recordings.toml','argon','/home/argon')
+    line=next(line for line in body.splitlines() if line.startswith('WorkingDirectory='))
+    assert line=='WorkingDirectory='+str(root).replace('%','%%')
+    assert line.split('=',1)[1].startswith('/')
+    assert 'ExecStart="' in body  # ExecStart retains its separate argv quoting rules.
+    for path in ('relative/path','/safe\nUser=root','/safe\\nUser=root','/safe '):
+        with pytest.raises(ValueError):service.working_directory(path)

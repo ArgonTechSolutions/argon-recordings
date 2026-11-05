@@ -20,6 +20,15 @@ def quote(value):
     return json.dumps(value).replace('%','%%').replace('$','$$')
 
 
+def working_directory(value):
+    # Unlike ExecStart's argv, this directive takes one literal absolute path.
+    # New systemd versions retain surrounding quotes as part of that path.
+    value=str(value)
+    if not value.startswith('/') or value!=value.strip() or any(ord(c)<32 for c in value) or '\\' in value:
+        raise ValueError('Unsupported working directory path')
+    return value.replace('%','%%')
+
+
 def definition(root,config,username,home):
     if not re.fullmatch(r'[a-z_][a-z0-9_-]*[$]?',username):raise ValueError('Unsupported account name')
     return f'''# Managed by Argon Recordings admin-runner setup
@@ -30,7 +39,7 @@ After=network-online.target docker.service
 [Service]
 Type=simple
 User={username}
-WorkingDirectory={quote(root)}
+WorkingDirectory={working_directory(root)}
 Environment="PATH=/usr/bin:/bin"
 Environment={quote('HOME='+str(home))}
 ExecStart={quote(sys.executable)} {quote(Path(root)/'recordings.py')} --config {quote(config)} admin-runner
