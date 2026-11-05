@@ -179,14 +179,14 @@ class Handler(BaseHTTPRequestHandler):
         started = False
         try:
             content = self.body(size,bool(encodings)) if size or encodings else None
-            timeout = httpx.Timeout(600 if self.command=='POST' and re.fullmatch(r'/api/worker/jobs/[^/]+/prepare',parsed.path) else 60, connect=10)
+            timeout = httpx.Timeout(600 if self.command=='POST' and re.fullmatch(r'/api/worker/jobs/[^/]+/prepare',parsed.path) else 180 if self.command=='GET' and parsed.path.endswith('/source-verified') else 60, connect=10)
             with server.client.stream(self.command, server.upstream+self.path, headers=headers, content=content, timeout=timeout) as response:
                 # Never follow or expose a redirect to another origin.
                 if 300 <= response.status_code < 400:
                     return self.reply(502)
                 self.send_response(response.status_code)
                 for key,value in response.headers.items():
-                    if key.lower() in {'content-type','content-length','content-range','accept-ranges'}:
+                    if key.lower() in {'content-type','content-length','content-range','accept-ranges','x-source-sha256'}:
                         self.send_header(key,value)
                 self.send_header('Connection','close')
                 self.end_headers()

@@ -55,6 +55,10 @@ class Upstream(BaseHTTPRequestHandler):
     do_PUT=do_POST
     def do_GET(self):
         value=b'synthetic-audio'*10000
+        if self.path.endswith('/source-verified'):
+            assert self.headers.get('Range')=='bytes=3-7' and self.headers.get('X-Lease-Id')=='synthetic-lease'
+            self.send_response(206);self.send_header('Content-Length','5');self.send_header('Content-Range',f'bytes 3-7/{len(value)}')
+            self.send_header('X-Source-Sha256',hashlib.sha256(value).hexdigest());self.end_headers();self.wfile.write(value[3:8]);return
         self.send_response(200);self.send_header('Content-Length',str(len(value)));self.end_headers();self.wfile.write(value)
 
 
@@ -103,6 +107,13 @@ def test_media_side_relay_only_accepts_internal_peers(certificates,tls_relay):
         with httpx.Client(trust_env=False) as client:
             result=client.post(f'http://127.0.0.1:{relay.server_port}/api/worker/ready')
             assert result.status_code==200
+            from unittest.mock import patch
+            with patch.object(relay.client,'stream',wraps=relay.client.stream) as stream:
+                ranged=client.get(f'http://127.0.0.1:{relay.server_port}/api/worker/visual/job/source-verified',headers={'Range':'bytes=3-7','X-Lease-Id':'synthetic-lease'})
+                assert stream.call_args.kwargs['timeout'].read==180
+            assert ranged.status_code==206 and ranged.content==(b'synthetic-audio'*10000)[3:8]
+            assert ranged.headers['x-source-sha256']==hashlib.sha256(b'synthetic-audio'*10000).hexdigest()
+            assert ranged.headers['content-range']=='bytes 3-7/150000'
             relay.subnets=[]
             assert client.post(f'http://127.0.0.1:{relay.server_port}/api/worker/ready').status_code==403
     finally:relay.shutdown();relay.server_close();thread.join(timeout=3)

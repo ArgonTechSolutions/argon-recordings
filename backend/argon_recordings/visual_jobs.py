@@ -1,13 +1,18 @@
 """Bounded source-derived visual tasks. Legacy ASR artifacts stay unchanged."""
+import collections
+import threading
 import hashlib
 import json
 import shutil
+import os
+import re
+import stat
 import time
 from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import Field, model_validator
 
 from .contracts import Strict, Heartbeat, Failure
@@ -28,6 +33,7 @@ CREATE TABLE IF NOT EXISTS visual_assets(
  id TEXT PRIMARY KEY REFERENCES visual_jobs(id),recording_id TEXT NOT NULL REFERENCES recordings(id),
  source_sha256 TEXT NOT NULL,recipe TEXT NOT NULL,manifest TEXT NOT NULL,path TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS visual_assets_recording ON visual_assets(recording_id);
+CREATE TABLE IF NOT EXISTS visual_progress(job_id TEXT PRIMARY KEY REFERENCES visual_jobs(id) ON DELETE CASCADE,stage TEXT NOT NULL,updated REAL NOT NULL);
 '''
 
 
@@ -111,6 +117,7 @@ class VisualManifest(Strict):
 
 
 class VisualJob(Strict):
+    stage: str = 'Queued'
     id: str
     recording_id: str
     state: Literal['queued', 'running', 'completed', 'failed', 'cancelled']
@@ -128,7 +135,7 @@ class VisualAsset(Strict):
 
 
 def job_view(row):
-    return VisualJob(**{k: row[k] for k in ('id','recording_id','state','progress','error')})
+    return VisualJob(**{k: row[k] for k in ('id','recording_id','state','progress','error')},stage=(row['stage'] if 'stage' in row.keys() and row['stage'] else row['state'].title()) if row['state'] in {'queued','running'} else row['state'].title())
 
 
 def admit_visual(db, store, rid, requester, reserve):
@@ -145,6 +152,7 @@ def admit_visual(db, store, rid, requester, reserve):
 
 
 def install(app, get_store, worker_auth, receive, reserve):
+    verified=collections.OrderedDict();verification_lock=threading.Lock()
     def leased(db, jid, token, request, completed=False):
         row = db.execute('SELECT * FROM visual_jobs WHERE id=?', (jid,)).fetchone()
         worker = getattr(request.state, 'worker_id', None)
@@ -198,7 +206,7 @@ def install(app, get_store, worker_auth, receive, reserve):
         store = get_store()
         if not store.recording(rid): raise HTTPException(404, 'Recording not found')
         with store.db() as db:
-            return [job_view(r) for r in db.execute('SELECT * FROM visual_jobs WHERE recording_id=? ORDER BY created DESC', (rid,))]
+            return [job_view(r) for r in db.execute('SELECT v.*,p.stage FROM visual_jobs v LEFT JOIN visual_progress p ON p.job_id=v.id WHERE recording_id=? ORDER BY created DESC', (rid,))]
 
     @app.post('/api/recordings/{rid}/visual-jobs/{jid}/cancel', response_model=VisualJob)
     def cancel(rid: str, jid: str):
@@ -245,13 +253,14 @@ def install(app, get_store, worker_auth, receive, reserve):
             db.execute("UPDATE visual_jobs SET state='running',worker=?,lease_id=?,lease_until=?,attempts=attempts+1 WHERE id=?", (worker,token,now+120,row['id']))
             recording = db.execute('SELECT bytes FROM recordings WHERE id=?',(row['recording_id'],)).fetchone()
             return {'id':row['id'],'lease_id':token,'source_sha256':row['source_sha256'],'source_bytes':recording['bytes'],
-                    'recipe':json.loads(row['recipe']),'recipe_version':RECIPE_VERSION}
+                    'recipe':json.loads(row['recipe']),'recipe_version':RECIPE_VERSION,'source_mode':'range-v1'}
 
     @app.post('/api/worker/visual/{jid}/heartbeat', dependencies=[Depends(worker_auth)])
     def heartbeat(jid: str, body: Heartbeat, request: Request, x_lease_id: str = Header()):
         with get_store().db() as db:
             db.execute('BEGIN IMMEDIATE'); leased(db,jid,x_lease_id,request)
             db.execute('UPDATE visual_jobs SET lease_until=?,progress=? WHERE id=?',(time.time()+120,body.progress,jid))
+            db.execute('INSERT OR REPLACE INTO visual_progress VALUES(?,?,?)',(jid,body.stage,time.time()))
         return {'ok':True}
 
     @app.get('/api/worker/visual/{jid}/source', dependencies=[Depends(worker_auth)])
@@ -262,6 +271,52 @@ def install(app, get_store, worker_auth, receive, reserve):
             path = store.root/'sources'/row['recording_id']
             if not path.is_file(): raise HTTPException(409,'Original source unavailable; restoration is required')
             return FileResponse(path,media_type='application/octet-stream')
+
+    @app.get('/api/worker/visual/{jid}/source-verified',dependencies=[Depends(worker_auth)])
+    def verified_source(jid: str,request: Request,x_lease_id: str=Header()):
+        store=get_store()
+        with store.db() as db:row=leased(db,jid,x_lease_id,request)
+        path=store.root/'sources'/row['recording_id']
+        try:fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+        except OSError:raise HTTPException(409,'Retained source unavailable') from None
+        stream=os.fdopen(fd,'rb')
+        try:
+            info=os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or not 0<info.st_size<=8*1024**3:raise HTTPException(422,'Invalid retained source')
+            match=re.fullmatch(r'bytes=([0-9]{1,12})-([0-9]{0,12})',request.headers.get('range',''))
+            if not match:raise HTTPException(416,'One byte range is required')
+            begin=int(match[1]);end=int(match[2]) if match[2] else info.st_size-1
+            if not 0<=begin<=end<info.st_size:raise HTTPException(416,'Invalid byte range')
+            def identity(i):return (i.st_dev,i.st_ino,i.st_size,i.st_mtime_ns,i.st_ctime_ns)
+            key=(str(path),row['source_sha256'],*identity(info))
+            with verification_lock:
+                if key not in verified:
+                    digest=hashlib.sha256()
+                    for block in iter(lambda:stream.read(1024**2),b''):digest.update(block)
+                    if identity(os.fstat(fd))!=identity(info) or digest.hexdigest()!=row['source_sha256']:
+                        raise HTTPException(409,'Retained source integrity mismatch')
+                    verified[key]=True
+                    while len(verified)>16:verified.popitem(last=False)
+                verified.move_to_end(key)
+            with store.db() as db:leased(db,jid,x_lease_id,request)
+            stream.seek(begin)
+            def chunks():
+                remaining=end-begin+1
+                try:
+                    while remaining:
+                        block=stream.read(min(65536,remaining))
+                        if not block:raise OSError('Retained source truncated')
+                        remaining-=len(block);yield block
+                finally:stream.close()
+            class SourceResponse(StreamingResponse):
+                async def __call__(self,scope,receive,send):
+                    try:await super().__call__(scope,receive,send)
+                    finally:stream.close()
+            return SourceResponse(chunks(),status_code=206,media_type='application/octet-stream',headers={
+                'X-Source-Sha256':row['source_sha256'],'Cache-Control':'no-store','Accept-Ranges':'bytes',
+                'Content-Range':f'bytes {begin}-{end}/{info.st_size}','Content-Length':str(end-begin+1)})
+        except BaseException:
+            stream.close();raise
 
     @app.put('/api/worker/visual/{jid}/media', dependencies=[Depends(worker_auth)])
     async def upload(jid: str, request: Request, x_lease_id: str = Header()):

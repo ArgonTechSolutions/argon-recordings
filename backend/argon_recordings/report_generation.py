@@ -177,10 +177,19 @@ class Generation:
         return GenerationJob(**{k:row[k] for k in ('id','state','stage','report_id','error','created','input_tokens','output_tokens')},estimated_cost_usd=row['cost'],
             warning='Soft cost limit reached. Finishing concisely with available evidence.' if soft else None)
 
+    def interrupt(self,db,jid=None):
+        query="SELECT id,stage FROM report_generation WHERE state='running'"+(' AND id=?' if jid else '')
+        for row in db.execute(query,(jid,) if jid else ()).fetchall():
+            uncertain=db.execute("SELECT 1 FROM ai_call_costs WHERE job_id=? AND status IN ('pending','uncertain')",(row['id'],)).fetchone()
+            message='Generation was interrupted while '+row['stage'].lower()+'. Completed reading notes and media are retained. Start a new draft explicitly.'
+            if uncertain:message+=' Estimated cost includes uncertain API charges.'
+            db.execute("UPDATE report_generation SET state='failed',stage='Interrupted',reserved=0,error=?,updated=? WHERE id=? AND state='running'",(message,time.time(),row['id']))
+            db.execute("UPDATE ai_call_costs SET status='uncertain' WHERE job_id=? AND status='pending'",(row['id'],))
+
     def start(self):
         with self.store.db() as db:
             # Preserve conservative reservations on uncertain in-flight calls across restart.
-            db.execute("UPDATE report_generation SET state='failed',stage='Interrupted',reserved=0,error='Generation was interrupted; start a new draft. Estimated cost includes uncertain API charges.' WHERE state='running'")
+            self.interrupt(db)
             db.execute("UPDATE ai_call_costs SET status='uncertain' WHERE status='pending'")
         self.task=asyncio.create_task(self.loop())
 
@@ -214,7 +223,9 @@ class Generation:
             if row:
                 try:
                     await self.run(row['id'])
-                except asyncio.CancelledError: raise
+                except asyncio.CancelledError:
+                    with self.store.db() as db:self.interrupt(db,row['id'])
+                    raise
                 except Exception as exc:
                     message=exc.detail if isinstance(exc,HTTPException) else 'Generation could not finish. Completed internal reading notes are retained; review the error before trying again.'
                     with self.store.db() as db:
@@ -454,7 +465,7 @@ class Generation:
                                 'output':json.dumps({'unavailable':True,'message':'Use available evidence and finish the report; additional visuals are unavailable for this run.'})})
                             trace.append({'tool':name,'arguments':args,'unavailable':True})
                             continue
-                        content=None
+                        content=None;visual_entry=None
                         with self.store.db() as db:
                             if name=='read_transcript':
                                 offset=args['offset']
@@ -499,22 +510,27 @@ class Generation:
                                 inputs.append({'type':'function_call_output','call_id':call['call_id'],'output':content})
                                 continue
                             job_id=job.id if hasattr(job,'id') else job['id']
+                            visual_entry={'tool':name,'arguments':args,'visual_job_id':job_id,'state':'waiting','available':False}
+                            trace.append(visual_entry)
+                            with self.store.db() as db:db.execute('UPDATE report_generation SET trace=? WHERE id=?',(json.dumps(trace),jid))
                             while True:
                                 self.check(jid)
                                 with self.store.db() as db:
-                                    visual=db.execute('SELECT state,error FROM visual_jobs WHERE id=?',(job_id,)).fetchone()
+                                    visual=db.execute('SELECT v.state,v.error,p.stage FROM visual_jobs v LEFT JOIN visual_progress p ON p.job_id=v.id WHERE v.id=?',(job_id,)).fetchone()
                                     asset=db.execute('SELECT id,manifest FROM visual_assets WHERE id=?',(job_id,)).fetchone()
                                 if asset:
                                     content=json.dumps({'asset_id':asset['id'],'image_id':'asset:'+asset['id'],'manifest':json.loads(asset['manifest'])});break
                                 if not visual or visual['state'] in {'failed','cancelled'}:
                                     content=json.dumps({'unavailable':True,'message':'Visual extraction failed or was cancelled; continue with transcript and disclose the missing figure.'});break
-                                self.stage(jid,'Preparing screenshot' if args['kind']=='image' else 'Preparing video clip')
+                                online=any(time.monotonic()-seen<130 for seen in self.app.state.worker_seen.values())
+                                phase=(visual['stage'] or visual['state']) if online else 'worker offline'
+                                self.stage(jid,('Screenshot: ' if args['kind']=='image' else 'Video clip: ')+phase)
                                 await asyncio.sleep(1)
-                        entry={'tool':name,'arguments':args}
+                        entry=visual_entry if visual_entry is not None else {'tool':name,'arguments':args}
                         if name=='request_visual': entry.update(visual_job_id=job_id,state=visual['state'] if visual else 'missing',available=bool(asset))
                         if name=='inspect_image': entry['image']=inspected[args['image_id']].model_dump()
                         if name=='read_transcript': entry['segment_ids']=[s['id'] for s in items]
-                        trace.append(entry)
+                        if visual_entry is None:trace.append(entry)
                         inputs.append({'type':'function_call_output','call_id':call['call_id'],'output':content})
                     with self.store.db() as db: db.execute('UPDATE report_generation SET trace=? WHERE id=?',(json.dumps(trace),jid))
                     continue

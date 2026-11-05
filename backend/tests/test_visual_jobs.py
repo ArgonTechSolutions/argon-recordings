@@ -135,3 +135,19 @@ def test_visual_isolated_worker_identity_and_restart(client):
         headers={**auth,'X-Lease-Id':task['lease_id']}
         assert restarted.get(base+'/source',headers=headers).content==b'synthetic media'
         assert restarted.post(base+'/heartbeat',headers=headers,json={'progress':.7,'stage':'test'}).status_code==200
+
+
+def test_verified_source_ranges_bind_integrity_and_lease(client):
+    rid,body=setup(client)
+    client.post(f'/api/recordings/{rid}/visual-jobs',json=body)
+    task=visual_claim(client);base=f'/api/worker/visual/{task["id"]}'
+    headers={**AUTH,'X-Lease-Id':task['lease_id'],'Range':'bytes=0-3'}
+    response=client.get(base+'/source-verified',headers=headers)
+    assert response.status_code==206 and response.content==b'synt'
+    assert response.headers['content-range']=='bytes 0-3/15'
+    assert response.headers['x-source-sha256']==task['source_sha256']
+    assert client.get(base+'/source-verified',headers={**headers,'Range':'bytes=0-3,5-7'}).status_code==416
+    assert client.get(base+'/source-verified',headers={**headers,'X-Lease-Id':'wrong'}).status_code==409
+    source=client.app.state.store.root/'sources'/rid
+    source.write_bytes(b'corrupted media')
+    assert client.get(base+'/source-verified',headers=headers).status_code==409

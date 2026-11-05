@@ -1599,6 +1599,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/worker/visual/{jid}/source-verified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Verified Source */
+        get: operations["verified_source_api_worker_visual__jid__source_verified_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/worker/visual/{jid}/media": {
         parameters: {
             query?: never;
@@ -2417,6 +2434,11 @@ export interface components {
         };
         /** AnalysisDetail */
         AnalysisDetail: {
+            /**
+             * Stage
+             * @default Queued
+             */
+            stage: string;
             /** Id */
             id: string;
             /** Recording Id */
@@ -3941,6 +3963,11 @@ export interface components {
         };
         /** VisualJob */
         VisualJob: {
+            /**
+             * Stage
+             * @default Queued
+             */
+            stage: string;
             /** Id */
             id: string;
             /** Recording Id */
@@ -7584,6 +7611,40 @@ export interface operations {
         };
     };
     source_api_worker_visual__jid__source_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-lease-id": string;
+                authorization?: string | null;
+            };
+            path: {
+                jid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verified_source_api_worker_visual__jid__source_verified_get: {
         parameters: {
             query?: never;
             header: {

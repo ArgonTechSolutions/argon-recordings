@@ -135,7 +135,7 @@ def source_id():
     paths = [ROOT / 'Dockerfile.install', ROOT / 'backend/requirements.txt', ROOT / 'backend/requirements-inference.lock']
     paths += list((ROOT / 'backend/argon_recordings').glob('*.py'))
     paths += [ROOT / 'scripts' / name for name in ['prepare_turbo.py', 'prepare_embeddings.py', 'check_media_runtime.py', 'evaluate_embeddings.py']]
-    paths += [ROOT / 'scripts' / name for name in ['worker_stack.py','remote_stack.py','git_updates.py','update_backups.py']]
+    paths += [ROOT / 'scripts' / name for name in ['worker_stack.py','remote_stack.py','git_updates.py','update_backups.py','visual_netguard.c']]
     for directory, folders, filenames in os.walk(ROOT / 'web'):
         folders[:] = [name for name in folders if name not in {'node_modules', 'dist', '.git'}]
         paths += [Path(directory) / name for name in filenames if not name.endswith('.log')]

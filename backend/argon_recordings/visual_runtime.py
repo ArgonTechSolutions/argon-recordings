@@ -1,13 +1,15 @@
 """Bounded local FFmpeg extraction for retained recording evidence.
 
 The caller must resolve recording ownership and supply a trusted retained source
-path. This module accepts no URL or caller-selected output filename.
+path or an internal leased loopback capability. Arbitrary remote URLs and
+caller-selected output filenames are rejected.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import math
+import re
 import os
 import subprocess
 import uuid
@@ -103,10 +105,34 @@ def _rate(value) -> float:
     return rate if math.isfinite(rate) and rate > 0 else 0.0
 
 
+def network_guard(arguments):
+    urls=[str(value) for value in arguments if str(value).startswith('http:')]
+    if not urls:return arguments,None
+    import secrets,urllib.request
+    url=urls[0];source_protocols(url)
+    if len(urls)!=1:raise VisualExtractionError('One leased source is required')
+    guard=Path(os.environ.get('RECORDINGS_VISUAL_NET_GUARD','/app/lib/visual_netguard.so'))
+    if not guard.is_file():raise VisualExtractionError('Seekable source network fence is unavailable')
+    control=os.environ.get('RECORDINGS_VISUAL_SOURCE_CONTROL','')
+    nonce=secrets.token_hex(24);proof=secrets.token_hex(24)
+    request=urllib.request.Request(url+'/r',data=json.dumps({'nonce':nonce,'proof':proof}).encode(),headers={'X-Guard-Control':control},method='POST')
+    with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,timeout=5) as response:
+        if response.status!=204:raise VisualExtractionError('Could not prepare source network fence')
+    from urllib.parse import urlsplit
+    parsed=urlsplit(url)
+    env=dict(os.environ)
+    for key in list(env):
+        if key.lower() in {'http_proxy','https_proxy','all_proxy','no_proxy'} or key in {'LD_AUDIT','RECORDINGS_VISUAL_SOURCE_CONTROL'}:env.pop(key,None)
+    env.update(LD_PRELOAD=str(guard),RECORDINGS_VISUAL_PROXY_PORT=str(parsed.port),RECORDINGS_VISUAL_ATTEST_PATH=parsed.path+'/a/'+nonce+'/'+proof)
+    return [url+'/'+nonce if value==url else value for value in arguments],env
+
+
 def _run(arguments: list[str], *, timeout: float, capture: bool = False) -> subprocess.CompletedProcess:
+    arguments,environment=network_guard(arguments)
     try:
         return subprocess.run(
             arguments,
+            env=environment,
             check=True,
             timeout=timeout,
             stdin=subprocess.DEVNULL,
@@ -124,8 +150,23 @@ def _run(arguments: list[str], *, timeout: float, capture: bool = False) -> subp
         raise VisualExtractionError("FFmpeg and ffprobe must be installed in the worker runtime") from exc
 
 
+@dataclass(frozen=True)
+class LeasedSource:
+    url: str
+    size: int
+
+
+def source_protocols(value):
+    value=str(value)
+    if value.startswith('http:'):
+        if not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{4,5}/[a-f0-9]{48}',value):
+            raise VisualExtractionError('Only the active loopback source capability is accepted')
+        return 'file,pipe,http,tcp'
+    return PROTOCOL_WHITELIST
+
+
 def _probe_json(arguments: list[str], *, timeout: float) -> dict:
-    result = _run(["ffprobe", "-v", "error", "-protocol_whitelist", PROTOCOL_WHITELIST,
+    result = _run(["ffprobe", "-v", "error", "-protocol_whitelist", source_protocols(arguments[-1]),
                    "-format_whitelist", FORMAT_WHITELIST, "-max_alloc", "67108864", "-of", "json", *arguments],
                   timeout=timeout, capture=True)
     try:
@@ -135,19 +176,25 @@ def _probe_json(arguments: list[str], *, timeout: float) -> dict:
 
 
 def probe_source(source: Path) -> SourceInfo:
-    """Inspect a trusted local file and reject malformed or expensive sources."""
-    path = Path(source)
-    if path.is_symlink():
-        raise VisualExtractionError("Source must be a retained regular file")
-    try:
-        resolved = path.resolve(strict=True)
-        stat = resolved.stat()
-    except OSError as exc:
-        raise VisualExtractionError("Retained video source is unavailable") from exc
-    if not resolved.is_file() or stat.st_size <= 0:
-        raise VisualExtractionError("Retained video source is unavailable")
-    if stat.st_size > MAX_SOURCE_BYTES:
-        raise VisualExtractionError("Source video exceeds the worker input-size limit")
+    """Inspect the retained source and reject malformed or expensive media."""
+    if isinstance(source,LeasedSource):
+        source_protocols(source.url)
+        if not 0<source.size<=MAX_SOURCE_BYTES:raise VisualExtractionError('Invalid source size')
+        resolved=source.url;size_bytes=source.size
+    else:
+        path = Path(source)
+        if path.is_symlink():
+            raise VisualExtractionError("Source must be a retained regular file")
+        try:
+            resolved = path.resolve(strict=True)
+            stat = resolved.stat()
+        except OSError as exc:
+            raise VisualExtractionError("Retained video source is unavailable") from exc
+        if not resolved.is_file() or stat.st_size <= 0:
+            raise VisualExtractionError("Retained video source is unavailable")
+        if stat.st_size > MAX_SOURCE_BYTES:
+            raise VisualExtractionError("Source video exceeds the worker input-size limit")
+        size_bytes=stat.st_size
 
     metadata = _probe_json(
         ["-show_format", "-show_streams", str(resolved)], timeout=PROBE_TIMEOUT_SECONDS
@@ -224,7 +271,7 @@ def probe_source(source: Path) -> SourceInfo:
         nominal_frame_rate=nominal_fps,
         variable_frame_rate=vfr,
         stream_index=int(stream.get("index", 0)),
-        size_bytes=stat.st_size,
+        size_bytes=size_bytes,
     )
 
 
@@ -470,14 +517,14 @@ def extract(source: Path, output_dir: Path, recipe: dict) -> dict:
         video_filter = _video_filter(info, spec["crop"], spec["max_width"], even=False,
                                      source_resolution=spec["source_resolution"])
         video_filter = prefix_trim + video_filter
-        args = ["ffmpeg", "-nostdin", "-v", "error", "-threads", "2", "-protocol_whitelist", PROTOCOL_WHITELIST,
+        args = ["ffmpeg", "-nostdin", "-v", "error", "-threads", "2", "-protocol_whitelist", source_protocols(info.path),
                 "-format_whitelist", FORMAT_WHITELIST, *input_seek,
                 "-map", "0:v:0", "-an", "-frames:v", "1", "-vf", video_filter,
                 "-q:v", "2", "-fs", str(output_budget), "-y", str(temporary)]
     else:
         video_filter = _video_filter(info, spec["crop"], spec["max_width"], even=True, fps=sampling_fps)
         video_filter = prefix_trim + video_filter
-        args = ["ffmpeg", "-nostdin", "-v", "error", "-threads", "2", "-protocol_whitelist", PROTOCOL_WHITELIST,
+        args = ["ffmpeg", "-nostdin", "-v", "error", "-threads", "2", "-protocol_whitelist", source_protocols(info.path),
                 "-format_whitelist", FORMAT_WHITELIST, *input_seek,
                 "-map", "0:v:0", "-an", "-t", f"{spec['end'] - actual_start:.9f}",
                 "-vf", video_filter, "-fps_mode", "vfr", "-c:v", "libx264", "-preset", "veryfast",
@@ -557,14 +604,18 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, required=True)
+    parser.add_argument("--source", type=Path)
+    parser.add_argument("--leased-source")
+    parser.add_argument("--source-bytes",type=int)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--recipe", type=Path, required=True, help="JSON extraction recipe")
     parser.add_argument("--manifest", type=Path, required=True, help="JSON output metadata path")
     args = parser.parse_args(argv)
     try:
         recipe = json.loads(args.recipe.read_text())
-        result = extract(args.source, args.output, recipe)
+        if bool(args.source)==bool(args.leased_source):raise VisualExtractionError('Choose one source')
+        source=LeasedSource(args.leased_source,args.source_bytes or 0) if args.leased_source else args.source
+        result = extract(source, args.output, recipe)
         manifest = _worker_manifest(result)
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
         temporary = args.manifest.with_name(f".{args.manifest.name}.{uuid.uuid4().hex}.partial")

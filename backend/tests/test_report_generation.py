@@ -256,6 +256,10 @@ def test_visual_request_reuses_real_worker_queue_and_inspects_registered_result(
     monkeypatch.setattr(asyncio,'sleep',tick)
     async def publish():
         await gate.wait()
+        with g.store.db() as db:
+            trace=json.loads(db.execute('SELECT trace FROM report_generation WHERE id=?',(jid,)).fetchone()[0])
+        assert trace[-1]['tool']=='request_visual' and trace[-1]['state']=='waiting'
+        assert trace[-1]['visual_job_id'] and not trace[-1]['available']
         # Use the real ASGI worker routes while generation awaits its durable visual job.
         async with original(transport=httpx.ASGITransport(app=client.app),base_url='http://testserver') as worker:
             claim=(await worker.post('/api/worker/visual/claim',headers=AUTH)).json()
@@ -516,3 +520,25 @@ def test_writer_widget_schema_preserves_required_title_property():
     block=schema['$defs']['ReportBlock']
     assert 'title' in block['properties'] and 'title' in block['required']
     assert 'title' not in block  # Schema annotations are still removed.
+
+
+def test_interruption_retains_phase_and_accurate_uncertain_warning(client,tmp_path,monkeypatch):
+    import time
+    rid,body,_=draft(client,tmp_path);jid=queue(client,rid)
+    g=client.app.state.generation
+    with g.store.db() as db:
+        db.execute("UPDATE report_generation SET stage='Screenshot: worker offline' WHERE id=?",(jid,))
+        g.interrupt(db,jid)
+    with g.store.db() as db:
+        row=db.execute('SELECT * FROM report_generation WHERE id=?',(jid,)).fetchone()
+        assert row['state']=='failed' and row['stage']=='Interrupted'
+        assert 'worker offline' in row['error'] and 'uncertain API' not in row['error']
+    jid2=queue(client,rid)
+    with g.store.db() as db:
+        db.execute('INSERT INTO ai_call_costs VALUES(?,?,?,?,?,?,NULL,?)',('e'*32,jid2,g.period(),WRITER_MODEL,.02,'pending',time.time()))
+        db.execute('UPDATE report_generation SET cost=.02 WHERE id=?',(jid2,))
+        g.interrupt(db,jid2)
+    with g.store.db() as db:
+        row=db.execute('SELECT error,cost FROM report_generation WHERE id=?',(jid2,)).fetchone()
+        assert 'uncertain API' in row['error'] and row['cost']==.02
+        assert db.execute('SELECT status FROM ai_call_costs WHERE job_id=?',(jid2,)).fetchone()[0]=='uncertain'

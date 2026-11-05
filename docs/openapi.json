@@ -4995,6 +4995,68 @@
         }
       }
     },
+    "/api/worker/visual/{jid}/source-verified": {
+      "get": {
+        "summary": "Verified Source",
+        "operationId": "verified_source_api_worker_visual__jid__source_verified_get",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Jid"
+            }
+          },
+          {
+            "name": "x-lease-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Lease-Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/worker/visual/{jid}/media": {
       "put": {
         "summary": "Upload",
@@ -7803,6 +7865,11 @@
       },
       "AnalysisDetail": {
         "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "default": "Queued"
+          },
           "id": {
             "type": "string",
             "title": "Id"
@@ -12169,6 +12236,11 @@
       },
       "VisualJob": {
         "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "default": "Queued"
+          },
           "id": {
             "type": "string",
             "title": "Id"
