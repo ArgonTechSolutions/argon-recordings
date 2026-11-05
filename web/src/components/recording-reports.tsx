@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Check, FileText, LoaderCircle, Plus, Sparkles } from "lucide-react"
+import { ReportBlocks } from "@/components/report-blocks"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ValueSelect } from "@/components/value-select"
@@ -125,6 +126,12 @@ export function RecordingReports({
   const cache = useQueryClient()
   const base = `/api/recordings/${recording.id}/reports`
   const generationBase = `/api/recordings/${recording.id}/report-generation`
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [reportTitle, setReportTitle] = useState("")
+  const [renameTarget, setRenameTarget] = useState<{
+    id: string
+    revision: number
+  } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -273,6 +280,50 @@ export function RecordingReports({
       refresh()
     },
   })
+  const rename = useMutation({
+    mutationFn: async () => {
+      if (!renameTarget) throw new Error("Open the rename dialog again.")
+      return request(`${base}/${renameTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: reportTitle.trim(),
+          expected_revision: renameTarget.revision,
+        }),
+      })
+    },
+    onSuccess: () => {
+      setRenameOpen(false)
+      refresh()
+    },
+  })
+  const exportReport = useMutation({
+    mutationFn: async ({
+      id,
+      format,
+    }: {
+      id: string
+      format: "html" | "zip"
+    }) => {
+      const response = await fetch(`${base}/${id}/export.${format}`)
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(
+          typeof body?.detail === "string"
+            ? body.detail
+            : "Report download failed. Please try again."
+        )
+      }
+      return { blob: await response.blob(), id, format }
+    },
+    onSuccess: ({ blob, id, format }) => {
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `argon-report-${id}.${format}`
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    },
+  })
   const review = useMutation({
     mutationFn: async () => {
       const current = await request<Reports>(base)
@@ -404,8 +455,8 @@ export function RecordingReports({
           >
             <Check size={16} aria-hidden="true" />
             <span>
-              <strong>Your draft is ready.</strong> Review it before marking it
-              reviewed.
+              <strong>Your draft is ready.</strong> You can refine it or
+              download it.
             </span>
             {latest.report_id && selectedId !== latest.report_id && (
               <Button
@@ -456,6 +507,7 @@ export function RecordingReports({
           detail.error,
           generation.error,
           review.error,
+          exportReport.error,
           cancel.error,
         ]
           .filter(Boolean)
@@ -470,10 +522,32 @@ export function RecordingReports({
           <article className="report-body" ref={reportVideos}>
             <header>
               <span className="report-eyebrow">
-                {saved.status === "reviewed" ? "Reviewed" : "Draft"}
+                {saved.status === "reviewed"
+                  ? "Checked by an editor"
+                  : "AI draft · Not checked"}
                 {saved.stale ? " · Source changed" : ""}
               </span>
-              <h1>{saved.title}</h1>
+              <div className="report-title-row">
+                <h1>{saved.title}</h1>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Rename report"
+                    onClick={() => {
+                      setReportTitle(saved.title)
+                      setRenameTarget({
+                        id: saved.id,
+                        revision: reports.data!.revision,
+                      })
+                      rename.reset()
+                      setRenameOpen(true)
+                    }}
+                  >
+                    Rename
+                  </Button>
+                )}
+              </div>
               {saved.stale && (
                 <p className="report-notice">
                   This report refers to an earlier source revision. Generate a
@@ -486,93 +560,100 @@ export function RecordingReports({
                 {l}
               </p>
             ))}
-            {saved.report.items.map((item) => (
-              <section className="report-section" key={item.id}>
-                <h2>
-                  {item.kind === "action"
-                    ? "Action"
-                    : item.kind === "decision"
-                      ? "Decision"
-                      : item.kind === "question"
-                        ? "Open question"
-                        : item.kind === "chapter"
-                          ? "Chapter"
-                          : "Key point"}
-                  {item.basis !== "explicit" && <small> · {item.basis}</small>}
-                </h2>
-                <p>{item.text}</p>
-                {(item.owner || item.due) && (
-                  <p className="report-assignment">
-                    {item.owner && <>Owner: {item.owner.text}</>}
-                    {item.owner && item.due && " · "}
-                    {item.due && <>Due: {item.due.text}</>}
-                  </p>
-                )}
-                <div className="report-citations">
-                  {item.citation_ids?.map((id) => {
-                    const c = saved.report.citations.find((c) => c.id === id)!
-                    return (
-                      <Button
-                        key={id}
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => seek(c.interval.start)}
-                        aria-label={`View source at ${stamp(c.interval.start)}`}
-                      >
-                        {stamp(c.interval.start)} ·{" "}
-                        {c.kind === "image" ? "Screen" : "Source"}
-                      </Button>
-                    )
-                  })}
-                </div>
-                {item.citation_ids
-                  ?.map((id) => saved.report.citations.find((c) => c.id === id))
-                  .filter((c) => c?.kind === "image")
-                  .map(
-                    (c) =>
-                      c && (
-                        <figure key={c.id}>
-                          <img
-                            loading="lazy"
-                            alt={`Supporting screenshot at ${stamp(c.interval.start)}`}
-                            src={
-                              c.evidence_id.startsWith("asset:")
-                                ? `/api/recordings/${recording.id}/visual-evidence/${c.evidence_id.slice(6)}/media`
-                                : `/api/recordings/${recording.id}/media/${c.evidence_id.slice(6)}`
-                            }
-                          />
-                          <figcaption>
-                            Source screen · {stamp(c.interval.start)}
-                          </figcaption>
-                        </figure>
-                      )
+            <ReportBlocks
+              report={saved.report}
+              renderItem={(item) => (
+                <section className="report-section" key={item.id}>
+                  <h2>
+                    {item.kind === "action"
+                      ? "Action"
+                      : item.kind === "decision"
+                        ? "Decision"
+                        : item.kind === "question"
+                          ? "Open question"
+                          : item.kind === "chapter"
+                            ? "Chapter"
+                            : "Key point"}
+                    {item.basis !== "explicit" && (
+                      <small> · {item.basis}</small>
+                    )}
+                  </h2>
+                  <p>{item.text}</p>
+                  {(item.owner || item.due) && (
+                    <p className="report-assignment">
+                      {item.owner && <>Owner: {item.owner.text}</>}
+                      {item.owner && item.due && " · "}
+                      {item.due && <>Due: {item.due.text}</>}
+                    </p>
                   )}
-                {saved.report.video_references
-                  ?.filter((v) => v.item_id === item.id)
-                  .map((v) => (
-                    <figure key={v.asset_id}>
-                      <video
-                        controls
-                        preload="none"
-                        aria-label={v.caption}
-                        src={`${base}/${saved.id}/clips/${v.asset_id}`}
-                        onPlay={(event) => {
-                          pauseSource()
-                          reportVideos.current
-                            ?.querySelectorAll("video")
-                            .forEach((video) => {
-                              if (video !== event.currentTarget) video.pause()
-                            })
-                        }}
-                      />
-                      <figcaption>
-                        {v.caption} · {stamp(v.interval.start)}–
-                        {stamp(v.interval.end)}
-                      </figcaption>
-                    </figure>
-                  ))}
-              </section>
-            ))}
+                  <div className="report-citations">
+                    {item.citation_ids?.map((id) => {
+                      const c = saved.report.citations.find((c) => c.id === id)!
+                      return (
+                        <Button
+                          key={id}
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => seek(c.interval.start)}
+                          aria-label={`View source at ${stamp(c.interval.start)}`}
+                        >
+                          {stamp(c.interval.start)} ·{" "}
+                          {c.kind === "image" ? "Screen" : "Source"}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                  {item.citation_ids
+                    ?.map((id) =>
+                      saved.report.citations.find((c) => c.id === id)
+                    )
+                    .filter((c) => c?.kind === "image")
+                    .map(
+                      (c) =>
+                        c && (
+                          <figure key={c.id}>
+                            <img
+                              loading="lazy"
+                              alt={`Supporting screenshot at ${stamp(c.interval.start)}`}
+                              src={
+                                c.evidence_id.startsWith("asset:")
+                                  ? `/api/recordings/${recording.id}/visual-evidence/${c.evidence_id.slice(6)}/media`
+                                  : `/api/recordings/${recording.id}/media/${c.evidence_id.slice(6)}`
+                              }
+                            />
+                            <figcaption>
+                              Source screen · {stamp(c.interval.start)}
+                            </figcaption>
+                          </figure>
+                        )
+                    )}
+                  {saved.report.video_references
+                    ?.filter((v) => v.item_id === item.id)
+                    .map((v) => (
+                      <figure key={v.asset_id}>
+                        <video
+                          controls
+                          preload="none"
+                          aria-label={v.caption}
+                          src={`${base}/${saved.id}/clips/${v.asset_id}`}
+                          onPlay={(event) => {
+                            pauseSource()
+                            reportVideos.current
+                              ?.querySelectorAll("video")
+                              .forEach((video) => {
+                                if (video !== event.currentTarget) video.pause()
+                              })
+                          }}
+                        />
+                        <figcaption>
+                          {v.caption} · {stamp(v.interval.start)}–
+                          {stamp(v.interval.end)}
+                        </figcaption>
+                      </figure>
+                    ))}
+                </section>
+              )}
+            />
             <footer className="report-footer">
               {canEdit && generation.data?.enabled && (
                 <Button
@@ -583,6 +664,7 @@ export function RecordingReports({
                     generate.reset()
                     setFormError("")
                     setKind("custom")
+                    setVisuals(true)
                     setInstruction("")
                     setPreviousReportId(saved.id)
                     setStart(saved.report.scope.start)
@@ -593,9 +675,18 @@ export function RecordingReports({
                   Refine
                 </Button>
               )}
-              <a href={`${base}/${saved.id}/export.zip`} download>
-                Export report
-              </a>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={exportReport.isPending}
+                onClick={() =>
+                  exportReport.mutate({ id: saved.id, format: "html" })
+                }
+              >
+                {exportReport.isPending
+                  ? "Preparing download…"
+                  : "Download report"}
+              </Button>
               {canEdit && saved.status === "draft" && (
                 <Button
                   size="sm"
@@ -603,7 +694,7 @@ export function RecordingReports({
                   disabled={saved.stale || review.isPending}
                   onClick={() => review.mutate()}
                 >
-                  Mark reviewed
+                  Mark checked by me
                 </Button>
               )}
             </footer>
@@ -617,9 +708,21 @@ export function RecordingReports({
                   : "Partial coverage"}
               </p>
               <p>
-                Review is an editor action. Model interpretation can be
-                incorrect. Exports include selected images and video references;
-                video playback stays in the app.
+                Checking is optional: it records that an editor has read this
+                draft. It does not run another AI check or unlock any feature.
+                Download a single HTML document with embedded images; open it in
+                a browser to print or save as PDF. Video playback stays in the
+                app.{" "}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={exportReport.isPending}
+                  onClick={() =>
+                    exportReport.mutate({ id: saved.id, format: "zip" })
+                  }
+                >
+                  Download evidence ZIP
+                </Button>
               </p>
             </details>
           </article>
@@ -678,6 +781,41 @@ export function RecordingReports({
         )}
       </section>
       {source}
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename report</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (reportTitle.trim()) rename.mutate()
+            }}
+          >
+            <label>
+              Report name
+              <Input
+                autoFocus
+                value={reportTitle}
+                maxLength={150}
+                onChange={(event) => setReportTitle(event.target.value)}
+                disabled={rename.isPending}
+              />
+            </label>
+            {rename.error && (
+              <p className="report-notice" role="alert">
+                {rename.error.message}
+              </p>
+            )}
+            <Button
+              type="submit"
+              disabled={!reportTitle.trim() || rename.isPending}
+            >
+              {rename.isPending ? "Saving…" : "Save name"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={createOpen}
         onOpenChange={(open) => {
@@ -718,7 +856,7 @@ export function RecordingReports({
                 disabled={generate.isPending}
                 onChange={(value) => {
                   setKind(value)
-                  setVisuals(value === "report")
+                  setVisuals(value === "report" || value === "custom")
                 }}
                 items={[
                   { value: "summary", label: "Summary" },
@@ -776,7 +914,7 @@ export function RecordingReports({
                 disabled={generate.isPending}
                 onChange={(e) => setVisuals(e.target.checked)}
               />{" "}
-              Include relevant screenshots and video references
+              Let the agent inspect and embed relevant screenshots and clips
             </label>
             <details ref={rangeDetails}>
               <summary>Choose a time range</summary>

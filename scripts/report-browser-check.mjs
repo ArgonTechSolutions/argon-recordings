@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import {pathToFileURL} from 'node:url'
 import {spawn, execFileSync} from 'node:child_process'
 import {chromium} from '/opt/browser/node_modules/playwright-core/index.mjs'
 
@@ -9,6 +10,7 @@ fs.mkdirSync(evidence,{recursive:true})
 const data=fs.mkdtempSync(path.join(evidence,'synthetic-data-'))
 const env={...process.env,PYTHONPATH:'/workspace/backend:/workspace/scripts',RECORDINGS_DATA:data,RECORDINGS_STATIC:'/workspace/web/dist',RECORDINGS_WORKER_TOKEN:'synthetic-browser-only',OPENAI_API_KEY:'synthetic-browser-only'}
 execFileSync('python',['scripts/seed_visual_browser.py',data,'/workspace/models/validation/visual-browser-fixtures'],{env,stdio:'inherit',timeout:30000})
+execFileSync('python',['-c',`import os,sqlite3; c=sqlite3.connect(os.environ['RECORDINGS_DATA']+'/recordings.sqlite'); c.execute("UPDATE segments SET text=text || ' Deliver the mobile design on 2026-11-05. Follow up on Friday.' WHERE id=(SELECT id FROM segments ORDER BY start LIMIT 1)"); c.commit()`],{env,stdio:'inherit',timeout:30000})
 execFileSync('python',['-c',"from pathlib import Path; from argon_recordings.store import Store; import sys; s=Store(Path(sys.argv[1])); db=s.db(); c=db.__enter__(); c.execute('UPDATE recordings SET duration=31.037'); db.__exit__(None,None,None)",data],{env,stdio:'inherit',timeout:30000})
 const server=spawn('python',['-m','uvicorn','report_browser_app:create_fixture_app','--factory','--host','127.0.0.1','--port','8766','--timeout-graceful-shutdown','5'],{env,stdio:['ignore','pipe','pipe']})
 const log=fs.createWriteStream(path.join(evidence,'server.log'));server.stdout.pipe(log);server.stderr.pipe(log)
@@ -53,7 +55,7 @@ try {
  await page.screenshot({path:path.join(evidence,'sending-mobile.png'),fullPage:true})
  slowSubmission=false
  await page.locator('.report-progress').waitFor()
- await page.getByText('Draft',{exact:true}).waitFor({timeout:30000})
+ await page.getByText('AI draft · Not checked',{exact:true}).waitFor({timeout:30000})
  await page.locator('.report-body img').scrollIntoViewIfNeeded()
  await page.waitForFunction(()=>{const img=document.querySelector('.report-body img');return img?.complete&&img.naturalWidth>0})
  await page.getByRole('button',{name:'View source at 0:00',exact:true}).first().click()
@@ -69,7 +71,32 @@ try {
  await page.getByRole('combobox',{name:'Select report',exact:true}).click()
  await page.getByRole('option').filter({hasText:'Report ·'}).click()
  await page.getByRole('heading',{name:'Report',exact:true}).waitFor()
- await page.getByRole('button',{name:'Mark reviewed',exact:true}).click();await page.getByText('Reviewed',{exact:true}).waitFor()
+ await page.getByRole('button',{name:'Mark checked by me',exact:true}).click();await page.getByText('Checked by an editor',{exact:true}).waitFor()
+ await page.locator('.report-calendar').waitFor()
+ assert.equal(await page.locator('time[datetime="2026-11-05"]').count(),1)
+ await page.getByRole('heading',{name:'Dates to confirm',exact:true}).waitFor()
+ await page.getByRole('button',{name:'Rename report',exact:true}).click()
+ await page.getByLabel('Report name',{exact:true}).fill('Mobile review')
+ await page.getByRole('button',{name:'Save name',exact:true}).click()
+ await page.getByRole('heading',{name:'Mobile review',exact:true}).waitFor()
+ await page.getByText('Checked by an editor',{exact:true}).waitFor()
+ await page.route('**/export.html',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Synthetic export unavailable'})}))
+ await page.getByRole('button',{name:'Download report',exact:true}).click()
+ await page.getByRole('alert').filter({hasText:'Synthetic export unavailable'}).waitFor()
+ await page.unroute('**/export.html')
+ const exportReady=page.waitForEvent('download')
+ await page.getByRole('button',{name:'Download report',exact:true}).click()
+ const exported=await exportReady,htmlPath=path.join(evidence,'mobile-review.html')
+ await exported.saveAs(htmlPath)
+ const offline=await browser.newPage(),external=[]
+ offline.on('request',request=>{if(/^https?:/.test(request.url()))external.push(request.url())})
+ await offline.goto(pathToFileURL(htmlPath).href)
+ await offline.getByRole('heading',{name:'Mobile review',exact:true}).waitFor()
+ await offline.waitForFunction(()=>[...document.images].length>0&&[...document.images].every(img=>img.complete&&img.naturalWidth>0))
+ assert.deepEqual(external,[])
+ await offline.pdf({path:path.join(evidence,'mobile-review.pdf'),format:'A4'})
+ await offline.close()
+ result.checks.push('v3 figure and calendar, relative dates stay unplaced, rename keeps check state, single HTML works offline with embedded images and prints to PDF')
  result.checks.push('mobile creation, real queued generation with synthetic provider, supplied screenshot, citation opens source, multiple documents, selection and explicit review')
  for(const width of [1440,960,768,390,320]) {
   await page.setViewportSize({width,height:900})

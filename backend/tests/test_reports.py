@@ -172,7 +172,70 @@ def test_report_roles_revocation_and_explicit_review(team,tmp_path):
         assert viewer.post(root,headers=vh,json=body).status_code==403
         report_id=saved.json()['id'];path=root+'/'+report_id
         assert viewer.post(path+'/review',headers=vh,json={'expected_revision':1}).status_code==403
+        assert viewer.patch(path,headers=vh,json={'title':'Hijacked','expected_revision':1}).status_code==403
+        assert owner.patch(path,json={'title':'Missing CSRF','expected_revision':1}).status_code==403
+        assert viewer.get(path+'/export.html').status_code==200
         assert viewer.get(path+'/export.zip').status_code==200
         assert owner.request('DELETE',f'/api/projects/{pid}/members',headers=headers,json={'email':'report-viewer@example.com'}).status_code==200
         assert viewer.get(path).status_code==404 and viewer.get(path+'/export.zip').status_code==404
     finally: viewer.close()
+
+
+def test_rename_and_embedded_export_keep_evidence_and_check_state(client,tmp_path):
+    rid,body,_=draft(client,tmp_path)
+    body['report']['template_version']='argon-summary-v3'
+    body['report']['blocks']=[{'id':'figure','kind':'figure','title':'Design changes','item_ids':['action']}]
+    saved=save(client,rid,body);root=f'/api/recordings/{rid}/reports/{saved["id"]}'
+    assert client.patch(root,json={'title':'New name','expected_revision':0}).status_code==409
+    assert client.patch(root,json={'title':'   ','expected_revision':1}).status_code==422
+    renamed=client.patch(root,json={'title':'  Project deliverables  ','expected_revision':1})
+    assert renamed.status_code==200 and renamed.json()['title']=='Project deliverables'
+    assert renamed.json()['status']=='draft'
+    assert client.get(root).json()['report']==saved['report']
+    page=client.get(root+'/export.html')
+    assert page.status_code==200 and page.headers['content-type'].startswith('text/html')
+    assert '.html' in page.headers['content-disposition']
+    content=page.text
+    assert 'data:image/jpeg;base64,' in content and 'src="images/' not in content
+    assert '<script>' not in content and '&lt;script&gt;' in content
+    assert 'href="#s0"' in content and 'id="s0"' in content
+    assert content.index('<img src=') < content.index('Report provenance')
+    assert '<h2>Design changes</h2>' in content
+
+
+@pytest.mark.parametrize('blocks',[
+    [{'id':'a','kind':'narrative','title':'Example','item_ids':['missing']}],
+    [{'id':'a','kind':'actions','title':'Example','item_ids':['action']},
+     {'id':'b','kind':'calendar','title':'Example','item_ids':['action']}],
+])
+def test_blocks_reject_unknown_or_repeated_items(client,tmp_path,blocks):
+    rid,body,_=draft(client,tmp_path)
+    body['report']['template_version']='argon-summary-v3';body['report']['blocks']=blocks
+    assert client.post(f'/api/recordings/{rid}/reports',json=body).status_code==422
+
+
+def test_schedule_requires_actions_and_figure_requires_inspected_image(client,tmp_path):
+    rid,body,_=draft(client,tmp_path)
+    body['report']['template_version']='argon-summary-v3'
+    body['report']['blocks']=[{'id':'a','kind':'calendar','title':'Deliverables','item_ids':['action']}]
+    body['report']['items'][0].update(kind='summary',owner=None)
+    assert client.post(f'/api/recordings/{rid}/reports',json=body).status_code==422
+    body['report']['blocks'][0]['kind']='figure'
+    body['report']['items'][0]['citation_ids']=['speech']
+    body['report']['citations']=body['report']['citations'][:1];body['inspected_images']=[]
+    assert client.post(f'/api/recordings/{rid}/reports',json=body).status_code==422
+
+
+def test_embedded_export_bounds_repeated_images_before_base64_allocation(client,tmp_path,monkeypatch):
+    from argon_recordings import report_bundle
+    rid,body,image=draft(client,tmp_path)
+    data=JPEG+b'x'*10000;image.write_bytes(data)
+    body['inspected_images'][0]['sha256']=hashlib.sha256(data).hexdigest()
+    item=body['report']['items'][0]
+    body['report']['items']=[{**item,'id':f'item-{i}'} for i in range(10)]
+    saved=save(client,rid,body)
+    monkeypatch.setattr(report_bundle,'MAX_BUNDLE_BYTES',35000)
+    def forbidden_allocation(_): raise AssertionError('Expansion must be bounded before encoding')
+    monkeypatch.setattr(report_bundle.base64,'b64encode',forbidden_allocation)
+    response=client.get(f'/api/recordings/{rid}/reports/{saved["id"]}/export.html')
+    assert response.status_code==422 and 'Embedded export exceeds' in response.text

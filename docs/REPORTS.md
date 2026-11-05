@@ -2,7 +2,7 @@
 
 Local P12 implementation, owned by Argon. No deployment, real agent grant or plugin installation is implied.
 
-An agent returns a cited summary by default. When the user requests an importable report, the packaged `recording-summary` skill uses the shared `argon-summary-v1` contract to prepare `report-draft.json`. The editor opens the matching recording, switches to **Reports**, opens **More options**, chooses **Import draft** and **Save draft**. Saving verifies the current source hash, transcript/speaker/annotation/extraction revisions, report-list revision, canonical cited passages, registered image times and inspected-image SHA-256. The submitted draft cannot choose a reviewed state. Read the saved report and select **Mark reviewed** explicitly; stale reports cannot be newly reviewed. Viewers can inspect and export existing reports but cannot import, save or review them.
+An agent returns a cited summary by default. When the user requests an importable report, the packaged `recording-summary` skill uses the shared `argon-summary-v1` contract to prepare `report-draft.json`. The editor opens the matching recording, switches to **Reports**, opens **More options**, chooses **Import draft** and **Save draft**. Saving verifies the current source hash, transcript/speaker/annotation/extraction revisions, report-list revision, canonical cited passages, registered image times and inspected-image SHA-256. The submitted draft cannot choose a reviewed state. Checking is optional: **Mark checked by me** records that an editor read the saved draft; it does not run another AI check or unlock features. Rename changes the title with a collection revision fence and keeps source evidence and check state. Stale reports cannot be newly reviewed. Viewers can inspect and export existing reports but cannot import, save or review them.
 
 The helper and API use the same canonical `backend/argon_recordings/report_contract.py`; the private plugin builder includes that module beside its CLI wrapper. Use the prepared interpreter and actual generator metadata:
 
@@ -18,7 +18,9 @@ This produces a local artifact, not an application write. No report save/review 
 
 ## ZIP contents and provenance
 
-**Export report** downloads a private portable bundle:
+**Download report** saves one offline HTML document with images embedded beside the relevant content, source passages linked within the document, and responsive print styles. Open it in a browser and print/save as PDF. No app connection or external assets are needed; clips remain timestamped references, with playback in the app.
+
+**Report details → Download evidence ZIP** saves the full provenance bundle:
 
 - `report.md`, `report.html` and structured `report.json`, with claims and exact source intervals.
 - `transcript.json` and `transcript.html`, containing only cited passages; HTML citations target local passage anchors.
@@ -49,3 +51,18 @@ These checks use disposable synthetic accounts/media and prove local behavior. R
 ## In-app generation and video references
 
 The Reports tab now also creates OpenAI-generated drafts and separate refinements, alongside the existing import/review/export workflow. Report v2 adds registered clip references for in-app playback while exports retain text references rather than video bytes. See [in-app report generation](AI-REPORTS.md) for source/inspection validation, runtime configuration, accounting and qualification boundaries. The historical checks above describe their original checkpoint; they do not establish deployment of this addition.
+
+
+## Agent-authored report blocks (v3)
+
+`argon-summary-v3` adds an ordered `blocks` array. Each block has `id`, `kind`, `title` and `item_ids`; content continues to live in validated, cited items. Widgets are declarative, with no arbitrary HTML, scripts, remote URLs or executable components:
+
+- `narrative`: connected explanation and its evidence/media.
+- `key_points`: concise list with expandable evidence.
+- `actions`: owner/deadline table with expandable evidence.
+- `calendar`: deliverables placed on literal ISO dates (`YYYY-MM-DD`); relative, ambiguous or missing dates remain in **Dates to confirm**. Desktop month grid becomes an agenda on mobile. Export retains an accessible deadline table.
+- `figure`: inspected source images embedded with their explanation and citations; uninspected images cannot be used.
+
+Each block references known item IDs once across the layout. Schedule blocks accept only actions; figures require image evidence. Items omitted from blocks still render, so no validated content silently disappears. v1/v2 drafts remain readable and importable. Agents receive the widget palette in the writer schema/instructions and choose blocks for the requested task. Refine an older report to request a new layout; source snapshots are retained.
+
+Visual and custom report presets allow visual tools by default, with a user control to disable them. Summary/action presets stay text-first for cost; users can enable visuals. Media is optional and selected for explanatory value, not decoration. Useful screenshots are fetched from the recording, inspected, and cited before publication.

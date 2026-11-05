@@ -107,8 +107,16 @@ class VideoReference(Strict):
     caption: str = Field(min_length=1, max_length=500)
 
 
+class ReportBlock(Strict):
+    """Declarative presentation of validated items; never executable markup."""
+    id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    kind: Literal["narrative", "key_points", "actions", "calendar", "figure"]
+    title: str = Field(min_length=1, max_length=150)
+    item_ids: list[str] = Field(min_length=1, max_length=100)
+
+
 class Report(Strict):
-    template_version: Literal["argon-summary-v1", "argon-summary-v2"] = VERSION
+    template_version: Literal["argon-summary-v1", "argon-summary-v2", "argon-summary-v3"] = VERSION
     reference: Reference
     scope: Interval
     language: str = Field(min_length=2, max_length=35, pattern=r"^[a-zA-Z]+(?:-[a-zA-Z0-9]+)*$")
@@ -116,6 +124,7 @@ class Report(Strict):
     limitations: list[str] = Field(default_factory=list, max_length=100)
     citations: list[Citation] = Field(max_length=1000)
     items: list[Item] = Field(min_length=1, max_length=1000)
+    blocks: list[ReportBlock] = Field(default_factory=list, max_length=100, exclude_if=lambda value: not value)
     video_references: list[VideoReference] = Field(default_factory=list, max_length=8, exclude_if=lambda value: not value)
 
 
@@ -210,7 +219,19 @@ def validate_citations(report: Report, current: Reference, segments: dict[str, S
             require(citation.interval.start == citation.interval.end == image.timestamp,
                     "image citation must use actual source timestamp")
     unique([item.id for item in report.items])
-    require(not report.video_references or report.template_version == 'argon-summary-v2', 'video references require report v2')
+    require(not report.video_references or report.template_version in {'argon-summary-v2','argon-summary-v3'}, 'video references require report v2')
+    require(not report.blocks or report.template_version == 'argon-summary-v3', 'blocks require report v3')
+    unique([block.id for block in report.blocks])
+    items_by_id = {item.id: item for item in report.items}
+    unique([iid for block in report.blocks for iid in block.item_ids])
+    for block in report.blocks:
+        unique(block.item_ids)
+        require(all(i in items_by_id for i in block.item_ids), 'unknown block item')
+        if block.kind in {'actions', 'calendar'}:
+            require(all(items_by_id[i].kind == 'action' for i in block.item_ids), 'schedule blocks require actions')
+        if block.kind == 'figure':
+            require(any(citations.get(cid) and citations[cid].kind == 'image'
+                        for i in block.item_ids for cid in items_by_id[i].citation_ids), 'figure requires inspected image')
     for video in report.video_references:
         require(video.item_id in {item.id for item in report.items}, 'unknown video section')
         require(report.scope.contains(video.interval) and 0 < video.interval.end-video.interval.start <= 30,

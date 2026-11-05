@@ -32,11 +32,22 @@ async def synthetic_response(request):
                     'interval':{'start':segments[0]['start'],'end':segments[0]['end']}}]
         if 'screen' in outputs:
             citations.append({'id':'screen','kind':'image','evidence_id':'frame:frame-0000.jpg','interval':{'start':0,'end':0}})
-        report={'template_version':'argon-summary-v1','reference':reference,'scope':first['scope'],
+        report={'template_version':'argon-summary-v3','reference':reference,'scope':first['scope'],
             'language':first['language'],'coverage':'complete','limitations':[], 'citations':citations,
             'items':[{'id':'main','kind':'action' if first['kind']=='actions' else 'summary','basis':'explicit',
                 'text':'Review the mobile workflow. Source: '+segments[0]['text'],
                 'citation_ids':[c['id'] for c in citations],'owner':None,'due':None,'visual_observation':False}]}
+        if first['kind']=='report':
+            report['items'] += [
+                {'id':'delivery','kind':'action','basis':'explicit','text':'Deliver the mobile design',
+                 'citation_ids':['source'],'owner':None,'due':{'text':'2026-11-05','quote':segments[0]['text'],'citation_ids':['source']}},
+                {'id':'followup','kind':'action','basis':'explicit','text':'Follow up on accessibility',
+                 'citation_ids':['source'],'owner':None,'due':{'text':'Friday','quote':segments[0]['text'],'citation_ids':['source']}}]
+            report['blocks']=[{'id':'visual','kind':'figure','title':'Mobile design review','item_ids':['main']},
+                              {'id':'deliverables','kind':'calendar','title':'Deliverables','item_ids':['delivery','followup']}]
+        else:
+            report['blocks']=[{'id':'overview','kind':'actions' if first['kind']=='actions' else 'key_points',
+                              'title':'Next steps' if first['kind']=='actions' else 'Overview','item_ids':['main']}]
         output=[{'type':'message','role':'assistant','content':[{'type':'output_text','text':json.dumps(report)}]}]
     return httpx.Response(200,json={'status':'completed','output':output,'usage':{'input_tokens':100,'output_tokens':100}})
 

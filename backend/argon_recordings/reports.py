@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Literal
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import Field
 
@@ -49,6 +49,11 @@ class SaveReport(ReportDraft):
 
 
 class ReviewReport(Strict):
+    expected_revision: int = Field(ge=0)
+
+
+class RenameReport(Strict):
+    title: str = Field(min_length=1, max_length=150, pattern=r'\S')
     expected_revision: int = Field(ge=0)
 
 
@@ -215,6 +220,18 @@ def install(app,get_store,reserve):
             db.execute('BEGIN IMMEDIATE');current=current_reference(db,store,rid);row=report_row(db,rid,report_id)
             return ReportDetail(**view(row,current).model_dump(),report=json.loads(row['payload']),selected_image_count=len(json.loads(row['snapshot'])['images']))
 
+    @app.patch('/api/recordings/{rid}/reports/{report_id}',response_model=ReportView)
+    def rename(rid: str, report_id: str, body: RenameReport):
+        store=get_store()
+        with store.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            current=current_reference(db,store,rid)
+            report_row(db,rid,report_id)
+            revision=advance(db,rid,body.expected_revision)
+            db.execute('UPDATE reports SET title=?,revision=? WHERE id=?',
+                       (body.title.strip(),revision,report_id))
+            return view(report_row(db,rid,report_id),current)
+
     @app.post('/api/recordings/{rid}/reports/{report_id}/review',response_model=ReportView)
     def review(rid: str,report_id: str,body: ReviewReport):
         store=get_store()
@@ -245,8 +262,9 @@ def install(app,get_store,reserve):
             if digest.hexdigest()!=video.sha256: raise HTTPException(409,'Report clip integrity changed')
             return FileResponse(path,media_type='video/mp4',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
+    @app.get('/api/recordings/{rid}/reports/{report_id}/export.html')
     @app.get('/api/recordings/{rid}/reports/{report_id}/export.zip')
-    def export(rid: str,report_id: str):
+    def export(rid: str,report_id: str,request: Request):
         store=get_store()
         if not exports.acquire(blocking=False): raise HTTPException(429,'Two report exports are already in progress')
         temporary=None;released=False;lock=threading.Lock()
@@ -273,16 +291,20 @@ def install(app,get_store,reserve):
                         raise HTTPException(409,'Selected media metadata changed; import a new draft')
                     paths[image['id']]=path
             temporary=tempfile.TemporaryFile(dir=store.root/'results')
-            from .report_bundle import write_bundle
-            write_bundle(temporary,report,captured,metadata,paths)
+            from .report_bundle import write_bundle, standalone
+            is_html=request.url.path.endswith('/export.html')
+            if is_html:
+                temporary.write(standalone(report,captured,metadata,paths))
+            else:
+                write_bundle(temporary,report,captured,metadata,paths)
             size=temporary.tell();temporary.seek(0)
 
             async def chunks():
                 try:
                     while block:=await asyncio.to_thread(temporary.read,65536): yield block
                 finally: cleanup()
-            return ExportResponse(chunks(),cleanup=cleanup,media_type='application/zip',headers={
-                'Content-Disposition':f'attachment; filename="argon-report-{report_id}.zip"',
+            return ExportResponse(chunks(),cleanup=cleanup,media_type='text/html' if is_html else 'application/zip',headers={
+                'Content-Disposition':f'attachment; filename="argon-report-{report_id}.{"html" if is_html else "zip"}"',
                 'Content-Length':str(size),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
         except BaseException:
             cleanup();raise

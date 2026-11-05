@@ -5892,6 +5892,62 @@
             }
           }
         }
+      },
+      "patch": {
+        "summary": "Rename",
+        "operationId": "rename_api_recordings__rid__reports__report_id__patch",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/recordings/{rid}/reports/{report_id}/review": {
@@ -6011,6 +6067,52 @@
       "get": {
         "summary": "Export",
         "operationId": "export_api_recordings__rid__reports__report_id__export_zip_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/reports/{report_id}/export.html": {
+      "get": {
+        "summary": "Export",
+        "operationId": "export_api_recordings__rid__reports__report_id__export_html_get",
         "parameters": [
           {
             "name": "rid",
@@ -10485,6 +10587,29 @@
         ],
         "title": "Reference"
       },
+      "RenameReport": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 150,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Title"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "expected_revision"
+        ],
+        "title": "RenameReport"
+      },
       "RenameSpeaker": {
         "properties": {
           "expected_revision": {
@@ -10520,7 +10645,8 @@
             "type": "string",
             "enum": [
               "argon-summary-v1",
-              "argon-summary-v2"
+              "argon-summary-v2",
+              "argon-summary-v3"
             ],
             "title": "Template Version",
             "default": "argon-summary-v1"
@@ -10570,6 +10696,14 @@
             "maxItems": 1000,
             "minItems": 1,
             "title": "Items"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportBlock"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Blocks"
           },
           "video_references": {
             "items": {
@@ -10598,7 +10732,8 @@
             "type": "string",
             "enum": [
               "argon-summary-v1",
-              "argon-summary-v2"
+              "argon-summary-v2",
+              "argon-summary-v3"
             ],
             "title": "Template Version",
             "default": "argon-summary-v1"
@@ -10649,6 +10784,14 @@
             "minItems": 1,
             "title": "Items"
           },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportBlock"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Blocks"
+          },
           "video_references": {
             "items": {
               "$ref": "#/components/schemas/VideoReference"
@@ -10669,6 +10812,51 @@
           "items"
         ],
         "title": "Report"
+      },
+      "ReportBlock": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "narrative",
+              "key_points",
+              "actions",
+              "calendar",
+              "figure"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Item Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "item_ids"
+        ],
+        "title": "ReportBlock",
+        "description": "Declarative presentation of validated items; never executable markup."
       },
       "ReportDetail": {
         "properties": {

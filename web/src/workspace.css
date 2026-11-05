@@ -2122,3 +2122,32 @@ h1 {
     padding: 12px;
   }
 }
+
+.report-title-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.report-title-row h1 { min-width:0; overflow-wrap:anywhere; }
+.report-widget { margin:2rem 0; padding-top:1.25rem; border-top:1px solid var(--border); }
+.report-widget > h2 { font-size:1.25rem; font-weight:600; margin-bottom:1rem; }
+.report-widget h3 { font-size:1rem; font-weight:600; margin:.75rem 0; }
+.report-table-scroll { overflow-x:auto; }
+.report-widget table { width:100%; border-collapse:collapse; text-align:left; font-size:.9rem; }
+.report-widget th,.report-widget td { padding:.75rem; border-bottom:1px solid var(--border); vertical-align:top; min-width:6rem; }
+.report-widget th:first-child,.report-widget td:first-child { min-width:12rem; }
+.report-key-points { padding-left:1.5rem; list-style:disc; }
+.report-key-points li { margin:.75rem 0; }
+.report-block-evidence { margin-top:1rem; }
+.report-block-evidence summary { cursor:pointer; color:var(--muted-foreground); font-size:.85rem; }
+.report-calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:1px; background:var(--border); border:1px solid var(--border); }
+.report-calendar-grid > div { background:var(--card); padding:.4rem; min-width:0; }
+.report-calendar-day { min-height:4.5rem; }
+.report-calendar-day time,.report-weekday { font-size:.75rem; color:var(--muted-foreground); }
+.report-calendar-day p { font-size:.75rem; padding:.3rem; margin:.35rem 0; background:var(--accent); border-radius:.25rem; overflow-wrap:anywhere; }
+.report-calendar-day small { display:block; margin-top:.25rem; }
+.report-unplaced { padding:1rem; background:var(--muted); border-radius:.5rem; margin:1rem 0; }
+.report-unplaced p { margin:.75rem 0; font-size:.9rem; }
+@media(max-width:640px) {
+ .report-calendar-grid { display:flex; flex-direction:column; background:transparent; border:0; gap:.5rem; }
+ .report-calendar-grid > .report-weekday,.report-calendar-grid > div[aria-hidden],.report-calendar-day:not(:has(p)) { display:none; }
+ .report-calendar-grid > .report-calendar-day { min-height:0; padding:.75rem; border:1px solid var(--border); border-radius:.5rem; }
+ .report-calendar-day p { font-size:.875rem; }
+ .report-title-row { align-items:flex-start; }
+}

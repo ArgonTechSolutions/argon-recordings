@@ -496,3 +496,11 @@ def test_reading_validation_reports_format_errors_without_recording_private_text
     assert 'required format' in error.value.detail and 'string_too_long' in error.value.detail
     with client.app.state.store.db() as db:trace=db.execute('SELECT trace FROM report_generation WHERE id=?',(jid,)).fetchone()[0]
     assert secret_text not in trace and 'string_too_long' in trace
+
+
+def test_writer_widget_schema_preserves_required_title_property():
+    from argon_recordings.report_contract import Report
+    schema=strict_schema(Report.model_json_schema())
+    block=schema['$defs']['ReportBlock']
+    assert 'title' in block['properties'] and 'title' in block['required']
+    assert 'title' not in block  # Schema annotations are still removed.

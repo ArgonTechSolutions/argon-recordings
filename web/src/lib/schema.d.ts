@@ -1819,7 +1819,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Rename */
+        patch: operations["rename_api_recordings__rid__reports__report_id__patch"];
         trace?: never;
     };
     "/api/recordings/{rid}/reports/{report_id}/review": {
@@ -1865,6 +1866,23 @@ export interface paths {
         };
         /** Export */
         get: operations["export_api_recordings__rid__reports__report_id__export_zip_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/recordings/{rid}/reports/{report_id}/export.html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export */
+        get: operations["export_api_recordings__rid__reports__report_id__export_html_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3387,6 +3405,13 @@ export interface components {
             interval: components["schemas"]["Interval"];
             versions: components["schemas"]["Versions"];
         };
+        /** RenameReport */
+        RenameReport: {
+            /** Title */
+            title: string;
+            /** Expected Revision */
+            expected_revision: number;
+        };
         /** RenameSpeaker */
         RenameSpeaker: {
             /** Expected Revision */
@@ -3403,7 +3428,7 @@ export interface components {
              * @default argon-summary-v1
              * @enum {string}
              */
-            template_version: "argon-summary-v1" | "argon-summary-v2";
+            template_version: "argon-summary-v1" | "argon-summary-v2" | "argon-summary-v3";
             reference: components["schemas"]["Reference"];
             scope: components["schemas"]["Interval"];
             /** Language */
@@ -3419,6 +3444,8 @@ export interface components {
             citations: components["schemas"]["Citation"][];
             /** Items */
             items: components["schemas"]["Item"][];
+            /** Blocks */
+            blocks?: components["schemas"]["ReportBlock"][];
             /** Video References */
             video_references?: components["schemas"]["VideoReference"][];
         };
@@ -3429,7 +3456,7 @@ export interface components {
              * @default argon-summary-v1
              * @enum {string}
              */
-            template_version: "argon-summary-v1" | "argon-summary-v2";
+            template_version: "argon-summary-v1" | "argon-summary-v2" | "argon-summary-v3";
             reference: components["schemas"]["Reference"];
             scope: components["schemas"]["Interval"];
             /** Language */
@@ -3445,8 +3472,27 @@ export interface components {
             citations: components["schemas"]["Citation"][];
             /** Items */
             items: components["schemas"]["Item"][];
+            /** Blocks */
+            blocks?: components["schemas"]["ReportBlock"][];
             /** Video References */
             video_references?: components["schemas"]["VideoReference"][];
+        };
+        /**
+         * ReportBlock
+         * @description Declarative presentation of validated items; never executable markup.
+         */
+        ReportBlock: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "narrative" | "key_points" | "actions" | "calendar" | "figure";
+            /** Title */
+            title: string;
+            /** Item Ids */
+            item_ids: string[];
         };
         /** ReportDetail */
         ReportDetail: {
@@ -8009,6 +8055,42 @@ export interface operations {
             };
         };
     };
+    rename_api_recordings__rid__reports__report_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     review_api_recordings__rid__reports__report_id__review_post: {
         parameters: {
             query?: never;
@@ -8079,6 +8161,38 @@ export interface operations {
         };
     };
     export_api_recordings__rid__reports__report_id__export_zip_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_api_recordings__rid__reports__report_id__export_html_get: {
         parameters: {
             query?: never;
             header?: never;

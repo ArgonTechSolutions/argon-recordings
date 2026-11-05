@@ -127,7 +127,7 @@ try {
   const viewerReports=guestPage.locator('.recording-reports')
   assert.equal(await viewerReports.getByLabel('Import report draft',{exact:true}).count(),0)
   assert.equal(await viewerReports.getByRole('button',{name:'Save draft',exact:true}).count(),0)
-  assert.equal(await viewerReports.getByRole('button',{name:'Mark reviewed',exact:true}).count(),0)
+  assert.equal(await viewerReports.getByRole('button',{name:'Mark checked by me',exact:true}).count(),0)
   const viewerSession=await(await guest.request.get(base+'/api/auth/session')).json()
   assert.equal((await guest.request.put(base+`/api/recordings/${viewerFixture.id}/speakers/speaker-0`,{headers:{'X-CSRF-Token':viewerSession.csrf},data:{}})).status(),403)
   const layout=await guestPage.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}))
