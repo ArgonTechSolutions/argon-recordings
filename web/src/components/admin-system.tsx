@@ -142,12 +142,12 @@ export function AdminSystem() {
                           : "Check failed — verify host Git access and installed runtime"}
               </p>
               {host.check && (
-                <small>
+                <small className="block">
                   Last checked:{" "}
                   {new Date(host.check.checked_at * 1000).toLocaleString()}
                 </small>
               )}
-              <small>Host source revision: {host.source_revision}</small>
+              <small className="block">Host source revision: {host.source_revision}</small>
             </div>
             <Button
               disabled={
