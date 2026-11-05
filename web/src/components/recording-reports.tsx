@@ -151,11 +151,19 @@ export function RecordingReports({
   const [start, setStart] = useState(0)
   const [end, setEnd] = useState(recording.duration ?? 0)
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string
+    title: string
+    revision: number
+  } | null>(null)
+  const [lifecycleNotice, setLifecycleNotice] = useState("")
   const [error, setError] = useState("")
   const reportVideos = useRef<HTMLDivElement>(null)
   const reports = useQuery({
-    queryKey: ["reports", recording.id],
-    queryFn: () => request<Reports>(base),
+    queryKey: ["reports", recording.id, showArchived],
+    queryFn: () => request<Reports>(`${base}?include_archived=${showArchived}`),
   })
   const generation = useQuery({
     queryKey: ["report-generation", recording.id],
@@ -189,7 +197,10 @@ export function RecordingReports({
         block: "nearest",
       })
   }, [submitted])
-  const selectedId = selected ?? completedId ?? reports.data?.reports[0]?.id
+  const visibleReports = reports.data?.reports ?? []
+  const selectedId = [selected, completedId, visibleReports[0]?.id].find((id) =>
+    visibleReports.some((report) => report.id === id)
+  )
   const rangeError =
     !Number.isFinite(start) ||
     !Number.isFinite(end) ||
@@ -324,6 +335,56 @@ export function RecordingReports({
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     },
   })
+  const archive = useMutation({
+    mutationFn: ({
+      id,
+      archived,
+      revision,
+    }: {
+      id: string
+      archived: boolean
+      revision: number
+    }) =>
+      request(`${base}/${id}/archive`, {
+        method: "POST",
+        body: JSON.stringify({ archived, expected_revision: revision }),
+      }),
+    onSuccess: async (_, variables) => {
+      setManageOpen(false)
+      setLifecycleNotice(
+        variables.archived
+          ? "Report archived. Use Show archived to restore it."
+          : "Report restored."
+      )
+      await cache.invalidateQueries({ queryKey: ["reports", recording.id] })
+      setSelected(variables.archived ? null : variables.id)
+      refresh()
+    },
+  })
+  const remove = useMutation({
+    mutationFn: async () => {
+      if (!deleteTarget) throw new Error("Choose a report to delete.")
+      return request(`${base}/${deleteTarget.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({
+          confirm: "delete-permanently",
+          expected_revision: deleteTarget.revision,
+        }),
+      })
+    },
+    onSuccess: async () => {
+      if (deleteTarget)
+        cache.removeQueries({
+          queryKey: ["report", recording.id, deleteTarget.id],
+        })
+      setDeleteTarget(null)
+      setSelected(null)
+      setSubmitted(null)
+      setLifecycleNotice("Report permanently deleted.")
+      await cache.invalidateQueries({ queryKey: ["reports", recording.id] })
+      refresh()
+    },
+  })
   const review = useMutation({
     mutationFn: async () => {
       const current = await request<Reports>(base)
@@ -350,6 +411,65 @@ export function RecordingReports({
     },
   })
   const saved = detail.data
+  const groupedMedia = new Set(
+    saved?.report.blocks
+      ?.filter((block) =>
+        ["actions", "calendar", "key_points"].includes(block.kind)
+      )
+      .flatMap((block) => block.item_ids) ?? []
+  )
+  const renderMedia = (item: Detail["report"]["items"][number]) => {
+    if (!saved) return null
+    return (
+      <div key={item.id} className="report-inline-media">
+        {item.citation_ids
+          ?.map((id) => saved.report.citations.find((c) => c.id === id))
+          .filter((c) => c?.kind === "image")
+          .map(
+            (c) =>
+              c && (
+                <figure key={c.id}>
+                  <img
+                    loading="lazy"
+                    alt={`Supporting screenshot at ${stamp(c.interval.start)}`}
+                    src={
+                      c.evidence_id.startsWith("asset:")
+                        ? `/api/recordings/${recording.id}/visual-evidence/${c.evidence_id.slice(6)}/media`
+                        : `/api/recordings/${recording.id}/media/${c.evidence_id.slice(6)}`
+                    }
+                  />
+                  <figcaption>
+                    Source screen · {stamp(c.interval.start)}
+                  </figcaption>
+                </figure>
+              )
+          )}
+        {saved.report.video_references
+          ?.filter((v) => v.item_id === item.id)
+          .map((v) => (
+            <figure key={v.asset_id}>
+              <video
+                controls
+                preload="none"
+                aria-label={v.caption}
+                src={`${base}/${saved.id}/clips/${v.asset_id}`}
+                onPlay={(event) => {
+                  pauseSource()
+                  reportVideos.current
+                    ?.querySelectorAll("video")
+                    .forEach((video) => {
+                      if (video !== event.currentTarget) video.pause()
+                    })
+                }}
+              />
+              <figcaption>
+                {v.caption} · {stamp(v.interval.start)}–{stamp(v.interval.end)}
+              </figcaption>
+            </figure>
+          ))}
+      </div>
+    )
+  }
   const load = async (file?: File) => {
     setDraft(null)
     setError("")
@@ -390,7 +510,7 @@ export function RecordingReports({
                 onChange={(id) => setSelected(id)}
                 items={reports.data.reports.map((r) => ({
                   value: r.id,
-                  label: `${r.title} · ${new Date(r.created * 1000).toLocaleString()}${r.stale ? " · Stale" : ""}`,
+                  label: `${r.title}${r.archived ? " · Archived" : ""} · ${new Date(r.created * 1000).toLocaleString()}${r.stale ? " · Stale" : ""}`,
                 }))}
               />
             ) : (
@@ -412,6 +532,24 @@ export function RecordingReports({
             </Button>
           )}
         </div>
+        {((reports.data?.archived_count ?? 0) > 0 || showArchived) && (
+          <label className="report-check report-archive-filter">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(event) => {
+                setSelected(null)
+                setShowArchived(event.target.checked)
+              }}
+            />{" "}
+            Show archived ({reports.data?.archived_count ?? 0})
+          </label>
+        )}
+        {lifecycleNotice && (
+          <p role="status" className="report-notice">
+            {lifecycleNotice}
+          </p>
+        )}
         {active && (
           <div
             className="report-progress"
@@ -458,15 +596,17 @@ export function RecordingReports({
               <strong>Your draft is ready.</strong> You can refine it or
               download it.
             </span>
-            {latest.report_id && selectedId !== latest.report_id && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setSelected(latest.report_id)}
-              >
-                Open draft
-              </Button>
-            )}
+            {latest.report_id &&
+              visibleReports.some((report) => report.id === latest.report_id) &&
+              selectedId !== latest.report_id && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelected(latest.report_id)}
+                >
+                  Open draft
+                </Button>
+              )}
           </div>
         )}
         {!active && latest?.state === "cancelled" && (
@@ -507,6 +647,7 @@ export function RecordingReports({
           detail.error,
           generation.error,
           review.error,
+          archive.error,
           exportReport.error,
           cancel.error,
         ]
@@ -525,6 +666,7 @@ export function RecordingReports({
                 {saved.status === "reviewed"
                   ? "Checked by an editor"
                   : "AI draft · Not checked"}
+                {saved.archived ? " · Archived" : ""}
                 {saved.stale ? " · Source changed" : ""}
               </span>
               <div className="report-title-row">
@@ -562,6 +704,7 @@ export function RecordingReports({
             ))}
             <ReportBlocks
               report={saved.report}
+              renderMedia={renderMedia}
               renderItem={(item) => (
                 <section className="report-section" key={item.id}>
                   <h2>
@@ -603,54 +746,7 @@ export function RecordingReports({
                       )
                     })}
                   </div>
-                  {item.citation_ids
-                    ?.map((id) =>
-                      saved.report.citations.find((c) => c.id === id)
-                    )
-                    .filter((c) => c?.kind === "image")
-                    .map(
-                      (c) =>
-                        c && (
-                          <figure key={c.id}>
-                            <img
-                              loading="lazy"
-                              alt={`Supporting screenshot at ${stamp(c.interval.start)}`}
-                              src={
-                                c.evidence_id.startsWith("asset:")
-                                  ? `/api/recordings/${recording.id}/visual-evidence/${c.evidence_id.slice(6)}/media`
-                                  : `/api/recordings/${recording.id}/media/${c.evidence_id.slice(6)}`
-                              }
-                            />
-                            <figcaption>
-                              Source screen · {stamp(c.interval.start)}
-                            </figcaption>
-                          </figure>
-                        )
-                    )}
-                  {saved.report.video_references
-                    ?.filter((v) => v.item_id === item.id)
-                    .map((v) => (
-                      <figure key={v.asset_id}>
-                        <video
-                          controls
-                          preload="none"
-                          aria-label={v.caption}
-                          src={`${base}/${saved.id}/clips/${v.asset_id}`}
-                          onPlay={(event) => {
-                            pauseSource()
-                            reportVideos.current
-                              ?.querySelectorAll("video")
-                              .forEach((video) => {
-                                if (video !== event.currentTarget) video.pause()
-                              })
-                          }}
-                        />
-                        <figcaption>
-                          {v.caption} · {stamp(v.interval.start)}–
-                          {stamp(v.interval.end)}
-                        </figcaption>
-                      </figure>
-                    ))}
+                  {!groupedMedia.has(item.id) && renderMedia(item)}
                 </section>
               )}
             />
@@ -697,6 +793,18 @@ export function RecordingReports({
                   Mark checked by me
                 </Button>
               )}
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    archive.reset()
+                    setManageOpen(true)
+                  }}
+                >
+                  Manage report
+                </Button>
+              )}
             </footer>
             <details className="report-provenance">
               <summary>Report details</summary>
@@ -732,9 +840,11 @@ export function RecordingReports({
             <h2>
               {active
                 ? "Your report is being created."
-                : latest?.state === "failed"
-                  ? "No draft was saved."
-                  : "Turn this recording into something useful."}
+                : !showArchived && (reports.data?.archived_count ?? 0) > 0
+                  ? "All reports are archived."
+                  : latest?.state === "failed"
+                    ? "No draft was saved."
+                    : "Turn this recording into something useful."}
             </h2>
             <p>
               {active
@@ -781,6 +891,84 @@ export function RecordingReports({
         )}
       </section>
       {source}
+      <Dialog open={manageOpen} onOpenChange={setManageOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage report</DialogTitle>
+          </DialogHeader>
+          <p>
+            Archive hides this report from the default list. You can restore it
+            at any time using Show archived.
+          </p>
+          <Button
+            disabled={archive.isPending || !saved}
+            onClick={() => {
+              if (saved)
+                archive.mutate({
+                  id: saved.id,
+                  archived: !saved.archived,
+                  revision: reports.data!.revision,
+                })
+            }}
+          >
+            {archive.isPending
+              ? "Saving…"
+              : saved?.archived
+                ? "Restore report"
+                : "Archive report"}
+          </Button>
+          {archive.error && <p role="alert">{archive.error.message}</p>}
+          <Button
+            variant="destructive"
+            disabled={archive.isPending || !saved}
+            onClick={() => {
+              if (saved) {
+                setManageOpen(false)
+                remove.reset()
+                setDeleteTarget({
+                  id: saved.id,
+                  title: saved.title,
+                  revision: reports.data!.revision,
+                })
+              }
+            }}
+          >
+            Delete permanently…
+          </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && !remove.isPending) setDeleteTarget(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Permanently delete report?</DialogTitle>
+          </DialogHeader>
+          <p>
+            <strong>THIS IS IRREVERSIBLE.</strong> This deletes “
+            {deleteTarget?.title}” and cannot be undone in the app. Your
+            recording, transcript and source media will remain.
+          </p>
+          {remove.error && <p role="alert">{remove.error.message}</p>}
+          <Button
+            variant="outline"
+            disabled={remove.isPending}
+            onClick={() => setDeleteTarget(null)}
+          >
+            Keep report
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            {remove.isPending ? "Deleting…" : "Delete forever"}
+          </Button>
+        </DialogContent>
+      </Dialog>
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>
           <DialogHeader>

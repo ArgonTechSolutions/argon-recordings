@@ -21,7 +21,7 @@ from pydantic import Field, ValidationError
 
 from .contracts import Strict
 from .report_contract import Report, Segment, Interval, InspectedImage, ContractError, validate_citations
-from .reports import SaveReport, current_reference, checked_image, image_record, speaker_snapshot
+from .reports import SaveReport, current_reference, checked_image, image_record, speaker_snapshot, reference_matches
 from .store import identity
 from .visual_jobs import VisualRequest
 from .ai_settings import controls, read_key, user_cap
@@ -412,7 +412,7 @@ class Generation:
                 previous_row=db.execute('SELECT payload FROM reports WHERE recording_id=? AND id=?',(rid,body.previous_report_id)).fetchone()
                 if not previous_row: raise HTTPException(404,'Previous report not found')
                 previous=json.loads(previous_row['payload'])
-                if previous['reference']!=reference.model_dump(): raise HTTPException(409,'Previous report is stale; generate a fresh report')
+                if not reference_matches(previous['reference'],reference): raise HTTPException(409,'Previous report is stale; generate a fresh report')
         tools=TOOLS if body.visuals else []
         async with httpx.AsyncClient(timeout=150,trust_env=False,follow_redirects=False) as client:
             with self.store.db() as db:
@@ -495,11 +495,11 @@ class Generation:
                             except HTTPException as exc:
                                 if exc.status_code not in {409,422,429,507}: raise
                                 content=json.dumps({'unavailable':True,'message':'Visual extraction is unavailable. Continue with available evidence and disclose this limitation.'})
-                                trace.append({'tool':name,'arguments':args,'unavailable':True})
+                                trace.append({'tool':name,'arguments':args,'unavailable':True,'status_code':exc.status_code})
                                 inputs.append({'type':'function_call_output','call_id':call['call_id'],'output':content})
                                 continue
                             job_id=job.id if hasattr(job,'id') else job['id']
-                            for _ in range(90):
+                            while True:
                                 self.check(jid)
                                 with self.store.db() as db:
                                     visual=db.execute('SELECT state,error FROM visual_jobs WHERE id=?',(job_id,)).fetchone()
@@ -507,10 +507,11 @@ class Generation:
                                 if asset:
                                     content=json.dumps({'asset_id':asset['id'],'image_id':'asset:'+asset['id'],'manifest':json.loads(asset['manifest'])});break
                                 if not visual or visual['state'] in {'failed','cancelled'}:
-                                    content=json.dumps({'unavailable':True,'message':'Visual extraction unavailable; continue with transcript and disclose limitation.'});break
+                                    content=json.dumps({'unavailable':True,'message':'Visual extraction failed or was cancelled; continue with transcript and disclose the missing figure.'});break
+                                self.stage(jid,'Preparing screenshot' if args['kind']=='image' else 'Preparing video clip')
                                 await asyncio.sleep(1)
-                            else: content=json.dumps({'unavailable':True,'message':'Visual extraction timed out; continue with existing evidence.'})
                         entry={'tool':name,'arguments':args}
+                        if name=='request_visual': entry.update(visual_job_id=job_id,state=visual['state'] if visual else 'missing',available=bool(asset))
                         if name=='inspect_image': entry['image']=inspected[args['image_id']].model_dump()
                         if name=='read_transcript': entry['segment_ids']=[s['id'] for s in items]
                         trace.append(entry)
@@ -528,7 +529,8 @@ class Generation:
                     inputs.append({'role':'developer','content':'Report format invalid. Return valid JSON matching the schema. Do not add fields.'})
                     continue
                 _,current=self.check(jid)
-                if report.reference!=current or report.scope.model_dump()!=scope: raise HTTPException(409,'Generated report source does not match this run')
+                if not reference_matches(report.reference,current) or report.scope.model_dump()!=scope: raise HTTPException(409,'Generated report source does not match this run')
+                report.reference=current
                 selected={c.evidence_id for c in report.citations if c.kind=='image'}
                 if not selected<=inspected.keys(): raise HTTPException(422,'Generated report cites an image that was not supplied to the model')
                 if not body.visuals and report.video_references: raise HTTPException(422,'Visuals were disabled for this run')

@@ -45,7 +45,7 @@ def render(report,captured,metadata,inline_images=None):
         if citation.kind=='transcript':
             links[citation.id]=f'transcript.html#s{segments[citation.evidence_id][0]}'
         else: links[citation.id]=image_filename(citation.evidence_id)
-    state=('Checked by an editor' if metadata['status']=='reviewed' else 'Draft · Not checked by an editor')+(' · Source changed' if metadata['stale'] else '')
+    state=('Checked by an editor' if metadata['status']=='reviewed' else 'Draft · Not checked by an editor')+(' · Archived' if metadata.get('archived') else '')+(' · Source changed' if metadata['stale'] else '')
     body=[f'<h1>{text(metadata["title"])}</h1>',f'<p>{text(state)}</p>',
           f'<p>Scope: {stamp(report.scope.start)}–{stamp(report.scope.end)} · {text(report.coverage)}</p>']
     md=[f'# {markdown(metadata["title"])}',markdown(state),
@@ -55,7 +55,7 @@ def render(report,captured,metadata,inline_images=None):
         body.append('<h2>Limitations</h2><ul>'+''.join(f'<li>{text(item)}</li>' for item in report.limitations)+'</ul>')
         md.append('## Limitations\n\n'+'\n'.join('- '+markdown(item) for item in report.limitations))
     citations={c.id:c for c in report.citations}
-    rendered_items={}
+    rendered_items={};rendered_media={}
     for item in report.items:
         begin=len(body)
         heading=f'{item.kind} · {item.basis}'
@@ -69,6 +69,7 @@ def render(report,captured,metadata,inline_images=None):
             citation=citations[cid];label=f'{stamp(citation.interval.start)}–{stamp(citation.interval.end)} · {citation.evidence_id}'
             body.append(f'<a href="{links[cid]}">{text(label)}</a> ')
             md.append(f'[{markdown(label)}]({links[cid]})')
+        text_end=len(body)
         for video in report.video_references:
             if video.item_id == item.id:
                 label=f'Video reference: {stamp(video.interval.start)}–{stamp(video.interval.end)}. {video.caption} (playback available in the app; video is not included in this export).'
@@ -81,7 +82,8 @@ def render(report,captured,metadata,inline_images=None):
                 md.append(f'![Supporting screenshot]({filename})')
                 body.append(f'<figure><img src="{filename}" alt="Supporting screenshot"><figcaption>{stamp(citation.interval.start)} · Source screenshot</figcaption></figure>')
         body.append('</section>')
-        rendered_items[item.id]=''.join(body[begin:])
+        rendered_items[item.id]=''.join(body[begin:text_end])+'</section>'
+        rendered_media[item.id]=''.join(body[text_end:-1])
         del body[begin:]
     item_map={item.id:item for item in report.items}
     covered=set()
@@ -92,13 +94,16 @@ def render(report,captured,metadata,inline_images=None):
             for iid in block.item_ids:
                 item=item_map[iid]
                 body.append(f'<tr><td><a href="#item-{iid}">{text(item.text)}</a></td><td>{text(item.owner.text if item.owner else "Not specified")}</td><td>{text(item.due.text if item.due else "Date to confirm")}</td></tr>')
-            body.append('</tbody></table><details><summary>Supporting evidence</summary>')
+            body.append('</tbody></table>')
+            body.extend(rendered_media[iid] for iid in block.item_ids)
+            body.append('<details><summary>Supporting evidence</summary>')
         for iid in block.item_ids:
             body.append(f'<div id="item-{iid}">{rendered_items[iid]}</div>')
+            if block.kind not in {'actions','calendar'}:body.append(rendered_media[iid])
         if block.kind in {'actions','calendar'}: body.append('</details>')
         body.append('</section>')
         covered.update(block.item_ids)
-    body.extend(rendered_items[item.id] for item in report.items if item.id not in covered)
+    body.extend(rendered_items[item.id]+rendered_media[item.id] for item in report.items if item.id not in covered)
     cited_images={c.evidence_id for c in report.citations if c.kind=='image'}
     for image in captured['images']:
         if image['id'] in cited_images: continue
@@ -161,7 +166,7 @@ def write_bundle(output,report,captured,metadata,paths):
         manifest={'format':BUNDLE_VERSION,'reference':report.reference.model_dump(),
             'project_id':captured['project_id'],
             'generator':metadata['generator'],'template_version':report.template_version,
-            'report':{k:metadata[k] for k in ('id','status','revision','stale','created','reviewed')},
+            'report':{k:metadata[k] for k in ('id','status','revision','stale','created','reviewed','archived')},
             'checked_reference':metadata['checked_reference'],'checked_at':metadata['checked_at'],
             'scope':report.scope.model_dump(),'coverage':report.coverage,
             'coverage_is_importer_assertion':True,'inspection_is_importer_assertion':True,

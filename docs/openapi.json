@@ -5789,6 +5789,16 @@
               "type": "string",
               "title": "Rid"
             }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Archived"
+            }
           }
         ],
         "responses": {
@@ -5938,6 +5948,118 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RenameReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete",
+        "operationId": "delete_api_recordings__rid__reports__report_id__delete",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/recordings/{rid}/reports/{report_id}/archive": {
+      "post": {
+        "summary": "Archive",
+        "operationId": "archive_api_recordings__rid__reports__report_id__archive_post",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          },
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveReport"
               }
             }
           }
@@ -7912,6 +8034,26 @@
         ],
         "title": "AnalysisResult"
       },
+      "ArchiveReport": {
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "title": "Archived"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "archived",
+          "expected_revision"
+        ],
+        "title": "ArchiveReport"
+      },
       "Artifact": {
         "properties": {
           "name": {
@@ -8452,6 +8594,27 @@
           "end"
         ],
         "title": "DecodedInterval"
+      },
+      "DeleteReport": {
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "const": "delete-permanently",
+            "title": "Confirm"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "confirm",
+          "expected_revision"
+        ],
+        "title": "DeleteReport"
       },
       "DiarizationCompletion": {
         "properties": {
@@ -10945,6 +11108,11 @@
             ],
             "title": "Reviewed"
           },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived",
+            "default": false
+          },
           "generator": {
             "$ref": "#/components/schemas/Generator"
           },
@@ -11013,6 +11181,11 @@
             ],
             "title": "Reviewed"
           },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived",
+            "default": false
+          },
           "generator": {
             "$ref": "#/components/schemas/Generator"
           }
@@ -11033,6 +11206,11 @@
       },
       "ReportsList": {
         "properties": {
+          "archived_count": {
+            "type": "integer",
+            "title": "Archived Count",
+            "default": 0
+          },
           "revision": {
             "type": "integer",
             "title": "Revision"

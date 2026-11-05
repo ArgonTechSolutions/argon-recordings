@@ -1833,11 +1833,29 @@ export interface paths {
         get: operations["detail_api_recordings__rid__reports__report_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete */
+        delete: operations["delete_api_recordings__rid__reports__report_id__delete"];
         options?: never;
         head?: never;
         /** Rename */
         patch: operations["rename_api_recordings__rid__reports__report_id__patch"];
+        trace?: never;
+    };
+    "/api/recordings/{rid}/reports/{report_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive */
+        post: operations["archive_api_recordings__rid__reports__report_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/recordings/{rid}/reports/{report_id}/review": {
@@ -2477,6 +2495,13 @@ export interface components {
             counts: components["schemas"]["AnalysisCounts"];
             budgets: components["schemas"]["AnalysisBudgets"];
         };
+        /** ArchiveReport */
+        ArchiveReport: {
+            /** Archived */
+            archived: boolean;
+            /** Expected Revision */
+            expected_revision: number;
+        };
         /** Artifact */
         Artifact: {
             /** Name */
@@ -2651,6 +2676,16 @@ export interface components {
             start: number | null;
             /** End */
             end: number | null;
+        };
+        /** DeleteReport */
+        DeleteReport: {
+            /**
+             * Confirm
+             * @constant
+             */
+            confirm: "delete-permanently";
+            /** Expected Revision */
+            expected_revision: number;
         };
         /** DiarizationCompletion */
         DiarizationCompletion: {
@@ -3542,6 +3577,11 @@ export interface components {
             created: number;
             /** Reviewed */
             reviewed: number | null;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
             generator: components["schemas"]["Generator"];
             report: components["schemas"]["Report-Output"];
             /** Selected Image Count */
@@ -3566,10 +3606,20 @@ export interface components {
             created: number;
             /** Reviewed */
             reviewed: number | null;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
             generator: components["schemas"]["Generator"];
         };
         /** ReportsList */
         ReportsList: {
+            /**
+             * Archived Count
+             * @default 0
+             */
+            archived_count: number;
             /** Revision */
             revision: number;
             /** Reports */
@@ -8025,7 +8075,9 @@ export interface operations {
     };
     reports_api_recordings__rid__reports_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_archived?: boolean;
+            };
             header?: never;
             path: {
                 rid: string;
@@ -8121,6 +8173,42 @@ export interface operations {
             };
         };
     };
+    delete_api_recordings__rid__reports__report_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     rename_api_recordings__rid__reports__report_id__patch: {
         parameters: {
             query?: never;
@@ -8134,6 +8222,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RenameReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_api_recordings__rid__reports__report_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveReport"];
             };
         };
         responses: {

@@ -173,6 +173,9 @@ def test_report_roles_revocation_and_explicit_review(team,tmp_path):
         report_id=saved.json()['id'];path=root+'/'+report_id
         assert viewer.post(path+'/review',headers=vh,json={'expected_revision':1}).status_code==403
         assert viewer.patch(path,headers=vh,json={'title':'Hijacked','expected_revision':1}).status_code==403
+        assert viewer.post(path+'/archive',headers=vh,json={'archived':True,'expected_revision':1}).status_code==403
+        assert viewer.request('DELETE',path,headers=vh,json={'confirm':'delete-permanently','expected_revision':1}).status_code==403
+        assert owner.request('DELETE',path,json={'confirm':'delete-permanently','expected_revision':1}).status_code==403
         assert owner.patch(path,json={'title':'Missing CSRF','expected_revision':1}).status_code==403
         assert viewer.get(path+'/export.html').status_code==200
         assert viewer.get(path+'/export.zip').status_code==200
@@ -239,3 +242,66 @@ def test_embedded_export_bounds_repeated_images_before_base64_allocation(client,
     monkeypatch.setattr(report_bundle.base64,'b64encode',forbidden_allocation)
     response=client.get(f'/api/recordings/{rid}/reports/{saved["id"]}/export.html')
     assert response.status_code==422 and 'Embedded export exceeds' in response.text
+
+
+def test_archive_restore_and_permanent_delete_preserve_source(client,tmp_path):
+    rid,body,image=draft(client,tmp_path);saved=save(client,rid,body)
+    root=f'/api/recordings/{rid}/reports';path=root+'/'+saved['id']
+    assert client.post(path+'/archive',json={'archived':True,'expected_revision':0}).status_code==409
+    archived=client.post(path+'/archive',json={'archived':True,'expected_revision':1})
+    assert archived.status_code==200 and archived.json()['archived']
+    assert client.get(root).json()['reports']==[]
+    assert client.get(root+'?include_archived=true').json()['reports'][0]['archived']
+    assert client.get(path).json()['report']==saved['report']
+    assert client.post(path+'/archive',json={'archived':False,'expected_revision':2}).status_code==200
+    assert not client.get(root).json()['reports'][0]['archived']
+    assert client.request('DELETE',path,json={'confirm':'yes','expected_revision':3}).status_code==422
+    assert client.request('DELETE',path,json={'confirm':'delete-permanently','expected_revision':2}).status_code==409
+    assert client.request('DELETE',path,json={'confirm':'delete-permanently','expected_revision':3}).status_code==200
+    assert client.get(path).status_code==404 and client.get(path+'/export.html').status_code==404
+    assert client.get(root+'?include_archived=true').json()=={'revision':4,'reports':[],'archived_count':0}
+    assert image.exists() and client.app.state.store.recording(rid) is not None
+
+
+def test_adding_derived_media_does_not_stale_report(client,tmp_path):
+    rid,body,_=draft(client,tmp_path);saved=save(client,rid,body)
+    with client.app.state.store.db() as db:db.execute('UPDATE evidence_versions SET extraction=extraction+1 WHERE recording_id=?',(rid,))
+    assert not client.get(f'/api/recordings/{rid}/reports/{saved["id"]}').json()['stale']
+    archive,_=unpack(client,rid,saved['id'])
+    assert archive.read('images/frame-0000.jpg')==JPEG
+
+
+def test_grouped_report_embeds_images_outside_closed_evidence(client,tmp_path):
+    from html.parser import HTMLParser
+    rid,body,_=draft(client,tmp_path)
+    body['report']['template_version']='argon-summary-v3'
+    body['report']['blocks']=[{'id':'actions','kind':'actions','title':'Deliverables','item_ids':['action']}]
+    saved=save(client,rid,body)
+    page=client.get(f'/api/recordings/{rid}/reports/{saved["id"]}/export.html')
+    class Inspect(HTMLParser):
+        depth=0;images=0
+        def handle_starttag(self,tag,attrs):
+            if tag=='details':self.depth+=1
+            if tag=='img':
+                assert self.depth==0
+                assert dict(attrs)['src'].startswith('data:image/jpeg;base64,')
+                self.images+=1
+        def handle_endtag(self,tag):
+            if tag=='details':self.depth-=1
+    parsed=Inspect();parsed.feed(page.text);assert parsed.images==1
+
+
+def test_delete_blocks_active_refinement_and_keeps_usage_receipt(client,tmp_path):
+    import time
+    rid,body,_=draft(client,tmp_path);saved=save(client,rid,body)
+    store=client.app.state.store;now=time.time();jid='f'*32
+    with store.db() as db:
+        db.execute("INSERT INTO report_generation(id,recording_id,request,reference,state,stage,created,updated,period,reserved,cost,report_id) VALUES(?,?,?,?,'queued','Waiting',?,?,'2026-11',0,0.01,?)",(jid,rid,json.dumps({'previous_report_id':saved['id']}),json.dumps(body['report']['reference']),now,now,saved['id']))
+    path=f'/api/recordings/{rid}/reports/{saved["id"]}'
+    payload={'confirm':'delete-permanently','expected_revision':1}
+    assert client.request('DELETE',path,json=payload).status_code==409
+    with store.db() as db:db.execute("UPDATE report_generation SET state='completed' WHERE id=?",(jid,))
+    assert client.request('DELETE',path,json=payload).status_code==200
+    with store.db() as db:
+        row=db.execute('SELECT report_id,cost,state FROM report_generation WHERE id=?',(jid,)).fetchone()
+        assert row['report_id'] is None and row['cost']==0.01 and row['state']=='completed'

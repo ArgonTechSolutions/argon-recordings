@@ -236,15 +236,26 @@ def test_literal_assignment_correction_is_bounded_and_preserves_validation(clien
     assert client.get(f'/api/recordings/{rid}/reports').json()['reports']==[]
 
 
-def test_visual_request_reuses_real_worker_queue_and_inspects_registered_result(client,tmp_path,monkeypatch):
+@pytest.mark.parametrize('delay_ticks',[0,95])
+def test_visual_request_reuses_real_worker_queue_and_inspects_registered_result(client,tmp_path,monkeypatch,delay_ticks):
     from test_visual_jobs import manifest
     from test_reports import JPEG
     from test_workflow import AUTH
     rid,body,_=draft(client,tmp_path); jid=queue(client,rid,visuals=True)
     g=client.app.state.generation; original_schedule=g.visual_actions['schedule']; original=httpx.AsyncClient; requests=[]
     import asyncio
-    tasks=[]
+    tasks=[];ticks=0;gate=asyncio.Event();native_sleep=asyncio.sleep
+    if not delay_ticks:gate.set()
+    async def tick(seconds):
+        nonlocal ticks
+        if seconds==1:
+            ticks+=1
+            if ticks>=delay_ticks:gate.set()
+            await native_sleep(0)
+        else:await native_sleep(seconds)
+    monkeypatch.setattr(asyncio,'sleep',tick)
     async def publish():
+        await gate.wait()
         # Use the real ASGI worker routes while generation awaits its durable visual job.
         async with original(transport=httpx.ASGITransport(app=client.app),base_url='http://testserver') as worker:
             claim=(await worker.post('/api/worker/visual/claim',headers=AUTH)).json()
@@ -278,6 +289,7 @@ def test_visual_request_reuses_real_worker_queue_and_inspects_registered_result(
     client.portal.call(g.run,jid)
     jobs=client.get(f'/api/recordings/{rid}/report-generation').json()['jobs']
     assert jobs[0]['state']=='completed' and len(requests)==5
+    assert ticks>=delay_ticks
     for task in tasks:
         assert task.done()
         task.result()

@@ -66,3 +66,12 @@ The Reports tab now also creates OpenAI-generated drafts and separate refinement
 Each block references known item IDs once across the layout. Schedule blocks accept only actions; figures require image evidence. Items omitted from blocks still render, so no validated content silently disappears. v1/v2 drafts remain readable and importable. Agents receive the widget palette in the writer schema/instructions and choose blocks for the requested task. Refine an older report to request a new layout; source snapshots are retained.
 
 Visual and custom report presets allow visual tools by default, with a user control to disable them. Summary/action presets stay text-first for cost; users can enable visuals. Media is optional and selected for explanatory value, not decoration. Useful screenshots are fetched from the recording, inspected, and cited before publication.
+
+
+## Report management and inline media
+
+Editors can use **Manage report → Archive report** to hide a report from the default list, **Show archived** to find it, and **Restore report** to return it. Archive is reversible. **Delete permanently…** opens an explicit irreversible-action warning; **Keep report** cancels. Confirmation permanently removes that report from the application, with optimistic collection-revision checking. It preserves the recording, transcript, shared source media and usage receipts; previously downloaded exports and existing backups are independent copies. Active refinement must finish or be cancelled before its input report can be deleted. Viewers cannot archive, restore or delete.
+
+Figures are visible inline even inside key-point, action-table or calendar blocks; only supporting textual evidence is collapsed. HTML exports embed JPEG bytes in those same visible sections. Generation waits for requested visual jobs to finish instead of abandoning them after 90 polls, and remains cancellable while waiting. A failed/cancelled extraction is disclosed rather than illustrated with an uninspected image. Trace metadata records visual job/state and scheduling rejection status, without raw errors.
+
+Adding derived media to the catalog does not itself stale an existing report. Source hash, transcript, speaker labels, annotations and scope still determine source freshness; selected image bytes and registered clip manifests remain checked for save/export. Historical reports with no selected images need a new generation/refinement to gain figures; existing saved contents are not silently rewritten.

@@ -29,9 +29,11 @@ function dateLabel(
 export function ReportBlocks({
   report,
   renderItem,
+  renderMedia,
 }: {
   report: Report
   renderItem: (item: Item) => ReactNode
+  renderMedia: (item: Item) => ReactNode
 }) {
   const byId = new Map(report.items.map((item) => [item.id, item]))
   const covered = new Set(
@@ -172,6 +174,8 @@ export function ReportBlocks({
                 ))}
               </ul>
             ) : null}
+            {["actions", "calendar", "key_points"].includes(block.kind) &&
+              items.map(renderMedia)}
             {["actions", "calendar", "key_points"].includes(block.kind) ? (
               <details className="report-block-evidence">
                 <summary>Supporting evidence</summary>

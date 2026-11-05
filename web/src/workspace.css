@@ -2151,3 +2151,9 @@ h1 {
  .report-calendar-day p { font-size:.875rem; }
  .report-title-row { align-items:flex-start; }
 }
+
+.report-archive-filter { display:flex; align-items:center; gap:.5rem; padding:.5rem 1.25rem; font-size:.8rem; border-bottom:1px solid var(--border); }
+.report-inline-media:empty { display:none; }
+.report-inline-media figure { margin:1.25rem 0; }
+.report-inline-media img,.report-inline-media video { max-width:100%; height:auto; border-radius:.375rem; }
+.report-inline-media figcaption { font-size:.75rem; color:var(--muted-foreground); margin-top:.4rem; }

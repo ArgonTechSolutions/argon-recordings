@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import {createHash} from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import {pathToFileURL} from 'node:url'
@@ -164,6 +165,44 @@ try {
  await page.waitForTimeout(1700)
  assert.equal((await(await page.request.get(base+`/api/recordings/${rid}/reports`)).json()).reports.length,5)
  result.checks.push('cancellation prevents publication through real generation API')
+ const list=await(await page.request.get(base+`/api/recordings/${rid}/reports`)).json()
+ let visual
+ for(const info of list.reports){const report=await(await page.request.get(base+`/api/recordings/${rid}/reports/${info.id}`)).json();if(report.selected_image_count){visual=report;break}}
+ assert.ok(visual)
+ const imageCitation=visual.report.citations.find(c=>c.kind==='image')
+ const imageResponse=await page.request.get(base+`/api/recordings/${rid}/media/${imageCitation.evidence_id.slice(6)}`)
+ const sha=createHash('sha256').update(await imageResponse.body()).digest('hex')
+ const imported=await page.request.post(base+`/api/recordings/${rid}/reports`,{data:{expected_revision:list.revision,title:'Grouped figures',generator:{name:'Synthetic browser',version:'1'},report:{...visual.report,blocks:[{id:'points',kind:'key_points',title:'Illustrated overview',item_ids:[visual.report.items[0].id]}]},inspected_images:[{id:imageCitation.evidence_id,sha256:sha,inspected:true}]}})
+ assert.equal(imported.status(),201,await imported.text())
+ const groupedId=(await imported.json()).id
+ await page.reload();await page.locator('.recording-card').first().click();await page.getByRole('tab',{name:'Reports',exact:true}).click()
+ const chooseGrouped=async()=>{await page.getByRole('combobox',{name:'Select report',exact:true}).click();await page.getByRole('option').filter({hasText:'Grouped figures'}).click()}
+ await chooseGrouped()
+ await page.locator('.report-body img').waitFor({state:'visible'})
+ assert.equal(await page.locator('.report-body img').evaluate(img=>!!img.closest('details')),false)
+ await page.setViewportSize({width:390,height:844})
+ await page.screenshot({path:path.join(evidence,'inline-grouped-media-mobile.png'),fullPage:true})
+ await page.getByRole('button',{name:'Manage report',exact:true}).click()
+ await page.getByRole('button',{name:'Archive report',exact:true}).click()
+ await page.getByText('Report archived. Use Show archived to restore it.',{exact:true}).waitFor()
+ await page.getByRole('checkbox',{name:/Show archived/}).check()
+ await chooseGrouped()
+ await page.getByRole('button',{name:'Manage report',exact:true}).click()
+ await page.getByRole('button',{name:'Restore report',exact:true}).click()
+ await page.getByText('Report restored.',{exact:true}).waitFor()
+ const openDelete=async()=>{await page.getByRole('button',{name:'Manage report',exact:true}).click();await page.getByRole('button',{name:'Delete permanently…',exact:true}).click();await page.getByText('THIS IS IRREVERSIBLE.',{exact:true}).waitFor()}
+ await openDelete()
+ assert.equal((await page.request.get(base+`/api/recordings/${rid}/reports/${groupedId}`)).status(),200)
+ await page.getByRole('button',{name:'Keep report',exact:true}).click()
+ assert.equal((await page.request.get(base+`/api/recordings/${rid}/reports/${groupedId}`)).status(),200)
+ await openDelete()
+ await page.getByRole('button',{name:'Delete forever',exact:true}).click()
+ await page.getByText('Report permanently deleted.',{exact:true}).waitFor()
+ assert.equal((await page.request.get(base+`/api/recordings/${rid}/reports/${groupedId}`)).status(),404)
+ assert.equal((await page.request.get(base+`/api/recordings/${rid}/media/${imageCitation.evidence_id.slice(6)}`)).status(),200)
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth))
+ await page.screenshot({path:path.join(evidence,'report-management-mobile.png'),fullPage:true})
+ result.checks.push('grouped screenshots visible inline outside collapsed evidence; mobile archive/filter/restore, irreversible warning, cancel and confirmed deletion preserve source media')
  assert.deepEqual(result.console_errors,[]);result.passed=true
 } catch(e){result.passed=false;result.error=e.stack;const p=browser?.contexts()[0]?.pages()[0];if(p){await p.screenshot({path:path.join(evidence,'failure.png'),fullPage:true});fs.writeFileSync(path.join(evidence,'failure-state.json'),JSON.stringify({dialogs:await p.getByRole('dialog').count(),labels:await p.locator('.report-create label').allTextContents(),alerts:await p.getByRole('alert').allTextContents()},null,2))}throw e}
 finally {fs.writeFileSync(path.join(evidence,'result.json'),JSON.stringify(result,null,2));await browser?.close();server.kill('SIGTERM');await new Promise(r=>{if(server.exitCode!==null)r();else{server.once('exit',r);setTimeout(()=>{server.kill('SIGKILL');r()},6000)}});log.end()}

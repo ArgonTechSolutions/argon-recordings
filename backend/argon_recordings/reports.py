@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS reports(
  title TEXT NOT NULL,generator TEXT NOT NULL,payload TEXT NOT NULL,snapshot TEXT NOT NULL,
  status TEXT NOT NULL,revision INTEGER NOT NULL,created REAL NOT NULL,reviewed REAL);
 CREATE INDEX IF NOT EXISTS reports_recording ON reports(recording_id);
+CREATE TABLE IF NOT EXISTS report_archive(report_id TEXT PRIMARY KEY REFERENCES reports(id) ON DELETE CASCADE,archived REAL NOT NULL);
 '''
 
 
@@ -57,6 +58,16 @@ class RenameReport(Strict):
     expected_revision: int = Field(ge=0)
 
 
+class ArchiveReport(Strict):
+    archived: bool
+    expected_revision: int = Field(ge=0)
+
+
+class DeleteReport(Strict):
+    confirm: Literal['delete-permanently']
+    expected_revision: int = Field(ge=0)
+
+
 class ReportView(Strict):
     id: str
     title: str
@@ -65,10 +76,12 @@ class ReportView(Strict):
     stale: bool
     created: float
     reviewed: float | None
+    archived: bool = False
     generator: Generator
 
 
 class ReportsList(Strict):
+    archived_count: int = 0
     revision: int
     reports: list[ReportView]
 
@@ -76,6 +89,15 @@ class ReportsList(Strict):
 class ReportDetail(ReportView):
     report: Report
     selected_image_count: int
+
+
+def reference_matches(left,right):
+    """Appending derived media does not change existing transcript/image evidence."""
+    def stable(ref):
+        value=ref.model_dump() if hasattr(ref,'model_dump') else json.loads(json.dumps(ref))
+        value['versions'].pop('extraction',None)
+        return value
+    return stable(left)==stable(right)
 
 
 def current_reference(db, store, rid):
@@ -142,21 +164,21 @@ def install(app,get_store,reserve):
         return expected+1
 
     def report_row(db,rid,report_id):
-        row=db.execute('SELECT * FROM reports WHERE recording_id=? AND id=?',(rid,report_id)).fetchone()
+        row=db.execute('SELECT r.*,EXISTS(SELECT 1 FROM report_archive a WHERE a.report_id=r.id) AS archived FROM reports r WHERE recording_id=? AND id=?',(rid,report_id)).fetchone()
         if not row: raise HTTPException(404,'Report not found')
         return row
 
     def view(row,current):
         report=Report.model_validate_json(row['payload'])
         return ReportView(**{k:row[k] for k in ('id','title','status','revision','created','reviewed')},
-                          generator=json.loads(row['generator']),stale=report.reference!=current)
+                          generator=json.loads(row['generator']),stale=not reference_matches(report.reference,current),archived=bool(row['archived']) if 'archived' in row.keys() else False)
 
     @app.get('/api/recordings/{rid}/reports',response_model=ReportsList)
-    def reports(rid: str):
+    def reports(rid: str,include_archived: bool=False):
         store=get_store()
         with store.db() as db:
             db.execute('BEGIN IMMEDIATE');current=current_reference(db,store,rid)
-            return ReportsList(revision=version(db,rid),reports=[view(row,current) for row in db.execute('SELECT * FROM reports WHERE recording_id=? ORDER BY created DESC,id',(rid,))])
+            return ReportsList(archived_count=db.execute('SELECT count(*) FROM report_archive a JOIN reports r ON r.id=a.report_id WHERE r.recording_id=?',(rid,)).fetchone()[0],revision=version(db,rid),reports=[view(row,current) for row in db.execute('SELECT r.*,EXISTS(SELECT 1 FROM report_archive a WHERE a.report_id=r.id) AS archived FROM reports r WHERE recording_id=? AND (? OR NOT EXISTS(SELECT 1 FROM report_archive a WHERE a.report_id=r.id)) ORDER BY created DESC,id',(rid,include_archived))])
 
     def persist(rid: str,body: SaveReport,generation_id=None):
         store=get_store();report=body.report
@@ -231,6 +253,32 @@ def install(app,get_store,reserve):
             db.execute('UPDATE reports SET title=?,revision=? WHERE id=?',
                        (body.title.strip(),revision,report_id))
             return view(report_row(db,rid,report_id),current)
+
+    @app.post('/api/recordings/{rid}/reports/{report_id}/archive',response_model=ReportView)
+    def archive(rid: str,report_id: str,body: ArchiveReport):
+        store=get_store()
+        with store.db() as db:
+            db.execute('BEGIN IMMEDIATE');current=current_reference(db,store,rid)
+            report_row(db,rid,report_id)
+            revision=advance(db,rid,body.expected_revision)
+            if body.archived:db.execute('INSERT OR REPLACE INTO report_archive VALUES(?,?)',(report_id,time.time()))
+            else:db.execute('DELETE FROM report_archive WHERE report_id=?',(report_id,))
+            db.execute('UPDATE reports SET revision=? WHERE id=?',(revision,report_id))
+            return view(report_row(db,rid,report_id),current)
+
+    @app.delete('/api/recordings/{rid}/reports/{report_id}')
+    def delete(rid: str,report_id: str,body: DeleteReport):
+        store=get_store()
+        with store.db() as db:
+            db.execute('BEGIN IMMEDIATE');report_row(db,rid,report_id)
+            for job in db.execute("SELECT request FROM report_generation WHERE recording_id=? AND state IN ('queued','running')",(rid,)):
+                if json.loads(job['request']).get('previous_report_id')==report_id:
+                    raise HTTPException(409,'Wait for the active refinement to finish or cancel it before deleting this report')
+            revision=advance(db,rid,body.expected_revision)
+            # Usage and generation receipts remain; deleted drafts cannot be reopened.
+            db.execute('UPDATE report_generation SET report_id=NULL WHERE report_id=?',(report_id,))
+            db.execute('DELETE FROM reports WHERE id=?',(report_id,))
+            return {'deleted':True,'revision':revision}
 
     @app.post('/api/recordings/{rid}/reports/{report_id}/review',response_model=ReportView)
     def review(rid: str,report_id: str,body: ReviewReport):
